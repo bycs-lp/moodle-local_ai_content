@@ -15,15 +15,27 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Lang strings for local_ai_content - EN.
+ * Upgrade steps for AI Content Manager
+ *
+ * Documentation: {@link https://moodledev.io/docs/guides/upgrade}
  *
  * @package    local_ai_content
- * @copyright  2026 MoodleDach
- * @author     
+ * @category   upgrade
+ * @copyright  2026 YOUR NAME <your@email.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-$string['aicontent'] = 'AI Content';
-$string['allowindexing'] = "Allow Indexing
-";
-$string['pluginname'] = 'AI Content Manager';
+/**
+ * Execute the plugin upgrade steps from the given old version.
+ *
+ * @param int $oldversion
+ * @return bool
+ */
+function xmldb_local_ai_content_upgrade($oldversion) {
+    global $DB;
+    $dbman = $DB->get_manager();
+
+    
+
+    return true;
+}

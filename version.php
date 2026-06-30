@@ -18,13 +18,13 @@
  * Version file for local_ai_content.
  *
  * @package    local_ai_content
- * @copyright  
+ * @copyright  2026 MoodleDach
  * @author     
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version  = 2026063000;
+$plugin->version  = 2026063000.01;
 $plugin->requires = 2025041400;
 $plugin->supported = [500, 502];
 $plugin->release = '3.0';
