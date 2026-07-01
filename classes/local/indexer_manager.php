@@ -94,6 +94,7 @@ class indexer_manager {
                     foreach($chunks as $chunk) {
                         $vectorrequest = $this->ai_manager->perform_request($chunk, "local_ai_content", $this->context->id);
                         $vector = $vectorrequest->get_content();
+                        $payload->content = $chunk;
                         $payload->vector = $vector;
                         $payload->chunk = $chunkcount;
 

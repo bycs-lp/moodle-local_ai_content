@@ -47,8 +47,8 @@ local_ai_content_register_form_elements();
  */
 function local_ai_content_coursemodule_edit_post_actions($data, $course) {
     global $DB, $USER;
-    var_dump($data);
-    exit();
+    // var_dump($data);
+    // exit();
     $isenabled = true; //\aipurpose_rag\indexer_manager::is_rag_indexing_enabled()$isenabled = true; //\aipurpose_rag\indexer_manager::is_rag_indexing_enabled()
     if ($isenabled) {
        // RAG indexing is enabled.

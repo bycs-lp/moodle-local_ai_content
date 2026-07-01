@@ -59,8 +59,8 @@ class content_page {
     }
 
     public function get_chunks($content) {
-        // Split into 500k character chunks, with 100 character overlap.
-        $chunk_size = 500000;
+        // Split into 80k character chunks, with 100 character overlap.
+        $chunk_size = 80000;
         $overlap = 100;
         $chunks = [];
         $start = 0;
