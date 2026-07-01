@@ -15,6 +15,29 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 use local_ai_content\persistent\contentconfig;
+use local_ai_content\form\ragcontexts;
+
+/**
+ * Registers the ragcontexts form element.
+ *
+ * Call this function before creating forms that use the ragcontexts element.
+ * Typically called in a form's definition() method or in a plugin callback.
+ *
+ * @since Moodle 5.0
+ */
+function local_ai_content_register_form_elements() {
+    global $CFG;
+    // Register the ragcontexts element type
+    // require_once($CFG->libdir . '/form/templatable_form_element.php');
+    
+    \MoodleQuickForm::registerElementType(
+        'ragcontexts',
+        __DIR__ . '/classes/form/ragcontexts.php',
+        'local_ai_content\form\ragcontexts'
+    );
+}
+
+local_ai_content_register_form_elements();
 /**
  * Callback implementations for AI Content Manager
  *
@@ -24,6 +47,8 @@ use local_ai_content\persistent\contentconfig;
  */
 function local_ai_content_coursemodule_edit_post_actions($data, $course) {
     global $DB, $USER;
+    var_dump($data);
+    exit();
     $isenabled = true; //\aipurpose_rag\indexer_manager::is_rag_indexing_enabled()$isenabled = true; //\aipurpose_rag\indexer_manager::is_rag_indexing_enabled()
     if ($isenabled) {
        // RAG indexing is enabled.
@@ -66,7 +91,7 @@ function local_ai_content_coursemodule_standard_elements($formwrapper, $mform) {
         $mform->addElement('header', 'aicontent', get_string('aicontent', 'local_ai_content'));
         $ynoptions = [0 => get_string('no'), 1 => get_string('yes')];
         $mform->addElement('select', 'allowindexing', get_string('allowindexing', 'local_ai_content'), $ynoptions);
-        if ($cmconfig->get('allowindex') == 1) {
+        if ($cmconfig !== false && $cmconfig->get('allowindex') == 1) {
             
             $mform->setDefault('allowindexing', 1);
         } else {

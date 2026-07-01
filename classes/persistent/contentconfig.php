@@ -50,17 +50,25 @@ class contentconfig extends persistent {
                 'description' => 'Whether indexing is allowed for this configuration setting.',
                 'default' => false,
             ],
+            'lastindexed' => [
+                'type' => PARAM_INT,
+                'description' => 'The timestamp of the last indexing operation for this configuration setting.',
+                'default' => 0,
+            ],
         ];
     }
 
     public static function get_course_module_configs($course) {
         global $DB;
         $records = [];
-        // $course = get_course($course);
         $context = \context_course::instance($course->id);
         $activities = modinfo::get_array_of_activities($course);
         $cmids = array_keys($activities);
         $records = $DB->get_records_list(self::TABLE, 'cmid', $cmids);
-        return $records;
+        // Convert the DB records into persistents.
+        $records = array_map(function($record) {
+            return new self($record->id, $record);
+        }, $records);
+        return [$activities, $records];
     }
 }
