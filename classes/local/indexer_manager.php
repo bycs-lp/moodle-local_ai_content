@@ -71,43 +71,47 @@ class indexer_manager {
             $processor = $this->get_content_processor($rawcm->mod, $cm);
             if ($processor) {
                 $content = $processor->extract();
-                
+
                 print_r($cm);
-                print_r($content);
+                $cmcontext = \context_module::instance($cm->id);
+                // print_r($content);
                 $payload = $this->build_vector_store_payload($cm, $content);
 
                 if (method_exists($processor, 'get_chunks')) {
                     $chunks = $processor->get_chunks($content);
+                    $display = clone $payload;
+                    // unset($display->vector);
+                    // print_r($display);
+                    if ($chunks) {
+                        // Generate each chunk payload
+                        $chunkcount = 1;
+                        $maxchunks = count($chunks);
+                        $payload->maxchunks = $maxchunks;
+                        $enrichedvectors = [];
+                        foreach($chunks as $chunk) {
+                            $vectorrequest = $this->ai_manager->perform_request($chunk, "local_ai_content", $this->context->id);
+                            $vector = $vectorrequest->get_content();
+                            $payload->content = $chunk;
+                            $payload->vector = $vector;
+                            $payload->chunk = $chunkcount;
+
+                            // echo "Payload for chunk $payload->chunk of $payload->maxchunks:\n";
+                            $display = clone $payload;
+                            $display->vector = 'truncated';
+                            // print_r($display);
+                            $enrichedvectors[] = enriched_vector::create($payload->vector, $payload->content, $cmcontext->id, $chunkcount, $maxchunks);
+                            $chunkcount++;
+                        }
+                        print_r($enrichedvectors);
+                        \core\di::get(connector_factory::class)->get_primary_vecstore()->insert_embeddings($enrichedvectors);
+                    }
                 } else {
                     $vectorrequest = $this->ai_manager->perform_request($content, "local_ai_content", $this->context->id);
                     $vector = $vectorrequest->get_content();
                     $payload->chunk = 0;
-                }
-                
-                $display = clone $payload;
-                unset($display->vector);
-                print_r($display);
-                if ($chunks) {
-                    // Generate each chunk payload
-                    $chunkcount = 1;
-                    $maxchunks = count($chunks);
-                    $payload->maxchunks = $maxchunks;
-                    $enrichedvectors = [];
-                    foreach($chunks as $chunk) {
-                        $vectorrequest = $this->ai_manager->perform_request($chunk, "local_ai_content", $this->context->id);
-                        $vector = $vectorrequest->get_content();
-                        $payload->content = $chunk;
-                        $payload->vector = $vector;
-                        $payload->chunk = $chunkcount;
-
-                        echo "Payload for chunk $payload->chunk of $payload->maxchunks:\n";
-                        $display = clone $payload;
-                        $display->vector = 'truncated';
-                        print_r($display);
-                        $enrichedvectors[] = enriched_vector::create($payload->vector, $payload->content, $this->context->id, $chunkcount, $maxchunks);
-                        $chunkcount++;
-                    }
-                    \core\di::get(connector_factory::class)->get_primary_vecstore()->insert_embeddings($enrichedvectors);
+                    $ev = enriched_vector::create($payload->vector, $payload->content, $cmcontext->id, $chunkcount, $maxchunks);
+                    print_r($ev);
+                    \core\di::get(connector_factory::class)->get_primary_vecstore()->insert_embeddings([$ev]);
                 }
 
             }
