@@ -35,7 +35,38 @@ function xmldb_local_ai_content_upgrade($oldversion) {
     global $DB;
     $dbman = $DB->get_manager();
 
-    
+    if ($oldversion < 2026070100) {
+        // Add local_ai_content_ragselection table.
+        $table = new \xmldb_table('local_ai_content_ragselection');
+
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('contextid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('ragrecordids', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field('usermodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_key('contextid', XMLDB_KEY_UNIQUE, ['contextid']);
+        $table->add_key('usermodified', XMLDB_KEY_FOREIGN, ['usermodified'], 'user', ['id']);
+
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        upgrade_plugin_savepoint(true, 2026070100, 'local', 'ai_content');
+    }
+
+    if ($oldversion < 2026070101) {
+        $oldtable = new \xmldb_table('local_ai_content_ragcontext');
+        $newtable = new \xmldb_table('local_ai_content_ragselection');
+
+        if ($dbman->table_exists($oldtable) && !$dbman->table_exists($newtable)) {
+            $dbman->rename_table($oldtable, 'local_ai_content_ragselection');
+        }
+
+        upgrade_plugin_savepoint(true, 2026070101, 'local', 'ai_content');
+    }
 
     return true;
 }
