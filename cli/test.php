@@ -26,7 +26,7 @@ define('CLI_SCRIPT', true);
 require(__DIR__.'../../../../config.php');
 require_once($CFG->libdir.'/clilib.php');
 
-$course = get_course(37);
+$course = get_course(41);
 $context = \context_course::instance($course->id);
 // TODO Set up a user to run the indexing as. For now, we'll just use the admin user.
 \core\session\manager::set_user(get_admin());

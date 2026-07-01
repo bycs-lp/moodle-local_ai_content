@@ -56,6 +56,8 @@ class rag_manager {
         int $contextid,
         int $topk = self::DEFAULT_TOPK
     ): string {
+        global $DB;
+
         $connectorfactory = \core\di::get(connector_factory::class);
         $vecstore = $connectorfactory->get_primary_vecstore();
         if (is_null($vecstore)) {
@@ -76,8 +78,26 @@ class rag_manager {
             return '';
         }
 
+        $recordids = array_values(array_unique(array_filter(array_map('intval', $recordids))));
+        if (empty($recordids)) {
+            return '';
+        }
+
+        // ragrecordids refer to local_ai_content_config IDs; vecstore payload stores module context IDs.
+        $configrecords = $DB->get_records_list('local_ai_content_config', 'id', $recordids, '', 'id,contextid');
+        if (empty($configrecords)) {
+            return '';
+        }
+        $contextids = array_values(array_unique(array_filter(array_map(
+            static fn($record) => (int) $record->contextid,
+            $configrecords
+        ))));
+        if (empty($contextids)) {
+            return '';
+        }
+
         $filters = [
-            'contextid' => $recordids,
+            'contextid' => $contextids,
         ];
 
         // Perform the vector search. The store returns an array of enriched_vector objects.
