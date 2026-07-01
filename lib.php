@@ -47,8 +47,7 @@ local_ai_content_register_form_elements();
  */
 function local_ai_content_coursemodule_edit_post_actions($data, $course) {
     global $DB, $USER;
-    // var_dump($data);
-    // exit();
+    
     $isenabled = true; //\aipurpose_rag\indexer_manager::is_rag_indexing_enabled()$isenabled = true; //\aipurpose_rag\indexer_manager::is_rag_indexing_enabled()
     if ($isenabled) {
        // RAG indexing is enabled.
@@ -58,9 +57,11 @@ function local_ai_content_coursemodule_edit_post_actions($data, $course) {
        $oldallowindexvalue = null;
        $context = \context_module::instance($data->coursemodule);
        if ($cmconfig = contentconfig::get_record(['cmid' => $data->coursemodule])) {
+
             $oldallowindexvalue = $cmconfig->get('allowindex');
             $cmconfig->set('allowindex', !empty($data->allowindexing) ? 1 : 0);
             $cmconfig->set('contextid', $context->id);
+            $cmconfig->save();
          } else {
               $record = new \stdClass();
               $record->cmid = $data->coursemodule;
@@ -80,7 +81,7 @@ function local_ai_content_coursemodule_edit_post_actions($data, $course) {
                 // We should schedule a deindexing task.
             }
        } // Otherwise a new record, we don't care if it's changing state.
-   }
+    }
     return $data;
 }
 function local_ai_content_coursemodule_standard_elements($formwrapper, $mform) {

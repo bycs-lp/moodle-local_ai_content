@@ -76,12 +76,16 @@ class rag_manager {
             return '';
         }
 
+        $filters = [
+            'contextid' => $recordids,
+        ];
+
         // Perform the vector search. The store returns an array of enriched_vector objects.
-        $matches = $vecstore->query($embedding, $topk);
+        $matches = $vecstore->query($embedding, $topk, $filters);
         if (empty($matches)) {
+
             return '';
         }
-
         // Assemble the resulting content string from the matches' textual content.
         $chunks = [];
         foreach ($matches as $match) {

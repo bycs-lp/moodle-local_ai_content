@@ -18,6 +18,7 @@ namespace local_ai_content\persistent;
 
 use core\persistent;
 use core_course\modinfo;
+require_once($CFG->dirroot.'/course/lib.php');
 /**
  * Class contentconfig
  *

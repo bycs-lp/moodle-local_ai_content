@@ -223,10 +223,11 @@ class ragcontexts extends HTML_QuickForm_element implements templatable {
 
         // Get contentconfig records for this course using the persistent class
         $contentconfigs = [];
-        $configs = contentconfig::get_course_module_configs($course);
+        [$activities, $configs] = contentconfig::get_course_module_configs($course);
+        // print_r($configs);
         if (!empty($configs)) {
             foreach ($configs as $config) {
-                $contentconfigs[$config->cmid] = $config;
+                $contentconfigs[$config->get('cmid')] = $config;
             }
         }
 
@@ -541,8 +542,9 @@ class ragcontexts extends HTML_QuickForm_element implements templatable {
             'error' => $error,
         ];
 
+        debugging($OUTPUT::class);
         $html = $OUTPUT->render_from_template('local_ai_content/element-ragcontexts', $context);
-
+// debugging("HTML generated for ragcontexts element: " . $html, DEBUG_DEVELOPER);
         if ($renderer->_inGroup) {
             $this->_groupElementTemplate = $html;
         }

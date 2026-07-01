@@ -106,11 +106,11 @@ class indexer_manager {
                         \core\di::get(connector_factory::class)->get_primary_vecstore()->insert_embeddings($enrichedvectors);
                     }
                 } else {
+                    // Content Processor doesn't support chunking.
                     $vectorrequest = $this->ai_manager->perform_request($content, "local_ai_content", $this->context->id);
                     $vector = $vectorrequest->get_content();
                     $payload->chunk = 0;
-                    $ev = enriched_vector::create($payload->vector, $payload->content, $cmcontext->id, $chunkcount, $maxchunks);
-                    print_r($ev);
+                    $ev = enriched_vector::create($payload->vector, $payload->content, $cmcontext->id, 1, 1);
                     \core\di::get(connector_factory::class)->get_primary_vecstore()->insert_embeddings([$ev]);
                 }
 
