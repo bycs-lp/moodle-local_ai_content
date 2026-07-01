@@ -74,12 +74,50 @@ class indexer_manager {
                 print_r($cm);
                 print_r($content);
                 $payload = $this->build_vector_store_payload($cm, $content);
+
+                if (method_exists($processor, 'get_chunks')) {
+                    $chunks = $processor->get_chunks($content);
+                } else {
+                    $vectorrequest = $this->ai_manager->perform_request($content, "local_ai_content", $this->context->id);
+                    $vector = $vectorrequest->get_content();
+                    $payload->chunk = 0;
+                }
+                
+                $display = clone $payload;
+                unset($display->vector);
+                print_r($display);
+                if ($chunks) {
+                    // Generate each chunk payload
+                    $chunkcount = 1;
+                    $maxchunks = count($chunks);
+                    $payload->maxchunks = $maxchunks;
+                    foreach($chunks as $chunk) {
+                        $vectorrequest = $this->ai_manager->perform_request($chunk, "local_ai_content", $this->context->id);
+                        $vector = $vectorrequest->get_content();
+                        $payload->vector = $vector;
+                        $payload->chunk = $chunkcount;
+
+                        echo "Payload for chunk $payload->chunk of $payload->maxchunks:\n";
+                        $display = clone $payload;
+                        $display->vector = 'truncated';
+                        print_r($display);
+                        $chunkcount++;
+                    }
+                } 
+
             }
         }
     }
 
     protected function build_vector_store_payload($cm, $content) {
-        
+        return (object)[
+            'vector' => null,
+            'cmid' => $cm->id,
+            'modname' => $cm->modname,
+            'content' => $content,
+            'chunk' => 0,
+            'maxchunks' => null,
+        ];
     }
     protected function get_content_processor($modname, $cm) {
         // $modname = $rawcm->mod;

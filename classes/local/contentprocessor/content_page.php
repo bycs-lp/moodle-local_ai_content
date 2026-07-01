@@ -57,4 +57,20 @@ class content_page {
         $content = format_text($content, $this->page->contentformat, ['context' => $this->context]);
         return $content;
     }
+
+    public function get_chunks($content) {
+        // Split into 500k character chunks, with 100 character overlap.
+        $chunk_size = 500000;
+        $overlap = 100;
+        $chunks = [];
+        $start = 0;
+        $content_length = strlen($content);
+        while ($start < $content_length) {
+            $end = min($start + $chunk_size, $content_length);
+            $chunk = substr($content, $start, $end - $start);
+            $chunks[] = $chunk;
+            $start += $chunk_size - $overlap;
+        }
+        return $chunks;
+    }
 }
