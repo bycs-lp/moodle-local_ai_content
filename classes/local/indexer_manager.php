@@ -15,6 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 namespace local_ai_content\local;
+use local_ai_manager\local\connector_factory;
 use \modinfo;
 use local_ai_content\persistent\contentconfig;
 // This is required because course_get_format() is course/lib.php and isn't loaded!
@@ -91,6 +92,7 @@ class indexer_manager {
                     $chunkcount = 1;
                     $maxchunks = count($chunks);
                     $payload->maxchunks = $maxchunks;
+                    $enrichedvectors = [];
                     foreach($chunks as $chunk) {
                         $vectorrequest = $this->ai_manager->perform_request($chunk, "local_ai_content", $this->context->id);
                         $vector = $vectorrequest->get_content();
@@ -102,9 +104,11 @@ class indexer_manager {
                         $display = clone $payload;
                         $display->vector = 'truncated';
                         print_r($display);
+                        $enrichedvectors[] = enriched_vector::create($payload->vector, $payload->content, $this->context->id, $chunkcount, $maxchunks);
                         $chunkcount++;
                     }
-                } 
+                    \core\di::get(connector_factory::class)->get_primary_vecstore()->insert_embeddings($enrichedvectors);
+                }
 
             }
         }
