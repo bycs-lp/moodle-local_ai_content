@@ -43,7 +43,15 @@ if (empty($collection)) {
 
 cli_heading('Vectors in vector store "' . $vecstore->get_name() . '" (collection: ' . $collection . ')');
 
-$vectors = $vecstore->get_all();
+$allvectorsresponse = $vecstore->get_all();
+if ($allvectorsresponse->get_code() !== 200) {
+    cli_error('Could not fetch vectors: ' . $allvectorsresponse->get_errormessage());
+}
+$queryresponse = $allvectorsresponse->get_queryresponse();
+if (is_null($queryresponse)) {
+    cli_error('Could not fetch vectors: Missing query payload in vecstore response.');
+}
+$vectors = $queryresponse->get_matches();
 if (empty($vectors)) {
     cli_writeln('No vectors found.');
     exit(0);

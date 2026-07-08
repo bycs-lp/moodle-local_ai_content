@@ -100,8 +100,12 @@ class rag_manager {
             'contextid' => $contextids,
         ];
 
-        // Perform the vector search. The store returns an array of enriched_vector objects.
-        $matches = $vecstore->query($embedding, $topk, $filters);
+        // Perform the vector search and extract matches from the structured vecstore response.
+        $queryresponse = $vecstore->query($embedding, $topk, $filters);
+        if ($queryresponse->get_code() !== 200 || is_null($queryresponse->get_queryresponse())) {
+            return '';
+        }
+        $matches = $queryresponse->get_queryresponse()->get_matches();
         if (empty($matches)) {
 
             return '';
