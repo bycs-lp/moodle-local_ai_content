@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * CLI script that performs a chat request (purpose "chat") with selected source ids and prints the result.
+ * CLI script that lists all vectors currently stored in the primary vector store available to the admin user.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
@@ -27,28 +27,25 @@ define('CLI_SCRIPT', true);
 require(__DIR__ . '/../../../config.php');
 require_once($CFG->libdir . '/clilib.php');
 
-// Run as the admin user so the tenant configuration is resolved for them.
+// Run as the admin user so the tenant configuration of the primary vector store is resolved for them.
 \core\session\manager::set_user(get_admin());
 
-$prompttext = 'Gibt es irgendwas mit BLABLA';
-$context = \core\context\system::instance();
-
-$manager = new \local_ai_manager\manager('chat');
-$response = $manager->perform_request(
-    $prompttext,
-    'local_ai_content',
-    $context->id,
-    ['sourceids' => '1,2,3,4']
-);
-
-if ($response->get_code() !== 200) {
-    cli_writeln('Request failed (HTTP ' . $response->get_code() . '): ' . $response->get_errormessage());
-    $debuginfo = $response->get_debuginfo();
-    if ($debuginfo !== '') {
-        cli_writeln('Debug info: ' . $debuginfo);
-    }
-    exit(1);
+// Retrieve the primary vector store driver configured for the current (admin) user via the connector factory.
+$vecstore = \core\di::get(\local_ai_manager\local\connector_factory::class)->get_primary_vecstore();
+if (is_null($vecstore)) {
+    cli_error('No primary vector store is configured for the current user.');
 }
 
-cli_heading('Chat response');
-cli_writeln($response->get_content());
+$collection = $vecstore->get_collection();
+if (empty($collection)) {
+    cli_error('The primary vector store instance has no collection configured.');
+}
+
+cli_heading('Vectors in vector store "' . $vecstore->get_name() . '" (collection: ' . $collection . ')');
+
+$vecstore->delete_collection();
+$vecstore->create_collection();
+cli_writeln('Collection re-created');
+
+
+

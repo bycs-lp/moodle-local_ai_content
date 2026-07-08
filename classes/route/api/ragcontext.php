@@ -26,13 +26,13 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
- * REST API routes for RAG context selection.
+ * REST API routes for source selection.
  *
  * GET  /api/rest/v2/local_ai_content/ragcontext/{contextid}
- *     Returns the available indexable activities and the currently saved selection.
+ *     Returns the available indexable sources and the currently saved selection.
  *
  * POST /api/rest/v2/local_ai_content/ragcontext/{contextid}
- *     Saves the selected ragrecordids for the given context.
+ *     Saves the selected sourceids for the given context.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
@@ -41,7 +41,7 @@ use Psr\Http\Message\ServerRequestInterface;
 class ragcontext {
 
     /**
-     * Retrieve available RAG records and the current selection for a context.
+     * Retrieve available source records and the current selection for a context.
      *
      * @param ServerRequestInterface $request
      * @param ResponseInterface $response
@@ -51,8 +51,8 @@ class ragcontext {
     #[route(
         path: '/ragcontext/{contextid}',
         method: ['GET'],
-        title: 'Get available and selected RAG record IDs for a context',
-        description: 'Returns all indexable activities in the course context and the currently selected RAG record IDs.',
+        title: 'Get available and selected source IDs for a context',
+        description: 'Returns all indexable sources in the course context and the currently selected source IDs.',
         pathtypes: [
             new \core\router\schema\parameters\path_parameter(
                 name: 'contextid',
@@ -69,8 +69,8 @@ class ragcontext {
         $context = \context_helper::instance_by_id($contextid);
         self::require_login_and_access($context);
 
-        $available = rag_context_utils::get_available_ragrecords_for_context($contextid);
-        $selected = rag_context_utils::get_selected_ragrecordids($contextid) ?? '';
+        $available = rag_context_utils::get_available_sources_for_context($contextid);
+        $selected = rag_context_utils::get_selected_sourceids($contextid) ?? '';
 
         return new payload_response(
             payload: [
@@ -83,7 +83,7 @@ class ragcontext {
     }
 
     /**
-     * Save the selected RAG record IDs for a context.
+     * Save the selected source IDs for a context.
      *
      * @param ServerRequestInterface $request
      * @param ResponseInterface $response
@@ -93,8 +93,8 @@ class ragcontext {
     #[route(
         path: '/ragcontext/{contextid}',
         method: ['POST'],
-        title: 'Save selected RAG record IDs for a context',
-        description: 'Persists the comma-separated list of selected local_ai_content_config record IDs for a context.',
+        title: 'Save selected source IDs for a context',
+        description: 'Persists the comma-separated list of selected local_ai_content_sources record IDs for a context.',
         pathtypes: [
             new \core\router\schema\parameters\path_parameter(
                 name: 'contextid',
@@ -104,11 +104,9 @@ class ragcontext {
         ],
         requestbody: new \core\router\schema\request_body(
             content: new payload_response_type(
-                schema: new \core\router\schema\objects\schema_object(
-                    content: [
-                        'ragrecordids' => new scalar_type(param::SEQUENCE),
-                    ],
-                ),
+                schema: [
+                    'sourceids' => new scalar_type(param::SEQUENCE),
+                ],
             ),
         ),
     )]
@@ -121,12 +119,12 @@ class ragcontext {
         self::require_login_and_access($context);
 
         $body = $request->getParsedBody();
-        $ragrecordids = clean_param($body['ragrecordids'] ?? '', PARAM_SEQUENCE);
+        $sourceids = clean_param($body['sourceids'] ?? '', PARAM_SEQUENCE);
 
-        rag_context_utils::save_selected_ragrecordids($contextid, $ragrecordids);
+        rag_context_utils::save_selected_sourceids($contextid, $sourceids);
 
         return new payload_response(
-            payload: ['success' => true, 'ragrecordids' => $ragrecordids],
+            payload: ['success' => true, 'sourceids' => $sourceids],
             request: $request,
             response: $response,
         );
@@ -142,4 +140,3 @@ class ragcontext {
         require_capability('moodle/course:view', $context->get_course_context());
     }
 }
-

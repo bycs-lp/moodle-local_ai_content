@@ -55,11 +55,11 @@ function RagContextSelector({ contextid }) {
     setSaving(true);
     setSaveSuccess(false);
     setError(null);
-    const ragrecordids = [...selected].join(",");
+    const sourceids = [...selected].join(",");
     const res = await Fetch.performPost(
       "local_ai_content",
       `ragcontext/${contextid}`,
-      { body: JSON.stringify({ ragrecordids }) }
+      { body: JSON.stringify({ sourceids }) }
     );
     if (!res.ok) {
       setError(`Failed to save RAG context selection (HTTP ${res.status}).`);

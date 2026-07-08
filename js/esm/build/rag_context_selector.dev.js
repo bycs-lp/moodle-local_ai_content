@@ -19,8 +19,8 @@ function getRagSelectionBridge() {
   }
   const cache = /* @__PURE__ */ new Map();
   const bridge = {
-    setSelected(contextid, ragrecordids) {
-      cache.set(contextid, ragrecordids);
+    setSelected(contextid, sourceids) {
+      cache.set(contextid, sourceids);
     },
     getSelected(contextid) {
       return cache.get(contextid) ?? "";
@@ -78,11 +78,11 @@ function RagContextSelector({ contextid }) {
     setSaving(true);
     setSaveSuccess(false);
     setError(null);
-    const ragrecordids = [...selected].join(",");
+    const sourceids = [...selected].join(",");
     const res = await Fetch.performPost(
       "local_ai_content",
       `ragcontext/${contextid}`,
-      { body: JSON.stringify({ ragrecordids }) }
+      { body: JSON.stringify({ sourceids }) }
     );
     if (!res.ok) {
       setError(`Failed to save RAG context selection (HTTP ${res.status}).`);

@@ -1,19 +1,23 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="local/ai_content/db" VERSION="20260630" COMMENT="XMLDB file for Moodle local/ai_manager"
+<XMLDB PATH="local/ai_content/db" VERSION="20260708" COMMENT="XMLDB file for Moodle local/ai_content"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
 >
   <TABLES>
-    <TABLE NAME="local_ai_content_config" COMMENT="Table to store configuration for local_ai_content plugin">
+    <TABLE NAME="local_ai_content_sources" COMMENT="Table storing all AI content sources">
       <FIELDS>
         <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
         <FIELD NAME="cmid" TYPE="int" LENGTH="11" NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="contextid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="sourcetype" TYPE="char" LENGTH="50" NOTNULL="true" DEFAULT="module" SEQUENCE="false"/>
+        <FIELD NAME="name" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="content" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="rag" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false"/>
         <FIELD NAME="usermodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="allowindex" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Is the content allowed to be indexed"/>
-        <FIELD NAME="lastindexed" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="The timestamp of the last indexing operation for this configuration setting"/>
+        <FIELD NAME="lastindexed" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="The timestamp of the last indexing operation for this source"/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
@@ -21,13 +25,14 @@
       </KEYS>
       <INDEXES>
         <INDEX NAME="contextid" UNIQUE="false" FIELDS="contextid"/>
+        <INDEX NAME="cmid" UNIQUE="false" FIELDS="cmid"/>
       </INDEXES>
     </TABLE>
-    <TABLE NAME="local_ai_content_ragselection" COMMENT="Stores the selected RAG record IDs for a given context">
+    <TABLE NAME="local_ai_content_sourceselection" COMMENT="Stores the selected source IDs for a given context">
       <FIELDS>
         <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
         <FIELD NAME="contextid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
-        <FIELD NAME="ragrecordids" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Comma-separated list of local_ai_content_config record IDs selected for this context"/>
+        <FIELD NAME="sourceids" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Comma-separated list of local_ai_content_sources record IDs selected for this context"/>
         <FIELD NAME="usermodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>

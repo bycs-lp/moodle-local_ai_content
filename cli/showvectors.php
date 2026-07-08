@@ -61,7 +61,7 @@ foreach ($vectors as $index => $vector) {
     $dimensions = count(array_filter((array) json_decode($vector->get_vector(), true), 'is_numeric'));
     cli_writeln('----------------------------------------');
     cli_writeln('Vector #' . ($index + 1));
-    cli_writeln('  Context id : ' . $vector->get_contextid());
+    cli_writeln('  Source id  : ' . $vector->get_sourceid());
     cli_writeln('  Chunk      : ' . ($vector->get_chunk()) . ' / ' . $vector->get_maxchunks());
     cli_writeln('  Dimensions : ' . $dimensions);
     cli_writeln('  Content    : ' . shorten_text($vector->get_content(), 200));

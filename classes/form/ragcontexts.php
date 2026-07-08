@@ -21,7 +21,7 @@ use templatable;
 use core\output\renderer_base;
 use core\output\mustache_template_finder;
 use function s;
-use local_ai_content\persistent\contentconfig;
+use local_ai_content\source;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -221,13 +221,15 @@ class ragcontexts extends HTML_QuickForm_element implements templatable {
         // Get modinfo for the course
         $modinfo = get_fast_modinfo($course);
 
-        // Get contentconfig records for this course using the persistent class
-        $contentconfigs = [];
-        [$activities, $configs] = contentconfig::get_course_module_configs($course);
-        // print_r($configs);
-        if (!empty($configs)) {
-            foreach ($configs as $config) {
-                $contentconfigs[$config->get('cmid')] = $config;
+        // Get module sources for this course using the wrapper class.
+        $modulesources = [];
+        [$activities, $sources] = source::get_module_sources_for_course($course);
+        if (!empty($sources)) {
+            foreach ($sources as $src) {
+                $cmid = $src->get_cmid();
+                if (!is_null($cmid)) {
+                    $modulesources[$cmid] = $src;
+                }
             }
         }
 
@@ -264,17 +266,17 @@ class ragcontexts extends HTML_QuickForm_element implements templatable {
                     continue;
                 }
 
-                $config = isset($contentconfigs[$cmid]) ? $contentconfigs[$cmid] : null;
+                $config = isset($modulesources[$cmid]) ? $modulesources[$cmid] : null;
 
-                // Only include activities that have a contentconfig record with allowindex = 1
-                if (empty($config) || empty($config->allowindex)) {
+                // Only include activities that have a source record with allowindex = 1
+                if (empty($config) || !$config->get_allowindex()) {
                     continue;
                 }
 
                 $sectiondata['activities'][] = [
                     'cmid' => $cmid,
                     'name' => format_string($cm->name),
-                    'checked' => !empty($config->allowindex),
+                    'checked' => $config->get_allowindex(),
                     'sectionid' => $sectioninfo->id,
                     'subsectionid' => null,
                 ];
@@ -322,17 +324,17 @@ class ragcontexts extends HTML_QuickForm_element implements templatable {
                                     continue;
                                 }
 
-                                $config = isset($contentconfigs[$cmid]) ? $contentconfigs[$cmid] : null;
+                                $config = isset($modulesources[$cmid]) ? $modulesources[$cmid] : null;
 
-                                // Only include activities that have a contentconfig record with allowindex = 1
-                                if (empty($config) || empty($config->allowindex)) {
+                                // Only include activities that have a source record with allowindex = 1
+                                if (empty($config) || !$config->get_allowindex()) {
                                     continue;
                                 }
 
                                 $subsectiondata['activities'][] = [
                                     'cmid' => $cmid,
                                     'name' => format_string($cm->name),
-                                    'checked' => !empty($config->allowindex),
+                                    'checked' => $config->get_allowindex(),
                                     'sectionid' => $parentsection->id,
                                     'subsectionid' => $sectioninfo->itemid,
                                 ];

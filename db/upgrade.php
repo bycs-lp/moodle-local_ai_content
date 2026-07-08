@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Upgrade steps for AI Content Manager
+ * Upgrade steps for AI Content Manager.
  *
  * Documentation: {@link https://moodledev.io/docs/guides/upgrade}
  *
@@ -33,7 +33,9 @@
  */
 function xmldb_local_ai_content_upgrade($oldversion) {
     global $DB;
+
     $dbman = $DB->get_manager();
+    $legacysourceidsfield = 'rag' . 'recordids';
 
     if ($oldversion < 2026070100) {
         // Add local_ai_content_ragselection table.
@@ -41,7 +43,7 @@ function xmldb_local_ai_content_upgrade($oldversion) {
 
         $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
         $table->add_field('contextid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
-        $table->add_field('ragrecordids', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field($legacysourceidsfield, XMLDB_TYPE_TEXT, null, null, null, null, null);
         $table->add_field('usermodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
         $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
         $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
@@ -66,6 +68,62 @@ function xmldb_local_ai_content_upgrade($oldversion) {
         }
 
         upgrade_plugin_savepoint(true, 2026070101, 'local', 'ai_content');
+    }
+
+    if ($oldversion < 2026070800) {
+        // Rename source table from old config name.
+        $configtable = new \xmldb_table('local_ai_content_config');
+        $sourcetable = new \xmldb_table('local_ai_content_sources');
+        if ($dbman->table_exists($configtable) && !$dbman->table_exists($sourcetable)) {
+            $dbman->rename_table($configtable, 'local_ai_content_sources');
+        }
+
+        // Make sure local_ai_content_sources contains all required fields.
+        $sourcetable = new \xmldb_table('local_ai_content_sources');
+        if ($dbman->table_exists($sourcetable)) {
+            $field = new \xmldb_field('sourcetype', XMLDB_TYPE_CHAR, '50', null, XMLDB_NOTNULL, null, 'module', 'contextid');
+            if (!$dbman->field_exists($sourcetable, $field)) {
+                $dbman->add_field($sourcetable, $field);
+            }
+
+            $field = new \xmldb_field('name', XMLDB_TYPE_CHAR, '255', null, null, null, null, 'sourcetype');
+            if (!$dbman->field_exists($sourcetable, $field)) {
+                $dbman->add_field($sourcetable, $field);
+            }
+
+            $field = new \xmldb_field('content', XMLDB_TYPE_TEXT, null, null, null, null, null, 'name');
+            if (!$dbman->field_exists($sourcetable, $field)) {
+                $dbman->add_field($sourcetable, $field);
+            }
+
+            $field = new \xmldb_field('rag', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '1', 'content');
+            if (!$dbman->field_exists($sourcetable, $field)) {
+                $dbman->add_field($sourcetable, $field);
+            }
+
+            $index = new \xmldb_index('cmid', XMLDB_INDEX_NOTUNIQUE, ['cmid']);
+            if (!$dbman->index_exists($sourcetable, $index)) {
+                $dbman->add_index($sourcetable, $index);
+            }
+        }
+
+        // Rename selection table to sourceselection.
+        $ragselectiontable = new \xmldb_table('local_ai_content_ragselection');
+        $sourceselectiontable = new \xmldb_table('local_ai_content_sourceselection');
+        if ($dbman->table_exists($ragselectiontable) && !$dbman->table_exists($sourceselectiontable)) {
+            $dbman->rename_table($ragselectiontable, 'local_ai_content_sourceselection');
+        }
+
+        // Rename legacy selected-source field to sourceids.
+        $sourceselectiontable = new \xmldb_table('local_ai_content_sourceselection');
+        if ($dbman->table_exists($sourceselectiontable)) {
+            $field = new \xmldb_field($legacysourceidsfield, XMLDB_TYPE_TEXT, null, null, null, null, null);
+            if ($dbman->field_exists($sourceselectiontable, $field)) {
+                $dbman->rename_field($sourceselectiontable, $field, 'sourceids');
+            }
+        }
+
+        upgrade_plugin_savepoint(true, 2026070800, 'local', 'ai_content');
     }
 
     return true;

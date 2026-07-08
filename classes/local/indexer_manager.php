@@ -15,124 +15,103 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 namespace local_ai_content\local;
+
+use local_ai_content\source;
 use local_ai_manager\local\connector_factory;
-use \modinfo;
-use local_ai_content\persistent\contentconfig;
-// This is required because course_get_format() is course/lib.php and isn't loaded!
-require_once($CFG->dirroot.'/course/lib.php');
+
+// This is required because course_get_format() is in course/lib.php and isn't loaded automatically.
+require_once($CFG->dirroot . '/course/lib.php');
+
 /**
- * Class indexer_manager
+ * Manages the indexing of course module content into the vector store.
  *
  * @package    local_ai_content
- * @copyright  2026 YOUR NAME <your@email.com>
+ * @copyright  2026 ISB Bayern
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class indexer_manager {
-    
+
     /** @var \context Context */
     protected $context;
 
-    /**
-     * @var ai_manager
-     */
+    /** @var \local_ai_manager\manager AI manager instance for embedding requests. */
     protected $ai_manager;
 
     /**
-     * indexer_manager constructor.
+     * Constructor.
      *
-     * @param int $contextid
-     * @param ai_manager $ai_manager
+     * @param int $contextid The course context ID.
+     * @param \local_ai_manager\manager $ai_manager AI manager instance for embedding requests.
      */
-    function __construct($contextid, $ai_manager) {
+    public function __construct($contextid, $ai_manager) {
         $this->context = \context::instance_by_id($contextid);
-        // print_r($this->context);
         if ($this->context->contextlevel !== CONTEXT_COURSE) {
             throw new \coding_exception('Context must be a course context.');
         }
         $this->ai_manager = $ai_manager;
     }
 
-    function index() {
-        // 1. Identify all of the course modules with indexall = 1.
+    /**
+     * Index all course modules that have allowindex = 1.
+     */
+    public function index(): void {
         $course = get_course($this->context->instanceid);
-        [$rawcms, $cmconfigs] = contentconfig::get_course_module_configs($course);
+        [$rawcms, $sources] = source::get_module_sources_for_course($course);
 
-        // For the moment we'll force index everything, but 
-        // later we'll observe the lastindexed timestamp and only index new content.
-
-        foreach($cmconfigs as $cmconfig) {
-            $cmid = $cmconfig->get('cmid');
+        foreach ($sources as $source) {
+            $cmid = $source->get_cmid();
             if (!isset($rawcms[$cmid])) {
                 continue;
             }
             $rawcm = $rawcms[$cmid];
-            // print_r($rawcm);
             $cm = get_coursemodule_from_id($rawcm->mod, $rawcm->cm, 0, false, MUST_EXIST);
             $processor = $this->get_content_processor($rawcm->mod, $cm);
-            if ($processor) {
-                $content = $processor->extract();
+            if (!$processor) {
+                continue;
+            }
 
-                print_r($cm);
-                $cmcontext = \context_module::instance($cm->id);
-                // print_r($content);
-                $payload = $this->build_vector_store_payload($cm, $content);
+            $content = $processor->extract();
+            $sourceid = $source->get_id();
 
-                if (method_exists($processor, 'get_chunks')) {
-                    $chunks = $processor->get_chunks($content);
-                    $display = clone $payload;
-                    // unset($display->vector);
-                    // print_r($display);
-                    if ($chunks) {
-                        // Generate each chunk payload
-                        $chunkcount = 1;
-                        $maxchunks = count($chunks);
-                        $payload->maxchunks = $maxchunks;
-                        $enrichedvectors = [];
-                        foreach($chunks as $chunk) {
-                            $vectorrequest = $this->ai_manager->perform_request($chunk, "local_ai_content", $this->context->id);
-                            $vector = $vectorrequest->get_content();
-                            $payload->content = $chunk;
-                            $payload->vector = $vector;
-                            $payload->chunk = $chunkcount;
-
-                            // echo "Payload for chunk $payload->chunk of $payload->maxchunks:\n";
-                            $display = clone $payload;
-                            $display->vector = 'truncated';
-                            // print_r($display);
-                            $enrichedvectors[] = enriched_vector::create($payload->vector, $payload->content, $cmcontext->id, $chunkcount, $maxchunks);
-                            $chunkcount++;
-                        }
-                        print_r($enrichedvectors);
-                        \core\di::get(connector_factory::class)->get_primary_vecstore()->insert_embeddings($enrichedvectors);
+            if (method_exists($processor, 'get_chunks')) {
+                $chunks = $processor->get_chunks($content);
+                if ($chunks) {
+                    $chunkcount = 1;
+                    $maxchunks = count($chunks);
+                    $enrichedvectors = [];
+                    foreach ($chunks as $chunk) {
+                        $vectorrequest = $this->ai_manager->perform_request($chunk, 'local_ai_content', $this->context->id);
+                        $enrichedvectors[] = enriched_vector::create(
+                            $vectorrequest->get_content(),
+                            $chunk,
+                            $sourceid,
+                            $chunkcount,
+                            $maxchunks
+                        );
+                        $chunkcount++;
                     }
-                } else {
-                    // Content Processor doesn't support chunking.
-                    $vectorrequest = $this->ai_manager->perform_request($content, "local_ai_content", $this->context->id);
-                    $vector = $vectorrequest->get_content();
-                    $payload->chunk = 0;
-                    $ev = enriched_vector::create($payload->vector, $payload->content, $cmcontext->id, 1, 1);
-                    \core\di::get(connector_factory::class)->get_primary_vecstore()->insert_embeddings([$ev]);
+                    \core\di::get(connector_factory::class)->get_primary_vecstore()->insert_embeddings($enrichedvectors);
                 }
-
+            } else {
+                // Content processor does not support chunking — store as single vector.
+                $vectorrequest = $this->ai_manager->perform_request($content, 'local_ai_content', $this->context->id);
+                $ev = enriched_vector::create($vectorrequest->get_content(), $content, $sourceid, 1, 1);
+                \core\di::get(connector_factory::class)->get_primary_vecstore()->insert_embeddings([$ev]);
             }
         }
     }
 
-    protected function build_vector_store_payload($cm, $content) {
-        return (object)[
-            'vector' => null,
-            'cmid' => $cm->id,
-            'modname' => $cm->modname,
-            'content' => $content,
-            'chunk' => 0,
-            'maxchunks' => null,
-        ];
-    }
-    protected function get_content_processor($modname, $cm) {
-        // $modname = $rawcm->mod;
-        $processname = 'local_ai_content\local\contentprocessor\content_' . $modname;
-        if (class_exists($processname)) {
-            return new $processname($cm);
+    /**
+     * Resolves and instantiates the content processor for the given module type.
+     *
+     * @param string $modname The module name (e.g. 'resource', 'page').
+     * @param \stdClass $cm The course module object.
+     * @return object|null The processor instance, or null if none is registered.
+     */
+    protected function get_content_processor(string $modname, \stdClass $cm): ?object {
+        $classname = 'local_ai_content\local\contentprocessor\content_' . $modname;
+        if (class_exists($classname)) {
+            return new $classname($cm);
         }
         return null;
     }

@@ -16,10 +16,11 @@
 
 namespace local_ai_content\local;
 
-use local_ai_content\persistent\ragselection;
+use local_ai_content\source;
+use local_ai_content\source_selection;
 
 /**
- * Utility functions for RAG context selection.
+ * Utility functions for source selection.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
@@ -28,20 +29,18 @@ use local_ai_content\persistent\ragselection;
 class rag_context_utils {
 
     /**
-     * Return all local_ai_content_config records that have allowindex = 1 and belong to
+     * Return all local_ai_content_sources records that have allowindex = 1 and belong to
      * the course associated with the given context.
      *
      * Each entry in the returned array contains:
-     *  - id   (int)    the local_ai_content_config record ID
+     *  - id   (int)    the local_ai_content_sources record ID
      *  - cmid (int)    the course module ID
      *  - name (string) the activity name
      *
      * @param int $contextid Any Moodle context ID; the course context is derived from it.
      * @return array Array of associative arrays as described above.
      */
-    public static function get_available_ragrecords_for_context(int $contextid): array {
-        global $DB, $USER;
-
+    public static function get_available_sources_for_context(int $contextid): array {
         $context = \context_helper::instance_by_id($contextid);
 
         // Climb up to the nearest course context.
@@ -57,37 +56,26 @@ class rag_context_utils {
             return [];
         }
 
-        $cmids = array_map(
-            static fn($cm) => (int) $cm->id,
-            $cms,
-        );
-        $configrecords = $DB->get_records_list('local_ai_content_config', 'cmid', $cmids);
-        $configbycmid = [];
-        foreach ($configrecords as $record) {
-            $configbycmid[(int) $record->cmid] = $record;
+        $cmids = array_map(static fn($cm): int => (int) $cm->id, $cms);
+        $sourcerecords = source::get_records_by_cmids($cmids);
+        $sourcebycmid = [];
+        foreach ($sourcerecords as $source) {
+            if ($source->get_cmid() !== null) {
+                $sourcebycmid[$source->get_cmid()] = $source;
+            }
         }
 
         $result = [];
-        // TODO: Remove this temporary hack and stop auto-creating config entries here.
         foreach ($cms as $cm) {
-            $config = $configbycmid[(int) $cm->id] ?? null;
-            if ($config === null) {
-                // Temporary hack: missing records are treated as indexable by creating a config entry.
-                $now = time();
-                $config = (object) [
-                    'cmid' => (int) $cm->id,
-                    'contextid' => \context_module::instance((int) $cm->id)->id,
-                    'allowindex' => 1,
-                    'lastindexed' => 0,
-                    'usermodified' => isset($USER->id) ? (int) $USER->id : 0,
-                    'timecreated' => $now,
-                    'timemodified' => $now,
-                ];
-                $config->id = (int) $DB->insert_record('local_ai_content_config', $config);
+            $source = $sourcebycmid[(int) $cm->id] ?? null;
+            if ($source === null) {
+                continue;
             }
-
+            if (!$source->get_allowindex()) {
+                continue;
+            }
             $result[] = [
-                'id' => (int) $config->id,
+                'id' => $source->get_id(),
                 'cmid' => (int) $cm->id,
                 'name' => $cm->name,
             ];
@@ -97,55 +85,52 @@ class rag_context_utils {
     }
 
     /**
-     * Return only the IDs of available local_ai_content_config records for a context.
+     * Return only the IDs of available local_ai_content_sources records for a context.
      *
-     * Convenience wrapper around {@see get_available_ragrecords_for_context()}.
+     * Convenience wrapper around {@see get_available_sources_for_context()}.
      *
      * @param int $contextid Any Moodle context ID.
-     * @return int[] Array of local_ai_content_config record IDs.
+     * @return int[] Array of local_ai_content_sources record IDs.
      */
-    public static function get_available_ragrecordids_for_context(int $contextid): array {
-        $records = self::get_available_ragrecords_for_context($contextid);
+    public static function get_available_sourceids_for_context(int $contextid): array {
+        $records = self::get_available_sources_for_context($contextid);
         return array_column($records, 'id');
     }
 
     /**
-     * Return the currently saved ragrecordids string for a context, or null.
+     * Return the currently saved sourceids string for a context, or null.
      *
      * @param int $contextid The Moodle context ID.
-     * @return string|null The stored comma-separated IDs, or null if nothing is saved.
+     * @return ?string The stored comma-separated IDs, or null if nothing is saved.
      */
-    public static function get_selected_ragrecordids(int $contextid): ?string {
-        $records = ragselection::get_records(['contextid' => $contextid]);
-        if (empty($records)) {
+    public static function get_selected_sourceids(int $contextid): ?string {
+        $selection = source_selection::get_by_contextid($contextid);
+        if ($selection === null) {
             return null;
         }
-        $record = reset($records);
-        return $record->get('ragrecordids');
+        return implode(',', $selection->get_sourceids());
     }
 
     /**
-     * Save (upsert) the selected ragrecordids for a context.
+     * Save (upsert) the selected sourceids for a context.
      *
      * @param int $contextid The Moodle context ID.
-     * @param string $ragrecordids Comma-separated list of local_ai_content_config record IDs.
+     * @param string $sourceids Comma-separated list of local_ai_content_sources record IDs.
      */
-    public static function save_selected_ragrecordids(int $contextid, string $ragrecordids): void {
-        $records = ragselection::get_records(['contextid' => $contextid]);
-        if (!empty($records)) {
-            $record = reset($records);
-            $record->set('ragrecordids', $ragrecordids);
-            $record->update();
-        } else {
-            $record = new ragselection(0, (object)[
-                'contextid'    => $contextid,
-                'ragrecordids' => $ragrecordids,
-            ]);
-            $record->create();
+    public static function save_selected_sourceids(int $contextid, string $sourceids): void {
+        $selection = source_selection::get_by_contextid($contextid);
+        if ($selection === null) {
+            $selection = new source_selection();
+            $selection->set_contextid($contextid);
         }
+        $sourceidsarray = [];
+        if ($sourceids !== '') {
+            $sourceidsarray = explode(',', $sourceids);
+        }
+        $selection->set_sourceids($sourceidsarray);
+        $selection->store();
     }
 }
-
 
 
 

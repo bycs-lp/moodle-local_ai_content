@@ -40,10 +40,10 @@ class rag_manager {
      * Retrieves the RAG content for a given user prompt.
      *
      * Embeds the user prompt via the "embedding" purpose, performs a vector search in the tenant's primary vector
-     * store and assembles the matching chunks into a single string.
+     * store filtered to the given source IDs, and assembles the matching chunks into a single string.
      *
      * @param string $userprompt the user prompt to embed and search for
-     * @param int[] $recordids list of record ids the RAG request relates to; a non-empty list activates RAG retrieval
+     * @param int[] $sourceids list of local_ai_content_sources record IDs to filter by; must be non-empty
      * @param string $component the component from which the (embedding) request is being performed
      * @param int $contextid the context id from which the (embedding) request is being performed
      * @param int $topk the maximum number of chunks to include in the assembled RAG content
@@ -51,19 +51,22 @@ class rag_manager {
      */
     public function get_rag_content(
         string $userprompt,
-        array $recordids,
+        array $sourceids,
         string $component,
         int $contextid,
         int $topk = self::DEFAULT_TOPK
     ): string {
-        global $DB;
-
         $connectorfactory = \core\di::get(connector_factory::class);
         $vecstore = $connectorfactory->get_primary_vecstore();
         if (is_null($vecstore)) {
             return '';
         }
         if ($vecstore->get_collection() === '') {
+            return '';
+        }
+
+        $sourceids = array_values(array_unique(array_filter(array_map('intval', $sourceids))));
+        if (empty($sourceids)) {
             return '';
         }
 
@@ -78,27 +81,8 @@ class rag_manager {
             return '';
         }
 
-        $recordids = array_values(array_unique(array_filter(array_map('intval', $recordids))));
-        if (empty($recordids)) {
-            return '';
-        }
-
-        // ragrecordids refer to local_ai_content_config IDs; vecstore payload stores module context IDs.
-        $configrecords = $DB->get_records_list('local_ai_content_config', 'id', $recordids, '', 'id,contextid');
-        if (empty($configrecords)) {
-            return '';
-        }
-        $contextids = array_values(array_unique(array_filter(array_map(
-            static fn($record) => (int) $record->contextid,
-            $configrecords
-        ))));
-        if (empty($contextids)) {
-            return '';
-        }
-
-        $filters = [
-            'contextid' => $contextids,
-        ];
+        // Filter the vector store directly by source ID — no contextid indirection needed.
+        $filters = ['sourceid' => $sourceids];
 
         // Perform the vector search and extract matches from the structured vecstore response.
         $queryresponse = $vecstore->query($embedding, $topk, $filters);
@@ -107,7 +91,6 @@ class rag_manager {
         }
         $matches = $queryresponse->get_queryresponse()->get_matches();
         if (empty($matches)) {
-
             return '';
         }
         // Assemble the resulting content string from the matches' textual content.
@@ -121,5 +104,4 @@ class rag_manager {
         return implode("\n\n---\n\n", $chunks);
     }
 }
-
 

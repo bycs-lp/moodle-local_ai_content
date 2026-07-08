@@ -14,8 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-use local_ai_content\persistent\contentconfig;
-use local_ai_content\form\ragcontexts;
+use local_ai_content\source;
 
 /**
  * Registers the ragcontexts form element.
@@ -46,7 +45,7 @@ local_ai_content_register_form_elements();
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 function local_ai_content_coursemodule_edit_post_actions($data, $course) {
-    global $DB, $USER;
+    global $DB;
     
     $isenabled = true; //\aipurpose_rag\indexer_manager::is_rag_indexing_enabled()$isenabled = true; //\aipurpose_rag\indexer_manager::is_rag_indexing_enabled()
     if ($isenabled) {
@@ -56,27 +55,25 @@ function local_ai_content_coursemodule_edit_post_actions($data, $course) {
        $tx = $DB->start_delegated_transaction();
        $oldallowindexvalue = null;
        $context = \context_module::instance($data->coursemodule);
-       if ($cmconfig = contentconfig::get_record(['cmid' => $data->coursemodule])) {
-
-            $oldallowindexvalue = $cmconfig->get('allowindex');
-            $cmconfig->set('allowindex', !empty($data->allowindexing) ? 1 : 0);
-            $cmconfig->set('contextid', $context->id);
-            $cmconfig->save();
+       if ($source = source::get_record(['cmid' => $data->coursemodule])) {
+            $oldallowindexvalue = $source->get_allowindex() ? 1 : 0;
+            $source->set_allowindex(!empty($data->allowindexing));
+            $source->set_contextid($context->id);
+            $source->store();
          } else {
-              $record = new \stdClass();
-              $record->cmid = $data->coursemodule;
-              $record->contextid = $context->id;
-              $record->allowindex = !empty($data->allowindexing) ? 1 : 0;
-              $record->usermodified = $USER->id;
-              $cmconfig = new contentconfig(0, $record);
-              
-              $cmconfig->save();
+              $source = new source();
+              $source->set_cmid((int)$data->coursemodule);
+              $source->set_contextid($context->id);
+              $source->set_sourcetype(source::TYPE_MODULE);
+              $source->set_allowindex(!empty($data->allowindexing));
+              $source->set_rag(true);
+              $source->store();
        }
        $tx->allow_commit();
        if (!is_null($oldallowindexvalue)) {
-            if ($oldallowindexvalue === 0 & $data->allowindexing) {
+            if ($oldallowindexvalue === 0 && !empty($data->allowindexing)) {
                 // Turning off to on.
-            } else if ($oldallowindexvalue === 1 & empty($data->allowindexing)) {
+            } else if ($oldallowindexvalue === 1 && empty($data->allowindexing)) {
                 // Turning on to off.
                 // We should schedule a deindexing task.
             }
@@ -86,14 +83,12 @@ function local_ai_content_coursemodule_edit_post_actions($data, $course) {
 }
 function local_ai_content_coursemodule_standard_elements($formwrapper, $mform) {
     $isenabled = true; //\aipurpose_rag\indexer_manager::is_rag_indexing_enabled()
-
     if ($isenabled) {
-        $cmconfig = contentconfig::get_record(['cmid' => $formwrapper->get_coursemodule()->id]);
+        $source = source::get_record(['cmid' => $formwrapper->get_coursemodule()->id]);
         $mform->addElement('header', 'aicontent', get_string('aicontent', 'local_ai_content'));
         $ynoptions = [0 => get_string('no'), 1 => get_string('yes')];
         $mform->addElement('select', 'allowindexing', get_string('allowindexing', 'local_ai_content'), $ynoptions);
-        if ($cmconfig !== false && $cmconfig->get('allowindex') == 1) {
-            
+        if ($source !== null && $source->get_allowindex()) {
             $mform->setDefault('allowindexing', 1);
         } else {
             $mform->setDefault('allowindexing', 0);

@@ -39,8 +39,8 @@ class enriched_vector {
     /** @var string The textual content associated with the vector. */
     private string $content = '';
 
-    /** @var int The context id the content belongs to. */
-    private int $contextid = 0;
+    /** @var int The local_ai_content_sources record ID this vector belongs to. */
+    private int $sourceid = 0;
 
     /** @var int The index of this chunk within the content it belongs to. */
     private int $chunk = 0;
@@ -59,7 +59,7 @@ class enriched_vector {
      *
      * @param string $vector the (string representation of the) embedding vector
      * @param string $content the textual content associated with the vector
-     * @param int $contextid the context id the content belongs to
+     * @param int $sourceid the local_ai_content_sources record ID this vector belongs to
      * @param int $chunk the index of this chunk within the content it belongs to
      * @param int $maxchunks the total number of chunks the content has been split into
      * @return self the created enriched vector object
@@ -67,14 +67,14 @@ class enriched_vector {
     public static function create(
         string $vector,
         string $content,
-        int $contextid,
+        int $sourceid,
         int $chunk,
         int $maxchunks
     ): self {
         $enrichedvector = new self();
         $enrichedvector->set_vector($vector);
         $enrichedvector->set_content($content);
-        $enrichedvector->set_contextid($contextid);
+        $enrichedvector->set_sourceid($sourceid);
         $enrichedvector->set_chunk($chunk);
         $enrichedvector->set_maxchunks($maxchunks);
         return $enrichedvector;
@@ -119,19 +119,19 @@ class enriched_vector {
     /**
      * Standard getter.
      *
-     * @return int the context id the content belongs to
+     * @return int the local_ai_content_sources record ID this vector belongs to
      */
-    public function get_contextid(): int {
-        return $this->contextid;
+    public function get_sourceid(): int {
+        return $this->sourceid;
     }
 
     /**
      * Standard setter.
      *
-     * @param int $contextid the context id the content belongs to
+     * @param int $sourceid the local_ai_content_sources record ID this vector belongs to
      */
-    public function set_contextid(int $contextid): void {
-        $this->contextid = $contextid;
+    public function set_sourceid(int $sourceid): void {
+        $this->sourceid = $sourceid;
     }
 
     /**
@@ -170,4 +170,3 @@ class enriched_vector {
         $this->maxchunks = $maxchunks;
     }
 }
-
