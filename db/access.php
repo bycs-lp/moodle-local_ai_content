@@ -15,18 +15,23 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version file for local_ai_content.
+ * Capability definitions for local_ai_content.
  *
  * @package    local_ai_content
- * @copyright  2026 MoodleDach
- * @author     MoodleDach
+ * @copyright  2026 ISB Bayern
+ * @author     Andreas Wagner
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
+
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version  = 2026071501;
-$plugin->requires = 2025041400;
-$plugin->supported = [500, 502];
-$plugin->release = '3.1';
-$plugin->component = 'local_ai_content';
-$plugin->maturity = MATURITY_ALPHA;
+$capabilities = [
+    'local/ai_content:useextraction' => [
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => [
+            'manager' => CAP_ALLOW,
+        ],
+        'riskbitmask' => RISK_CONFIG,
+    ],
+];
