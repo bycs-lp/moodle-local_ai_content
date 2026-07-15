@@ -35,18 +35,12 @@ if ($hassiteconfig) {
     $settings = new admin_settingpage('local_ai_content', get_string('settings'));
 
     // AI backend selection.
-    $backends = [
-        'local_ai_manager' => get_string('backend_local_ai_manager', 'local_ai_content'),
-    ];
-    if (class_exists('\core_ai\manager')) {
-        $backends['core_ai_subsystem'] = get_string('backend_core_ai', 'local_ai_content');
-    }
     $settings->add(new admin_setting_configselect(
         'local_ai_content/backend',
         get_string('backend', 'local_ai_content'),
         get_string('backend_desc', 'local_ai_content'),
-        'local_ai_manager',
-        $backends
+        \local_ai_content\backend\config::DEFAULT_BACKEND,
+        \local_ai_content\backend\config::get_backend_options()
     ));
 
     // Cache TTL in days.
@@ -64,7 +58,7 @@ if ($hassiteconfig) {
     $ADMIN->add('local_ai_content_category', new admin_externalpage(
         'local_ai_content_testextraction',
         get_string('testextraction', 'local_ai_content'),
-        new moodle_url('/local/ai_content/testextraction.php'),
-        'moodle/site:config'
+        new moodle_url('/local/ai_content/pages/test_extraction.php'),
+        'local/ai_content:useextraction'
     ));
 }

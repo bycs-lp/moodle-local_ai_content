@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Hook callbacks for local_ai_content.
+ * Capability definitions for local_ai_content.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
@@ -25,9 +25,13 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$callbacks = [
-    [
-        'hook' => \core\hook\di_configuration::class,
-        'callback' => \local_ai_content\local\hook_callbacks::class . '::configure_di',
+$capabilities = [
+    'local/ai_content:useextraction' => [
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => [
+            'manager' => CAP_ALLOW,
+        ],
+        'riskbitmask' => RISK_CONFIG,
     ],
 ];

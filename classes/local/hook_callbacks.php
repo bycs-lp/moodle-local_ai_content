@@ -17,6 +17,8 @@
 namespace local_ai_content\local;
 
 use core\hook\di_configuration;
+use local_ai_content\backend\ai_backend;
+use local_ai_content\backend\config;
 
 /**
  * Hook callbacks for local_ai_content.
@@ -30,22 +32,15 @@ class hook_callbacks {
     /**
      * Configure DI container with the appropriate AI backend implementation.
      *
-     * Reads the 'backend' setting and registers the corresponding ai_backend
-     * implementation in the DI container. Defaults to local_ai_manager if no
-     * setting is configured.
+     * Delegates backend instantiation to the config class which maintains
+     * the mapping between setting values and backend implementations.
      *
      * @param di_configuration $hook The DI configuration hook.
      */
     public static function configure_di(di_configuration $hook): void {
         $hook->add_definition(
             id: ai_backend::class,
-            definition: function (): ai_backend {
-                $backend = get_config('local_ai_content', 'backend') ?: 'local_ai_manager';
-                if ($backend === 'core_ai_subsystem') {
-                    return new core_ai_backend();
-                }
-                return new local_ai_manager_backend();
-            },
+            definition: [config::class, 'create_backend'],
         );
     }
 }

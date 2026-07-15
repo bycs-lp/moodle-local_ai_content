@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace local_ai_content\local;
+namespace local_ai_content\backend;
 
 /**
  * Interface for AI backend implementations used by the text extraction service.
@@ -89,4 +89,3 @@ interface ai_backend {
      */
     public function get_unavailability_reason(int $contextid): ?string;
 }
-

@@ -16,7 +16,7 @@
 
 namespace local_ai_content;
 
-use local_ai_content\local\ai_backend;
+use local_ai_content\backend\ai_backend;
 use stored_file;
 
 /**
@@ -44,6 +44,35 @@ class extractor {
         'ppt', 'pptx', 'odp',
         'html', 'csv',
     ];
+
+    /**
+     * Check whether the current user can test text extraction.
+     *
+     * @param \context $context The context to check the capability in.
+     * @return bool True if the user may test extraction, false otherwise.
+     */
+    public static function can_test_extraction(\context $context): bool {
+        return has_capability('local/ai_content:useextraction', $context);
+    }
+
+    /**
+     * Check whether the current user can test the text extraction.
+     * Throws an exception if not allowed.
+     *
+     * @param \context $context The context to check the capability in.
+     * @return void
+     * @throws \moodle_exception If the user does not have the required capability.
+     */
+    public static function require_can_test_extraction(\context $context): void {
+        if (!self::can_test_extraction($context)) {
+            throw new \moodle_exception(
+                'error_cannottestextraction',
+                'local_ai_content',
+                '',
+                get_string('cannottestextraction', 'local_ai_content')
+            );
+        }
+    }
 
     /**
      * Extract text content from a stored file.

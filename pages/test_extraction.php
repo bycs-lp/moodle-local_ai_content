@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Admin page for testing text extraction from uploaded files.
+ * Page for testing text extraction from uploaded files.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
@@ -24,17 +24,22 @@
  */
 
 require_once(__DIR__ . '/../../config.php');
-require_once($CFG->libdir . '/adminlib.php');
 
-// Build admin navigation, check access and set up page.
-admin_externalpage_setup('local_ai_content_testextraction');
+require_login();
 
 $context = context_system::instance();
-$form = new \local_ai_content\form\testextraction_form();
+\local_ai_content\extractor::require_can_test_extraction($context);
 
-$result = null;
-$error = null;
+$PAGE->set_url(new moodle_url('/local/ai_content/pages/test_extraction.php'));
+$PAGE->set_context($context);
+$PAGE->set_title(get_string('testextraction', 'local_ai_content'));
+$PAGE->set_heading(get_string('testextraction', 'local_ai_content'));
+
+$errormessage = '';
+$result = '';
 $fileinfo = null;
+
+$form = new \local_ai_content\form\testextraction_form();
 
 if ($form->is_cancelled()) {
     redirect(new moodle_url('/admin/settings.php', ['section' => 'local_ai_content']));
@@ -46,7 +51,7 @@ if ($form->is_cancelled()) {
     $files = $fs->get_area_files($usercontext->id, 'user', 'draft', $draftitemid, 'id', false);
 
     if (empty($files)) {
-        $error = get_string('testextraction_nofile', 'local_ai_content');
+        $errormessage = get_string('testextraction_nofile', 'local_ai_content');
     } else {
         $file = reset($files);
         $extractor = new \local_ai_content\extractor();
@@ -73,7 +78,7 @@ if ($form->is_cancelled()) {
                 $fileinfo->mtrace = $mtrace;
             } catch (\Exception $e) {
                 ob_end_clean();
-                $error = $e->getMessage();
+                $errormessage = $e->getMessage();
                 $fileinfo->duration = round(microtime(true) - $timestart, 3);
             }
         }
@@ -92,7 +97,7 @@ if ($fileinfo) {
         get_string('testextraction_value', 'local_ai_content'),
     ];
     $table->data = [
-        [get_string('filename'), s($fileinfo->filename)],
+        [get_string('filename', 'local_ai_content'), s($fileinfo->filename)],
         [get_string('testextraction_mimetype', 'local_ai_content'), s($fileinfo->mimetype)],
         [get_string('testextraction_filesize', 'local_ai_content'), $fileinfo->filesize],
         [get_string('testextraction_contenthash', 'local_ai_content'), s($fileinfo->contenthash)],
@@ -116,11 +121,11 @@ if ($fileinfo) {
     echo html_writer::table($table);
 }
 
-if ($error) {
-    echo $OUTPUT->notification($error, 'error');
+if ($errormessage !== '') {
+    echo $OUTPUT->notification($errormessage, 'error');
 }
 
-if ($result !== null) {
+if ($result !== '') {
     echo $OUTPUT->heading(get_string('testextraction_result', 'local_ai_content'), 3);
     echo html_writer::tag('pre', s($result), ['class' => 'p-3 border bg-light', 'style' => 'white-space: pre-wrap;']);
 }
@@ -133,5 +138,4 @@ if (!empty($fileinfo->mtrace)) {
 // Always show the form.
 echo $OUTPUT->heading(get_string('testextraction_upload', 'local_ai_content'), 3);
 $form->display();
-
 echo $OUTPUT->footer();

@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace local_ai_content\local;
+namespace local_ai_content\backend;
 
 /**
  * AI backend implementation using Moodle's core AI subsystem (4.5+).
@@ -127,4 +127,3 @@ class core_ai_backend implements ai_backend {
         return null;
     }
 }
-

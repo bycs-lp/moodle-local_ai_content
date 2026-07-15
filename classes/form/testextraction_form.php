@@ -44,6 +44,6 @@ class testextraction_form extends \moodleform {
         );
         $mform->addRule('testfile', get_string('required'), 'required', null, 'client');
 
-        $this->add_action_buttons(true, get_string('testextraction_submit', 'local_ai_content'));
+        $this->add_action_buttons(false, get_string('testextraction_submit', 'local_ai_content'));
     }
 }
