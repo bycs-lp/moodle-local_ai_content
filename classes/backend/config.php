@@ -70,14 +70,19 @@ class config {
      * Create an instance of the configured AI backend.
      *
      * Reads the 'backend' setting and instantiates the corresponding class.
-     * Falls back to the default backend if the setting is invalid or the
-     * configured backend is not available.
+     * Throws an exception if the configured backend is not available.
      *
      * @return ai_backend The configured backend instance.
+     * @throws \moodle_exception If the configured backend is not available.
      */
     public static function create_backend(): ai_backend {
         $setting = get_config('local_ai_content', 'backend') ?: self::DEFAULT_BACKEND;
-        $classname = self::BACKENDS[$setting] ?? self::BACKENDS[self::DEFAULT_BACKEND];
+
+        if (!isset(self::BACKENDS[$setting]) || !self::is_backend_available($setting)) {
+            throw new \moodle_exception('error_ainotavailable', 'local_ai_content');
+        }
+
+        $classname = self::BACKENDS[$setting];
         return new $classname();
     }
 
@@ -92,7 +97,7 @@ class config {
             case 'core_ai_subsystem':
                 return class_exists(\core_ai\manager::class);
             case 'local_ai_manager':
-                return true;
+                return class_exists(\local_ai_manager\manager::class);
             default:
                 // Unknown backends are available if their class exists.
                 $classname = self::BACKENDS[$key] ?? null;
