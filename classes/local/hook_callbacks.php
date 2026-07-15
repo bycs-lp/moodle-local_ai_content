@@ -40,7 +40,7 @@ class hook_callbacks {
     public static function configure_di(di_configuration $hook): void {
         $hook->add_definition(
             id: ai_backend::class,
-            definition: [config::class, 'create_backend'],
+            definition: fn() => config::create_backend(),
         );
     }
 }
