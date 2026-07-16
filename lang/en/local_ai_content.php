@@ -34,6 +34,7 @@ $string['cannottestextraction'] = 'You do not have permission to use the text ex
 $string['error_ainotavailable'] = 'AI text extraction service is currently not available.';
 $string['error_airequestfailed'] = 'AI text extraction request failed: {$a}';
 $string['error_cannottestextraction'] = 'You do not have the required capability to test text extraction.';
+$string['error_conversionfailed'] = 'Document conversion to text failed: {$a}';
 $string['error_ittnotsupported'] = 'The configured AI backend does not support image-to-text extraction.';
 $string['error_pdfrenderingunavailable'] = 'PDF page rendering is unavailable because the assignfeedback_editpdf plugin is not installed.';
 $string['error_unsupportedfiletype'] = 'File type not supported for text extraction: {$a}';

@@ -37,6 +37,43 @@ $extractor = \core\di::get(\local_ai_content\extractor::class);
 $text = $extractor->extract_text_from_file($file, $contextid, $userid, 'your_component');
 ```
 
+## Error handling
+
+`extract_text_from_file()` follows a strict contract: it returns an **empty
+string only when the document genuinely has no extractable content**. Every
+actual failure raises a `moodle_exception`. Callers should therefore wrap the
+call in a `try/catch` and treat an empty string as “document without content”,
+not as an error.
+
+### Returns an empty string (genuine emptiness)
+
+- An empty plain-text file.
+- A document that converts successfully but contains no text.
+- An image or connector-native file for which the AI returns no text.
+- A PDF whose pages are all processed successfully but contain no text.
+
+### Throws a `moodle_exception`
+
+| Situation | Error string |
+|-----------|--------------|
+| File type not supported by any extraction path | `error_unsupportedfiletype` |
+| AI backend unavailable / request failed (image or native type) | `error_ainotavailable`, `error_airequestfailed` |
+| Selected backend cannot do image-to-text (e.g. core AI) | `error_ittnotsupported` |
+| Document converter cannot convert, does not complete, or yields no file | `error_conversionfailed` |
+| PDF rendering produced no pages | `error_conversionfailed` |
+| At least one PDF page fails during AI extraction (even on partial success) | the first backend exception |
+| PDF page rendering unavailable because `assignfeedback_editpdf` is missing | `error_pdfrenderingunavailable` (caught internally, falls back to the converter) |
+
+### Internal fallbacks (no exception surfaced)
+
+- Native PDF extraction failure → falls back to page-by-page image rendering.
+- `assignfeedback_editpdf` missing or rendering failure → falls back to the
+  `core_files` converter (which then either succeeds or throws
+  `error_conversionfailed`).
+
+Successful results are cached; empty results are **not** cached and are
+recomputed on the next request.
+
 ## Configuration
 
 Site administration → Plugins → Local plugins → **AI Content Manager**:

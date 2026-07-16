@@ -102,7 +102,8 @@ class extractor {
      * @param int|null $userid The user to attribute the extraction to (quota, audit).
      *                         Null for system context (e.g. cron cleanup).
      * @param string $component The calling plugin component name (e.g. 'assignfeedback_aif').
-     * @return string The extracted text content. Empty string if extraction fails.
+     * @return string The extracted text content. Empty string only if the document has no
+     *                extractable content.
      * @throws \moodle_exception If the file type is not supported or extraction fails.
      */
     public function extract_text_from_file(
@@ -386,6 +387,11 @@ class extractor {
             return $this->extract_via_converter($file);
         }
 
+        // No renderable pages is a processing failure, not an empty document.
+        if (empty($encodedimages)) {
+            throw new \moodle_exception('error_conversionfailed', 'local_ai_content', '', $file->get_filename());
+        }
+
         $content = '';
         $pagenum = 0;
         $firsterror = null;
@@ -403,14 +409,12 @@ class extractor {
             }
         }
 
-        $content = trim($content);
-
-        // If no content was extracted and AI requests failed, throw the first error.
-        if (empty($content) && $firsterror !== null) {
+        // Any page failure is an extraction error, even if other pages produced text.
+        if ($firsterror !== null) {
             throw $firsterror;
         }
 
-        return $content;
+        return trim($content);
     }
 
     /**
@@ -452,27 +456,27 @@ class extractor {
      * Extract text from a file using the core_files converter (e.g. DOCX to TXT).
      *
      * @param stored_file $file The file to convert.
-     * @return string The extracted text, or empty string if conversion fails.
+     * @return string The extracted text. Empty string only if the document has no content.
+     * @throws \moodle_exception If the conversion cannot be performed.
      */
     private function extract_via_converter(stored_file $file): string {
         $converter = new \core_files\converter();
         $format = 'txt';
 
         if (!$converter->can_convert_storedfile_to($file, $format)) {
-            mtrace("local_ai_content: Converter does not support: {$file->get_mimetype()}");
-            return '';
+            throw new \moodle_exception('error_conversionfailed', 'local_ai_content', '', $file->get_mimetype());
         }
 
         $conversion = $converter->start_conversion($file, $format);
         mtrace("local_ai_content: Converting '{$file->get_filename()}' to TXT.");
 
         if ($conversion->get('status') !== \core_files\conversion::STATUS_COMPLETE) {
-            return '';
+            throw new \moodle_exception('error_conversionfailed', 'local_ai_content', '', $file->get_filename());
         }
 
         $convertedfile = $conversion->get_destfile();
         if (!$convertedfile) {
-            return '';
+            throw new \moodle_exception('error_conversionfailed', 'local_ai_content', '', $file->get_filename());
         }
 
         $text = $convertedfile->get_content();
