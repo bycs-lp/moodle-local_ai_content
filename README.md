@@ -22,13 +22,24 @@ calls, and every extraction is logged for auditing and GDPR compliance.
 
 ## Supported file types
 
-- Plain text (`text/plain`) – read directly, no AI required.
-- Images (PNG, JPEG, WebP, GIF) – via AI image-to-text (ITT), when the backend
-  provides ITT.
-- PDF – via native backend support or page-by-page rendering (requires the
+- **Text formats** – read directly, no AI required:
+  `text/plain`, `text/html`, `text/xml`, `text/markdown`, `text/rtf`,
+  `text/csv`.
+- **Images** (PNG, JPEG, WebP, GIF) – via AI image-to-text (ITT), when the
+  backend provides ITT.
+- **PDF** – via native backend support or page-by-page rendering (requires the
   `assignfeedback_editpdf` subplugin) plus ITT; falls back to a document
   converter if available.
-- Office documents (DOCX, ODT, XLSX, …) – via enabled `core_files` converters.
+- **Office documents** – via enabled `core_files` converters. Candidate
+  extensions checked: DOC, DOCX, RTF, ODT, XLS, XLSX, ODS, PPT, PPTX, ODP,
+  HTML, CSV.
+- **Connector-native types** – any additional MIME types the configured AI
+  backend declares as natively supported.
+
+The actual availability of images, PDF and office formats depends on the
+configured AI backend (ITT capability) and the installed `core_files`
+converters. Use the admin test page or `extractor::get_supported_extensions()`
+to see what is currently available on your site.
 
 ## Usage
 
