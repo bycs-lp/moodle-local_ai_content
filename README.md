@@ -27,9 +27,8 @@ calls, and every extraction is logged for auditing and GDPR compliance.
   `text/csv`.
 - **Images** (PNG, JPEG, WebP, GIF) – via AI image-to-text (ITT), when the
   backend provides ITT.
-- **PDF** – via native backend support or page-by-page rendering (requires the
-  `assignfeedback_editpdf` subplugin) plus ITT; falls back to a document
-  converter if available.
+- **PDF** – via native backend support or page-by-page rendering via Poppler
+  `pdftoppm` plus ITT; falls back to a document converter if available.
 - **Office documents** – via enabled `core_files` converters. Candidate
   extensions checked: DOC, DOCX, RTF, ODT, XLS, XLSX, ODS, PPT, PPTX, ODP,
   HTML, CSV.
@@ -73,12 +72,12 @@ not as an error.
 | Document converter cannot convert, does not complete, or yields no file | `error_conversionfailed` |
 | PDF rendering produced no pages | `error_conversionfailed` |
 | At least one PDF page fails during AI extraction (even on partial success) | the first backend exception |
-| PDF page rendering unavailable because `assignfeedback_editpdf` is missing | `error_pdfrenderingunavailable` (caught internally, falls back to the converter) |
+| PDF page rendering unavailable because `pdftoppm` is not configured/executable | `error_pdfrenderingunavailable` (caught internally, falls back to the converter) |
 
 ### Internal fallbacks (no exception surfaced)
 
 - Native PDF extraction failure → falls back to page-by-page image rendering.
-- `assignfeedback_editpdf` missing or rendering failure → falls back to the
+- `pdftoppm` unavailable or rendering failure → falls back to the
   `core_files` converter (which then either succeeds or throws
   `error_conversionfailed`).
 

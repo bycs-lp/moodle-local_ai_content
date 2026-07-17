@@ -351,7 +351,7 @@ class extractor {
      *
      * First checks if the AI backend supports PDF natively (e.g. Gemini).
      * If so, sends the entire PDF as a base64 data URL in a single request.
-     * Otherwise, falls back to rendering each page as an image via ghostscript
+     * Otherwise, falls back to rendering each page as an image via pdftoppm
      * and sending images individually via ITT.
      *
      * @param stored_file $file The PDF file.
@@ -420,32 +420,55 @@ class extractor {
     /**
      * Convert a PDF file into an array of base64-encoded page images.
      *
-     * Uses the assignfeedback_editpdf PDF class (ghostscript/pdftoppm) to render pages.
-     * Requires the assignfeedback_editpdf subplugin to be installed.
+     * Uses Poppler's pdftoppm binary to render each page to PNG.
      *
      * @param stored_file $file The PDF file.
      * @return string[] Array of base64-encoded data URLs, one per page.
-     * @throws \moodle_exception If editpdf is unavailable or the PDF cannot be processed.
+     * @throws \moodle_exception If pdftoppm is unavailable or the PDF cannot be processed.
      */
     private function convert_pdf_to_images(stored_file $file): array {
-        if (!class_exists(\assignfeedback_editpdf\pdf::class)) {
-            throw new \moodle_exception('error_pdfrenderingunavailable', 'local_ai_content');
+        global $CFG;
+
+        $pdftoppm = 'pdftoppm';
+        if (!empty($CFG->pathtopdftoppm)) {
+            if (!is_executable($CFG->pathtopdftoppm)) {
+                throw new \moodle_exception('error_pdfrenderingunavailable', 'local_ai_content');
+            }
+            $pdftoppm = $CFG->pathtopdftoppm;
         }
 
         $tmpdir = \make_request_directory();
-        $tmpfilename = 'local_ai_content_tmp_' . uniqid() . '.pdf';
-        file_put_contents($tmpdir . '/' . $tmpfilename, $file->get_content());
+        $tmppdfpath = $tmpdir . '/source.pdf';
+        $outputprefix = $tmpdir . '/page';
+        $file->copy_content_to($tmppdfpath);
 
-        $pdf = new \assignfeedback_editpdf\pdf();
-        $pdf->set_image_folder($tmpdir);
-        $pdf->set_pdf($tmpdir . '/' . $tmpfilename);
-        $images = $pdf->get_images();
+        $command = \escapeshellarg($pdftoppm)
+            . ' -q -r 150 -png '
+            . \escapeshellarg($tmppdfpath)
+            . ' '
+            . \escapeshellarg($outputprefix);
+        $output = [];
+        $result = 0;
+        exec($command, $output, $result);
+
+        if ($result !== 0) {
+            throw new \moodle_exception('error_pdfrenderingunavailable', 'local_ai_content');
+        }
+
+        $images = glob($outputprefix . '-*.png') ?: [];
+        sort($images, SORT_NATURAL);
+
+        if (empty($images)) {
+            throw new \moodle_exception('error_conversionfailed', 'local_ai_content', '', $file->get_filename());
+        }
 
         $imagearray = [];
-        foreach ($images as $image) {
-            $imagepath = $tmpdir . '/' . $image;
+        foreach ($images as $imagepath) {
             $imagecontent = file_get_contents($imagepath);
-            $imagemime = mimeinfo('type', $imagepath);
+            if ($imagecontent === false) {
+                throw new \moodle_exception('error_conversionfailed', 'local_ai_content', '', $file->get_filename());
+            }
+            $imagemime = 'image/png';
             $imagearray[] = 'data:' . $imagemime . ';base64,' . base64_encode($imagecontent);
         }
 
