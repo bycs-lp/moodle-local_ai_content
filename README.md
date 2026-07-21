@@ -95,6 +95,40 @@ Site administration → Plugins → Local plugins → **AI Content Manager**:
 The capability `local/ai_content:useextraction` controls who may use the test
 page.
 
+### Recommended: Poppler `pdftoppm` for PDF extraction
+
+For reliable PDF text extraction it is strongly recommended to install the
+**Poppler `pdftoppm`** binary on the server. The extractor uses it to render
+PDF pages to PNG images (150 DPI) which are then processed by the AI backend
+via image-to-text (ITT).
+
+**Installation:**
+
+On Debian/Ubuntu:
+
+```bash
+sudo apt-get install poppler-utils
+```
+
+On RHEL/CentOS/Fedora:
+
+```bash
+sudo dnf install poppler-utils
+```
+
+**Global admin setting:**
+
+Site administration → Server → System paths → **Path to pdftoppm**
+
+This corresponds to `$CFG->pathtopdftoppm`. If left empty, the plugin assumes
+`pdftoppm` is available in the system `PATH`. If a path is configured but does
+not point to an executable file, PDF extraction will fail with
+`error_pdfrenderingunavailable`.
+
+Without a working `pdftoppm` binary the plugin falls back to the `core_files`
+document converter, which may yield lower-quality results or fail entirely
+depending on the server configuration.
+
 ## License
 
 GNU GPL v3 or later.
