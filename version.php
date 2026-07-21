@@ -26,7 +26,6 @@ defined('MOODLE_INTERNAL') || die();
 
 $plugin->version  = 2026071501;
 $plugin->requires = 2025041400;
-$plugin->supported = [500, 502];
-$plugin->release = '3.1';
+$plugin->release = '0.1 (Build: 20260715)';
 $plugin->component = 'local_ai_content';
 $plugin->maturity = MATURITY_ALPHA;

@@ -73,13 +73,12 @@ if ($form->is_cancelled()) {
             try {
                 ob_start();
                 $result = $extractor->extract_text_from_file($file, $context->id, $USER->id, 'local_ai_content');
+            } catch (\Exception $e) {
+                $errormessage = $e->getMessage();
+            } finally {
                 $mtrace = ob_get_clean();
                 $fileinfo->duration = round(microtime(true) - $timestart, 3);
                 $fileinfo->mtrace = $mtrace;
-            } catch (\Exception $e) {
-                ob_end_clean();
-                $errormessage = $e->getMessage();
-                $fileinfo->duration = round(microtime(true) - $timestart, 3);
             }
         }
     }

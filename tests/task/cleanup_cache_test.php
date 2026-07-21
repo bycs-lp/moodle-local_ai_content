@@ -27,43 +27,20 @@ namespace local_ai_content\task;
  * @covers     \local_ai_content\task\cleanup_cache
  */
 final class cleanup_cache_test extends \advanced_testcase {
-    /**
-     * Set up test environment.
-     */
-    protected function setUp(): void {
-        parent::setUp();
-        $this->resetAfterTest();
-        ob_start();
-    }
-
-    /**
-     * Tear down test environment.
-     */
-    protected function tearDown(): void {
-        ob_end_clean();
-        parent::tearDown();
-    }
-
-    /**
-     * Get the plugin data generator.
-     *
-     * @return \local_ai_content_generator The data generator instance.
-     */
-    private function get_generator(): \local_ai_content_generator {
-        return $this->getDataGenerator()->get_plugin_generator('local_ai_content');
-    }
 
     /**
      * Test that expired entries are deleted.
      */
     public function test_deletes_expired_entries(): void {
         global $DB;
-        $now = time();
+        $this->resetAfterTest();
+
+        $now = \core\di::get(\core\clock::class)->time();
 
         // Default TTL is 90 days.
         set_config('cachettl', '90', 'local_ai_content');
 
-        $generator = $this->get_generator();
+        $generator = $this->getDataGenerator()->get_plugin_generator('local_ai_content');
 
         // Expired: last accessed 100 days ago.
         $generator->create_cache_record(['contenthash' => sha1('old1'), 'timelastaccessed' => $now - (100 * DAYSECS)]);
@@ -75,7 +52,10 @@ final class cleanup_cache_test extends \advanced_testcase {
         $this->assertEquals(3, $DB->count_records('local_ai_content_cache'));
 
         $task = new cleanup_cache();
+
+        ob_start();
         $task->execute();
+        ob_end_clean();
 
         $this->assertEquals(1, $DB->count_records('local_ai_content_cache'));
         $this->assertTrue($DB->record_exists('local_ai_content_cache', ['contenthash' => sha1('fresh')]));
@@ -88,12 +68,14 @@ final class cleanup_cache_test extends \advanced_testcase {
      */
     public function test_custom_ttl(): void {
         global $DB;
-        $now = time();
+        $this->resetAfterTest();
+
+        $now = \core\di::get(\core\clock::class)->time();
 
         // Set TTL to 30 days.
         set_config('cachettl', '30', 'local_ai_content');
 
-        $generator = $this->get_generator();
+        $generator = $this->getDataGenerator()->get_plugin_generator('local_ai_content');
 
         // 31 days old → expired with 30-day TTL.
         $generator->create_cache_record(['contenthash' => sha1('expired'), 'timelastaccessed' => $now - (31 * DAYSECS)]);
@@ -102,7 +84,10 @@ final class cleanup_cache_test extends \advanced_testcase {
         $generator->create_cache_record(['contenthash' => sha1('fresh'), 'timelastaccessed' => $now - (29 * DAYSECS)]);
 
         $task = new cleanup_cache();
+
+        ob_start();
         $task->execute();
+        ob_end_clean();
 
         $this->assertEquals(1, $DB->count_records('local_ai_content_cache'));
         $this->assertTrue($DB->record_exists('local_ai_content_cache', ['contenthash' => sha1('fresh')]));

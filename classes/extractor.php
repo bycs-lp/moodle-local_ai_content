@@ -56,6 +56,20 @@ class extractor {
         'html', 'csv',
     ];
 
+    /** @var int Log output mode none. */
+    const LOG_OUTPUT_NONE = -1;
+    /** @var int Log output mode auto (CLI or mtrace). */
+    const LOG_OUTPUT_AUTO = 0;
+    /** @var int Log output mode echo. */
+    const LOG_OUTPUT_ECHO = 1;
+    /** @var int Log output mode mtrace. */
+    const LOG_OUTPUT_MTRACE = 2;
+
+    /** @var int The log output mode. */
+    private int $logoutputmode = self::LOG_OUTPUT_AUTO;
+    /** @var string[] The log messages. */
+    private array $logmessages = [];
+
     /**
      * Check whether the current user can test text extraction.
      *
@@ -83,6 +97,56 @@ class extractor {
                 get_string('cannottestextraction', 'local_ai_content')
             );
         }
+    }
+
+    /**
+     * Log a message if verbose mode is enabled.
+     *
+     * @param string $message The message to log.
+     * @return void
+     */
+    protected function log($message) {
+        // Store the message for later retrieval.
+        $this->logmessages[] = $message;
+
+        // Default logging behavior: echo to CLI or mtrace.
+        if ($this->logoutputmode === self::LOG_OUTPUT_AUTO) {
+            if (CLI_SCRIPT) {
+                mtrace($message);
+            } else {
+                echo $message . "\n";
+            }
+            return;
+        }
+        // Force to echo output.
+        if ($this->logoutputmode === self::LOG_OUTPUT_ECHO) {
+            echo $message . "\n";
+        }
+        // Force to mtrace output.
+        if ($this->logoutputmode === self::LOG_OUTPUT_MTRACE) {
+            mtrace($message);
+        }
+    }
+
+    /** Set the log output mode.
+     * @param int $logoutput The log output mode.
+     */
+     public function set_log_outputmode(int $logoutputmode) {
+        $this->logoutputmode = $logoutputmode;
+    }
+    /**
+     * Get the log output mode.
+     * @return int The log output mode.
+     */
+    public function get_log_outputmode(): int {
+        return $this->logoutputmode;
+    }
+    /**
+     * Get the log messages.
+     * @return array The log messages.
+     */
+    public function get_log_messages(): array {
+        return $this->logmessages;
     }
 
     /**
@@ -127,7 +191,7 @@ class extractor {
         // Check cache first.
         $cached = $this->get_from_cache($contenthash);
         if ($cached !== null) {
-            mtrace("local_ai_content: Using cached content for '{$file->get_filename()}'.");
+            $this->log("local_ai_content: Using cached content for '{$file->get_filename()}'.");
             $this->log_usage($userid, $contenthash, $file->get_filename(), $component, $contextid, true);
             return $cached;
         }
@@ -323,7 +387,7 @@ class extractor {
      */
     private function extract_from_text_file(stored_file $file): string {
         $content = $file->get_content();
-        mtrace("local_ai_content: Text content from '{$file->get_filename()}' read directly.");
+        $this->log("local_ai_content: Text content from '{$file->get_filename()}' read directly.");
         return $content;
     }
 
@@ -342,7 +406,7 @@ class extractor {
     private function extract_from_image(stored_file $file, int $contextid, ?int $userid): string {
         $encodedimage = 'data:' . $file->get_mimetype() . ';base64,' . base64_encode($file->get_content());
         $content = $this->retrieve_text_from_ai($encodedimage, $contextid, $userid);
-        mtrace("local_ai_content: Text extracted from image '{$file->get_filename()}' via ITT.");
+        $this->log("local_ai_content: Text extracted from image '{$file->get_filename()}' via ITT.");
         return $content;
     }
 
@@ -369,11 +433,11 @@ class extractor {
                 $encodedpdf = 'data:application/pdf;base64,' . base64_encode($file->get_content());
                 $content = $this->retrieve_text_from_ai($encodedpdf, $contextid, $userid);
                 if (!empty($content)) {
-                    mtrace("local_ai_content: Text extracted from PDF '{$file->get_filename()}' via native PDF support.");
+                    $this->log("local_ai_content: Text extracted from PDF '{$file->get_filename()}' via native PDF support.");
                     return $content;
                 }
             } catch (\Exception $e) {
-                mtrace("local_ai_content: Native PDF extraction failed for '{$file->get_filename()}': "
+                $this->log("local_ai_content: Native PDF extraction failed for '{$file->get_filename()}': "
                     . $e->getMessage() . " — falling back to page-by-page rendering.");
             }
         }
@@ -382,7 +446,7 @@ class extractor {
         try {
             $encodedimages = $this->convert_pdf_to_images($file);
         } catch (\Exception $e) {
-            mtrace("local_ai_content: Failed to convert PDF '{$file->get_filename()}' to images: " . $e->getMessage());
+            $this->log("local_ai_content: Failed to convert PDF '{$file->get_filename()}' to images: " . $e->getMessage());
             // Fallback: try core_files converter.
             return $this->extract_via_converter($file);
         }
@@ -400,9 +464,9 @@ class extractor {
             try {
                 $pagetext = $this->retrieve_text_from_ai($encodedimage, $contextid, $userid);
                 $content .= $pagetext . "\n";
-                mtrace("local_ai_content: Extracted text from PDF page {$pagenum}/" . count($encodedimages) . ".");
+                $this->log("local_ai_content: Extracted text from PDF page {$pagenum}/" . count($encodedimages) . ".");
             } catch (\Exception $e) {
-                mtrace("local_ai_content: Failed to extract text from PDF page {$pagenum}: " . $e->getMessage());
+                $this->log("local_ai_content: Failed to extract text from PDF page {$pagenum}: " . $e->getMessage());
                 if ($firsterror === null) {
                     $firsterror = $e;
                 }
@@ -491,7 +555,7 @@ class extractor {
         }
 
         $conversion = $converter->start_conversion($file, $format);
-        mtrace("local_ai_content: Converting '{$file->get_filename()}' to TXT.");
+        $this->log("local_ai_content: Converting '{$file->get_filename()}' to TXT.");
 
         if ($conversion->get('status') !== \core_files\conversion::STATUS_COMPLETE) {
             throw new \moodle_exception('error_conversionfailed', 'local_ai_content', '', $file->get_filename());
@@ -504,7 +568,7 @@ class extractor {
 
         $text = $convertedfile->get_content();
 
-        mtrace("local_ai_content: Content from '{$file->get_filename()}' converted successfully.");
+        $this->log("local_ai_content: Content from '{$file->get_filename()}' converted successfully.");
         return $text;
     }
 
@@ -521,8 +585,7 @@ class extractor {
      * @throws \moodle_exception If the AI request fails.
      */
     private function retrieve_text_from_ai(string $encodeddata, int $contextid, ?int $userid): string {
-        $imageprompt = 'Return the text that is written on the image/document. '
-            . 'Do not wrap any explanatory text around. Return only the bare content.';
+        $imageprompt = get_config('local_ai_content', 'extractionprompt');
 
         // Switch user context for quota attribution.
         $previoususerid = $this->setup_user($userid);

@@ -52,6 +52,14 @@ if ($hassiteconfig) {
         PARAM_INT
     ));
 
+    // Extraction prompt for AI image-to-text requests.
+    $settings->add(new admin_setting_configtextarea(
+        'local_ai_content/extractionprompt',
+        get_string('extractionprompt', 'local_ai_content'),
+        get_string('extractionprompt_desc', 'local_ai_content'),
+        get_string('extractionprompt_default', 'local_ai_content')
+    ));
+
     $ADMIN->add('local_ai_content_category', $settings);
 
     // Test extraction admin page.

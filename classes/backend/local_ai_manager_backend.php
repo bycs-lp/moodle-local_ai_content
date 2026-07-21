@@ -131,11 +131,12 @@ class local_ai_manager_backend implements ai_backend {
      * @return string|null Error message if unavailable, null if available.
      */
     public function get_unavailability_reason(int $contextid): ?string {
+        global $USER;
+
         if (!class_exists(\local_ai_manager\ai_manager_utils::class)) {
             return get_string('error_ainotavailable', 'local_ai_content');
         }
 
-        global $USER;
         $aiconfig = \local_ai_manager\ai_manager_utils::get_ai_config($USER, $contextid, null, ['itt']);
 
         if (

@@ -34,20 +34,18 @@ final class extractor_test extends \advanced_testcase {
      */
     protected function setUp(): void {
         parent::setUp();
-        $this->resetAfterTest();
         // Inject a mock backend that has ITT available by default.
         $this->inject_backend_with_itt(true);
-        ob_start();
     }
 
     /**
-     * Tear down test environment.
-     *
-     * @return void
+     * Initialize the extractor for testing.
+     * @return extractor
      */
-    protected function tearDown(): void {
-        ob_end_clean();
-        parent::tearDown();
+    private function get_extractor(): extractor {
+        $extractor = new extractor();
+        $extractor->set_log_outputmode(extractor::LOG_OUTPUT_NONE);
+        return $extractor;
     }
 
     /**
@@ -125,64 +123,34 @@ final class extractor_test extends \advanced_testcase {
     }
 
     /**
-     * Test that plain text files are supported.
+     * Data provider for supported file types.
      *
-     * @covers ::is_file_supported
+     * @return array[] Array of [filename, content, mimetype].
      */
-    public function test_is_file_supported_text(): void {
-        $file = $this->create_test_file('test.txt', 'Hello world', 'text/plain');
-        $this->assertTrue((new extractor())->is_file_supported($file));
+    public static function supported_filetypes_provider(): array {
+        return [
+            'plain text' => ['test.txt', 'Hello world', 'text/plain'],
+            'png image' => ['test.png', base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAB'), 'image/png'],
+            'jpeg image' => ['photo.jpg', 'fake', 'image/jpeg'],
+            'webp image' => ['image.webp', 'fake', 'image/webp'],
+            'gif image' => ['anim.gif', 'fake', 'image/gif'],
+            'pdf document' => ['doc.pdf', '%PDF-1.4', 'application/pdf'],
+        ];
     }
 
     /**
-     * Test that PNG images are supported when ITT is available.
+     * Test that supported file types are recognized correctly.
      *
+     * @dataProvider supported_filetypes_provider
      * @covers ::is_file_supported
+     * @param string $filename The file name.
+     * @param string $content The file content.
+     * @param string $mimetype The MIME type.
      */
-    public function test_is_file_supported_png(): void {
-        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAB');
-        $file = $this->create_test_file('test.png', $png, 'image/png');
-        $this->assertTrue((new extractor())->is_file_supported($file));
-    }
-
-    /**
-     * Test that JPEG images are supported when ITT is available.
-     *
-     * @covers ::is_file_supported
-     */
-    public function test_is_file_supported_jpeg(): void {
-        $file = $this->create_test_file('photo.jpg', 'fake', 'image/jpeg');
-        $this->assertTrue((new extractor())->is_file_supported($file));
-    }
-
-    /**
-     * Test that WebP images are supported when ITT is available.
-     *
-     * @covers ::is_file_supported
-     */
-    public function test_is_file_supported_webp(): void {
-        $file = $this->create_test_file('image.webp', 'fake', 'image/webp');
-        $this->assertTrue((new extractor())->is_file_supported($file));
-    }
-
-    /**
-     * Test that GIF images are supported when ITT is available.
-     *
-     * @covers ::is_file_supported
-     */
-    public function test_is_file_supported_gif(): void {
-        $file = $this->create_test_file('anim.gif', 'fake', 'image/gif');
-        $this->assertTrue((new extractor())->is_file_supported($file));
-    }
-
-    /**
-     * Test that PDF files are supported when ITT is available.
-     *
-     * @covers ::is_file_supported
-     */
-    public function test_is_file_supported_pdf(): void {
-        $file = $this->create_test_file('doc.pdf', '%PDF-1.4', 'application/pdf');
-        $this->assertTrue((new extractor())->is_file_supported($file));
+    public function test_is_file_supported(string $filename, string $content, string $mimetype): void {
+        $this->resetAfterTest();
+        $file = $this->create_test_file($filename, $content, $mimetype);
+        $this->assertTrue($this->get_extractor()->is_file_supported($file));
     }
 
     /**
@@ -191,8 +159,9 @@ final class extractor_test extends \advanced_testcase {
      * @covers ::is_file_supported
      */
     public function test_is_file_supported_unsupported_type(): void {
+        $this->resetAfterTest();
         $file = $this->create_test_file('archive.zip', 'fake', 'application/zip');
-        $this->assertFalse((new extractor())->is_file_supported($file));
+        $this->assertFalse($this->get_extractor()->is_file_supported($file));
     }
 
     /**
@@ -201,9 +170,10 @@ final class extractor_test extends \advanced_testcase {
      * @covers ::is_file_supported
      */
     public function test_is_file_supported_image_without_itt(): void {
+        $this->resetAfterTest();
         $this->inject_backend_with_itt(false);
         $file = $this->create_test_file('photo.png', 'fake', 'image/png');
-        $this->assertFalse((new extractor())->is_file_supported($file));
+        $this->assertFalse($this->get_extractor()->is_file_supported($file));
     }
 
     /**
@@ -212,12 +182,13 @@ final class extractor_test extends \advanced_testcase {
      * @covers ::is_file_supported
      */
     public function test_is_file_supported_pdf_without_itt(): void {
+        $this->resetAfterTest();
         $this->inject_backend_with_itt(false);
         $file = $this->create_test_file('doc.pdf', '%PDF-1.4', 'application/pdf');
         // PDF might still be supported via converter, but without ITT and without converter → false.
         // This depends on whether a PDF-to-TXT converter is installed.
         // In test environments, typically no converter is available.
-        $extractor = new extractor();
+        $extractor = $this->get_extractor();
         $supported = $extractor->is_file_supported($file);
         // We can only assert it doesn't crash. The result depends on converter availability.
         $this->assertIsBool($supported);
@@ -229,9 +200,10 @@ final class extractor_test extends \advanced_testcase {
      * @covers ::is_file_supported
      */
     public function test_is_file_supported_text_without_itt(): void {
+        $this->resetAfterTest();
         $this->inject_backend_with_itt(false);
         $file = $this->create_test_file('readme.txt', 'Hello', 'text/plain');
-        $this->assertTrue((new extractor())->is_file_supported($file));
+        $this->assertTrue($this->get_extractor()->is_file_supported($file));
     }
 
     /**
@@ -240,11 +212,12 @@ final class extractor_test extends \advanced_testcase {
      * @covers ::extract_text_from_file
      */
     public function test_extract_text_from_text_file(): void {
+        $this->resetAfterTest();
         $expected = 'This is the content of my text file.';
         $file = $this->create_test_file('notes.txt', $expected, 'text/plain');
         $contextid = \context_system::instance()->id;
 
-        $result = (new extractor())->extract_text_from_file($file, $contextid, null, 'test');
+        $result = $this->get_extractor()->extract_text_from_file($file, $contextid, null, 'test');
         $this->assertEquals($expected, $result);
     }
 
@@ -254,11 +227,12 @@ final class extractor_test extends \advanced_testcase {
      * @covers ::extract_text_from_file
      */
     public function test_extract_text_from_unsupported_file_throws(): void {
+        $this->resetAfterTest();
         $file = $this->create_test_file('data.zip', 'fake', 'application/zip');
         $contextid = \context_system::instance()->id;
 
         $this->expectException(\moodle_exception::class);
-        (new extractor())->extract_text_from_file($file, $contextid);
+        $this->get_extractor()->extract_text_from_file($file, $contextid);
     }
 
     /**
@@ -267,12 +241,13 @@ final class extractor_test extends \advanced_testcase {
      * @covers ::extract_text_from_file
      */
     public function test_extract_text_from_image_uses_ai(): void {
+        $this->resetAfterTest();
         $aitext = 'Text extracted from the image by AI.';
         $this->mock_ai_backend($aitext);
         $file = $this->create_test_file('shot.png', 'fake png', 'image/png');
         $contextid = \context_system::instance()->id;
 
-        $result = (new extractor())->extract_text_from_file($file, $contextid, null, 'aif');
+        $result = $this->get_extractor()->extract_text_from_file($file, $contextid, null, 'aif');
         $this->assertEquals($aitext, $result);
     }
 
@@ -282,12 +257,13 @@ final class extractor_test extends \advanced_testcase {
      * @covers ::extract_text_from_file
      */
     public function test_extract_text_from_image_ai_error(): void {
+        $this->resetAfterTest();
         $this->mock_ai_backend_with_error('AI backend is down');
         $file = $this->create_test_file('photo.png', 'fake', 'image/png');
         $contextid = \context_system::instance()->id;
 
         $this->expectException(\moodle_exception::class);
-        (new extractor())->extract_text_from_file($file, $contextid, null);
+        $this->get_extractor()->extract_text_from_file($file, $contextid, null);
     }
 
     /**
@@ -297,12 +273,13 @@ final class extractor_test extends \advanced_testcase {
      */
     public function test_caching_stores_and_retrieves(): void {
         global $DB;
+        $this->resetAfterTest();
         $aitext = 'Cached AI response.';
         $this->mock_ai_backend($aitext);
 
         $file = $this->create_test_file('img.png', 'fake png', 'image/png');
         $contextid = \context_system::instance()->id;
-        $extractor = new extractor();
+        $extractor = $this->get_extractor();
 
         $r1 = $extractor->extract_text_from_file($file, $contextid, null, 'test');
         $this->assertEquals($aitext, $r1);
@@ -324,15 +301,16 @@ final class extractor_test extends \advanced_testcase {
      */
     public function test_cache_updates_timelastaccessed(): void {
         global $DB;
+        $this->resetAfterTest();
         $this->mock_ai_backend('Some text');
         $file = $this->create_test_file('img.png', 'fake png', 'image/png');
         $contextid = \context_system::instance()->id;
-        $extractor = new extractor();
+        $extractor = $this->get_extractor();
 
         $extractor->extract_text_from_file($file, $contextid, 2);
         $rec1 = $DB->get_record('local_ai_content_cache', ['contenthash' => $file->get_contenthash()]);
 
-        $this->mock_clock_with_frozen(time() + 60);
+        $this->mock_clock_with_frozen(\core\di::get(\core\clock::class)->now()->getTimestamp() + 60);
         $extractor->extract_text_from_file($file, $contextid, 2);
         $rec2 = $DB->get_record('local_ai_content_cache', ['contenthash' => $file->get_contenthash()]);
 
@@ -346,10 +324,11 @@ final class extractor_test extends \advanced_testcase {
      */
     public function test_usage_logging_on_extraction(): void {
         global $DB;
+        $this->resetAfterTest();
         $file = $this->create_test_file('readme.txt', 'Hello', 'text/plain');
         $contextid = \context_system::instance()->id;
 
-        (new extractor())->extract_text_from_file($file, $contextid, 42, 'assignfeedback_aif');
+        $this->get_extractor()->extract_text_from_file($file, $contextid, 42, 'assignfeedback_aif');
 
         $records = $DB->get_records('local_ai_content_usage', ['userid' => 42]);
         $this->assertCount(1, $records);
@@ -366,10 +345,11 @@ final class extractor_test extends \advanced_testcase {
      */
     public function test_usage_logging_cachehit(): void {
         global $DB;
+        $this->resetAfterTest();
         $this->mock_ai_backend('AI text');
         $file = $this->create_test_file('photo.png', 'fake', 'image/png');
         $contextid = \context_system::instance()->id;
-        $extractor = new extractor();
+        $extractor = $this->get_extractor();
 
         $extractor->extract_text_from_file($file, $contextid, 2, 'test');
         $extractor->extract_text_from_file($file, $contextid, 2, 'test');
@@ -387,10 +367,11 @@ final class extractor_test extends \advanced_testcase {
      */
     public function test_usage_logging_null_userid(): void {
         global $DB;
+        $this->resetAfterTest();
         $file = $this->create_test_file('data.txt', 'content', 'text/plain');
         $contextid = \context_system::instance()->id;
 
-        (new extractor())->extract_text_from_file($file, $contextid, null, 'cron_task');
+        $this->get_extractor()->extract_text_from_file($file, $contextid, null, 'cron_task');
 
         $records = $DB->get_records('local_ai_content_usage', ['component' => 'cron_task']);
         $this->assertCount(1, $records);
@@ -404,14 +385,15 @@ final class extractor_test extends \advanced_testcase {
      */
     public function test_get_usage_log_time_range(): void {
         global $DB;
-        $now = time();
+        $this->resetAfterTest();
+        $now = \core\di::get(\core\clock::class)->now()->getTimestamp();
         $base = ['userid' => 99, 'contenthash' => sha1('t'), 'filename' => 'f.txt',
             'component' => 'test', 'contextid' => 1, 'cachehit' => 0];
         $DB->insert_record('local_ai_content_usage', (object) array_merge($base, ['timecreated' => $now - 100]));
         $DB->insert_record('local_ai_content_usage', (object) array_merge($base, ['timecreated' => $now]));
         $DB->insert_record('local_ai_content_usage', (object) array_merge($base, ['timecreated' => $now + 200]));
 
-        $extractor = new extractor();
+        $extractor = $this->get_extractor();
         $this->assertCount(2, $extractor->get_usage_log(99, $now - 150, $now + 50));
         $this->assertCount(3, $extractor->get_usage_log(99, $now - 150, $now + 250));
         $this->assertCount(0, $extractor->get_usage_log(99, $now + 300, $now + 400));
@@ -424,14 +406,15 @@ final class extractor_test extends \advanced_testcase {
      */
     public function test_get_usage_log_user_isolation(): void {
         global $DB;
-        $now = time();
+        $this->resetAfterTest();
+        $now = \core\di::get(\core\clock::class)->now()->getTimestamp();
         $base = ['contenthash' => sha1('t'), 'filename' => 'f.txt', 'component' => 'test',
             'contextid' => 1, 'cachehit' => 0, 'timecreated' => $now];
         $DB->insert_record('local_ai_content_usage', (object) array_merge($base, ['userid' => 10]));
         $DB->insert_record('local_ai_content_usage', (object) array_merge($base, ['userid' => 20]));
         $DB->insert_record('local_ai_content_usage', (object) array_merge($base, ['userid' => 10]));
 
-        $extractor = new extractor();
+        $extractor = $this->get_extractor();
         $this->assertCount(2, $extractor->get_usage_log(10, $now - 10, $now + 10));
         $this->assertCount(1, $extractor->get_usage_log(20, $now - 10, $now + 10));
         $this->assertCount(0, $extractor->get_usage_log(30, $now - 10, $now + 10));
@@ -443,7 +426,8 @@ final class extractor_test extends \advanced_testcase {
      * @covers ::get_supported_extensions
      */
     public function test_get_supported_extensions_includes_basics(): void {
-        $ext = (new extractor())->get_supported_extensions();
+        $this->resetAfterTest();
+        $ext = $this->get_extractor()->get_supported_extensions();
         // These should be present when ITT backend is available.
         $this->assertStringContainsString('PDF', $ext);
         $this->assertStringContainsString('PNG', $ext);
@@ -456,7 +440,8 @@ final class extractor_test extends \advanced_testcase {
      * @covers ::get_supported_extensions
      */
     public function test_get_supported_extensions_format(): void {
-        $ext = (new extractor())->get_supported_extensions();
+        $this->resetAfterTest();
+        $ext = $this->get_extractor()->get_supported_extensions();
         $this->assertMatchesRegularExpression('/^[A-Z0-9]+(, [A-Z0-9]+)*$/', $ext);
         $parts = explode(', ', $ext);
         $sorted = $parts;
@@ -470,8 +455,9 @@ final class extractor_test extends \advanced_testcase {
      * @covers ::get_supported_extensions
      */
     public function test_get_supported_extensions_without_itt(): void {
+        $this->resetAfterTest();
         $this->inject_backend_with_itt(false);
-        $ext = (new extractor())->get_supported_extensions();
+        $ext = $this->get_extractor()->get_supported_extensions();
         // Images and PDF should NOT be listed without ITT.
         $this->assertStringNotContainsString('PNG', $ext);
         $this->assertStringNotContainsString('GIF', $ext);
@@ -485,10 +471,11 @@ final class extractor_test extends \advanced_testcase {
      * @covers ::extract_text_from_file
      */
     public function test_extract_empty_text_file(): void {
+        $this->resetAfterTest();
         $file = $this->create_test_file('empty.txt', '', 'text/plain');
         $contextid = \context_system::instance()->id;
 
-        $result = (new extractor())->extract_text_from_file($file, $contextid, 2);
+        $result = $this->get_extractor()->extract_text_from_file($file, $contextid, 2);
         $this->assertEquals('', $result);
     }
 
@@ -498,11 +485,12 @@ final class extractor_test extends \advanced_testcase {
      * @covers ::extract_text_from_file
      */
     public function test_extract_text_file_unicode(): void {
+        $this->resetAfterTest();
         $text = 'Ä Ö Ü ß 日本語 中文 한국어';
         $file = $this->create_test_file('unicode.txt', $text, 'text/plain');
         $contextid = \context_system::instance()->id;
 
-        $result = (new extractor())->extract_text_from_file($file, $contextid, 2);
+        $result = $this->get_extractor()->extract_text_from_file($file, $contextid, 2);
         $this->assertEquals($text, $result);
     }
 
@@ -513,9 +501,10 @@ final class extractor_test extends \advanced_testcase {
      */
     public function test_component_stored_in_usage_log(): void {
         global $DB;
+        $this->resetAfterTest();
         $file = $this->create_test_file('test.txt', 'content', 'text/plain');
         $contextid = \context_system::instance()->id;
-        $extractor = new extractor();
+        $extractor = $this->get_extractor();
 
         $extractor->extract_text_from_file($file, $contextid, 2, 'assignfeedback_aif');
         $extractor->extract_text_from_file($file, $contextid, 2, 'mod_quiz');
@@ -530,10 +519,11 @@ final class extractor_test extends \advanced_testcase {
      * @covers ::extract_text_from_file
      */
     public function test_different_files_have_separate_cache(): void {
+        $this->resetAfterTest();
         $f1 = $this->create_test_file('f1.txt', 'Content A', 'text/plain');
         $f2 = $this->create_test_file('f2.txt', 'Content B', 'text/plain');
         $contextid = \context_system::instance()->id;
-        $extractor = new extractor();
+        $extractor = $this->get_extractor();
 
         $this->assertEquals('Content A', $extractor->extract_text_from_file($f1, $contextid, 2));
         $this->assertEquals('Content B', $extractor->extract_text_from_file($f2, $contextid, 2));
@@ -547,11 +537,12 @@ final class extractor_test extends \advanced_testcase {
      */
     public function test_identical_content_shares_cache(): void {
         global $DB;
+        $this->resetAfterTest();
         $content = 'Identical file content for caching test.';
         $f1 = $this->create_test_file('c1.txt', $content, 'text/plain');
         $f2 = $this->create_test_file('c2.txt', $content, 'text/plain');
         $contextid = \context_system::instance()->id;
-        $extractor = new extractor();
+        $extractor = $this->get_extractor();
 
         $extractor->extract_text_from_file($f1, $contextid, 2);
         $extractor->extract_text_from_file($f2, $contextid, 2);
