@@ -77,7 +77,7 @@ class extractor {
      * @return bool True if the user may test extraction, false otherwise.
      */
     public static function can_test_extraction(\context $context): bool {
-        return has_capability('local/ai_content:useextraction', $context);
+        return has_capability('local/ai_content:testextraction', $context);
     }
 
     /**
@@ -128,10 +128,12 @@ class extractor {
         }
     }
 
-    /** Set the log output mode.
+    /**
+     * Set the log output mode.
+     *
      * @param int $logoutput The log output mode.
      */
-     public function set_log_outputmode(int $logoutputmode) {
+    public function set_log_outputmode(int $logoutputmode) {
         $this->logoutputmode = $logoutputmode;
     }
     /**
@@ -159,7 +161,6 @@ class extractor {
      * - Documents (DOCX, ODT, etc.): core_files converter.
      *
      * Results are cached by content hash to avoid repeated expensive AI calls.
-     * Each invocation is logged in the usage table for audit and GDPR.
      *
      * @param stored_file $file The file to extract text from.
      * @param int $contextid The context ID for AI availability checks.
@@ -192,7 +193,6 @@ class extractor {
         $cached = $this->get_from_cache($contenthash);
         if ($cached !== null) {
             $this->log("local_ai_content: Using cached content for '{$file->get_filename()}'.");
-            $this->log_usage($userid, $contenthash, $file->get_filename(), $component, $contextid, true);
             return $cached;
         }
 
@@ -203,9 +203,6 @@ class extractor {
         if (!empty($content)) {
             $this->store_to_cache($contenthash, $content);
         }
-
-        // Log usage.
-        $this->log_usage($userid, $contenthash, $file->get_filename(), $component, $contextid, false);
 
         return $content;
     }
@@ -309,24 +306,6 @@ class extractor {
         return implode(', ', $extensions);
     }
 
-    /**
-     * Get usage log entries for a specific user (GDPR export).
-     *
-     * @param int $userid The user ID to get usage entries for.
-     * @param int $from Unix timestamp for start of range.
-     * @param int $to Unix timestamp for end of range.
-     * @return array Array of usage log records.
-     */
-    public function get_usage_log(int $userid, int $from, int $to): array {
-        global $DB;
-
-        return $DB->get_records_select(
-            'local_ai_content_usage',
-            'userid = :userid AND timecreated >= :from AND timecreated <= :to',
-            ['userid' => $userid, 'from' => $from, 'to' => $to],
-            'timecreated ASC'
-        );
-    }
 
     /**
      * Get the configured AI backend instance via DI.
@@ -647,9 +626,10 @@ class extractor {
             return null;
         }
 
-        // Update last accessed time.
+        // Update last accessed time and hit counter.
         $clock = \core\di::get(\core\clock::class);
         $record->timelastaccessed = $clock->now()->getTimestamp();
+        $record->cachehit++;
         $DB->update_record('local_ai_content_cache', $record);
 
         return $record->extractedcontent;
@@ -683,37 +663,5 @@ class extractor {
         $record->timemodified = $now;
         $record->timelastaccessed = $now;
         $DB->insert_record('local_ai_content_cache', $record);
-    }
-
-    /**
-     * Log a text extraction usage event for audit and GDPR compliance.
-     *
-     * @param int|null $userid The user who triggered the extraction.
-     * @param string $contenthash The content hash of the processed file.
-     * @param string $filename The original file name.
-     * @param string $component The calling plugin component name.
-     * @param int $contextid The context where extraction was used.
-     * @param bool $cachehit Whether the result came from cache.
-     */
-    private function log_usage(
-        ?int $userid,
-        string $contenthash,
-        string $filename,
-        string $component,
-        int $contextid,
-        bool $cachehit
-    ): void {
-        global $DB;
-
-        $clock = \core\di::get(\core\clock::class);
-        $record = new \stdClass();
-        $record->userid = $userid;
-        $record->contenthash = $contenthash;
-        $record->filename = \core_text::substr($filename, 0, 255);
-        $record->component = $component;
-        $record->contextid = $contextid;
-        $record->cachehit = $cachehit ? 1 : 0;
-        $record->timecreated = $clock->now()->getTimestamp();
-        $DB->insert_record('local_ai_content_usage', $record);
     }
 }

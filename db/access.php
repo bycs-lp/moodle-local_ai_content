@@ -26,9 +26,9 @@
 defined('MOODLE_INTERNAL') || die();
 
 $capabilities = [
-    'local/ai_content:useextraction' => [
+    'local/ai_content:testextraction' => [
         'captype' => 'read',
-        'contextlevel' => CONTEXT_SYSTEM,
+        'contextlevel' => CONTEXT_MODULE,
         'archetypes' => [
             'manager' => CAP_ALLOW,
         ],

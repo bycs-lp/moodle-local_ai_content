@@ -52,36 +52,4 @@ class local_ai_content_generator extends testing_module_generator {
         $obj->id = $DB->insert_record('local_ai_content_cache', $obj);
         return $obj;
     }
-
-    /**
-     * Create a usage record in the local_ai_content_usage table.
-     *
-     * @param array $record Optional overrides for the record fields.
-     *   - userid (int|null): User ID, defaults to null.
-     *   - contenthash (string): SHA1 hash, defaults to random.
-     *   - filename (string): Original filename, defaults to 'testfile.txt'.
-     *   - component (string): Calling component, defaults to 'local_ai_content'.
-     *   - contextid (int): Context ID, defaults to system context.
-     *   - cachehit (int): 0 or 1, defaults to 0.
-     *   - timecreated (int): Timestamp, defaults to now.
-     * @return stdClass The inserted database record with id.
-     */
-    public function create_usage_record(array $record = []): stdClass {
-        global $DB;
-
-        $defaults = [
-            'userid' => null,
-            'contenthash' => sha1(random_string(20)),
-            'filename' => 'testfile.txt',
-            'component' => 'local_ai_content',
-            'contextid' => \context_system::instance()->id,
-            'cachehit' => 0,
-            'timecreated' => time(),
-        ];
-
-        $record = array_merge($defaults, $record);
-        $obj = (object) $record;
-        $obj->id = $DB->insert_record('local_ai_content_usage', $obj);
-        return $obj;
-    }
 }

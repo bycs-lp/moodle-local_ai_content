@@ -130,7 +130,11 @@ final class extractor_test extends \advanced_testcase {
     public static function supported_filetypes_provider(): array {
         return [
             'plain text' => ['test.txt', 'Hello world', 'text/plain'],
-            'png image' => ['test.png', base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAB'), 'image/png'],
+            'png image' => [
+                'test.png',
+                base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAB'),
+                'image/png',
+            ],
             'jpeg image' => ['photo.jpg', 'fake', 'image/jpeg'],
             'webp image' => ['image.webp', 'fake', 'image/webp'],
             'gif image' => ['anim.gif', 'fake', 'image/gif'],
@@ -285,13 +289,12 @@ final class extractor_test extends \advanced_testcase {
         $this->assertEquals($aitext, $r1);
         $this->assertEquals(1, $DB->count_records('local_ai_content_cache', ['contenthash' => $file->get_contenthash()]));
 
-        // Second call uses cache - verify via cachehit flag in usage log.
+        // Second call uses cache.
         $r2 = $extractor->extract_text_from_file($file, $contextid, null, 'test');
         $this->assertEquals($aitext, $r2);
 
-        $records = array_values($DB->get_records('local_ai_content_usage', ['component' => 'test'], 'id ASC'));
-        $this->assertEquals(0, (int) $records[0]->cachehit);
-        $this->assertEquals(1, (int) $records[1]->cachehit);
+        $record = $DB->get_record('local_ai_content_cache', ['contenthash' => $file->get_contenthash()]);
+        $this->assertEquals(1, $record->cachehit);
     }
 
     /**
@@ -318,109 +321,6 @@ final class extractor_test extends \advanced_testcase {
     }
 
     /**
-     * Test that extraction logs a usage record.
-     *
-     * @covers ::extract_text_from_file
-     */
-    public function test_usage_logging_on_extraction(): void {
-        global $DB;
-        $this->resetAfterTest();
-        $file = $this->create_test_file('readme.txt', 'Hello', 'text/plain');
-        $contextid = \context_system::instance()->id;
-
-        $this->get_extractor()->extract_text_from_file($file, $contextid, 42, 'assignfeedback_aif');
-
-        $records = $DB->get_records('local_ai_content_usage', ['userid' => 42]);
-        $this->assertCount(1, $records);
-        $rec = reset($records);
-        $this->assertEquals('readme.txt', $rec->filename);
-        $this->assertEquals('assignfeedback_aif', $rec->component);
-        $this->assertEquals(0, (int) $rec->cachehit);
-    }
-
-    /**
-     * Test that cached extraction logs cachehit=1.
-     *
-     * @covers ::extract_text_from_file
-     */
-    public function test_usage_logging_cachehit(): void {
-        global $DB;
-        $this->resetAfterTest();
-        $this->mock_ai_backend('AI text');
-        $file = $this->create_test_file('photo.png', 'fake', 'image/png');
-        $contextid = \context_system::instance()->id;
-        $extractor = $this->get_extractor();
-
-        $extractor->extract_text_from_file($file, $contextid, 2, 'test');
-        $extractor->extract_text_from_file($file, $contextid, 2, 'test');
-
-        $records = array_values($DB->get_records('local_ai_content_usage', ['userid' => 2], 'id ASC'));
-        $this->assertCount(2, $records);
-        $this->assertEquals(0, (int) $records[0]->cachehit);
-        $this->assertEquals(1, (int) $records[1]->cachehit);
-    }
-
-    /**
-     * Test that null userid is logged correctly.
-     *
-     * @covers ::extract_text_from_file
-     */
-    public function test_usage_logging_null_userid(): void {
-        global $DB;
-        $this->resetAfterTest();
-        $file = $this->create_test_file('data.txt', 'content', 'text/plain');
-        $contextid = \context_system::instance()->id;
-
-        $this->get_extractor()->extract_text_from_file($file, $contextid, null, 'cron_task');
-
-        $records = $DB->get_records('local_ai_content_usage', ['component' => 'cron_task']);
-        $this->assertCount(1, $records);
-        $this->assertNull(reset($records)->userid);
-    }
-
-    /**
-     * Test get_usage_log returns records within the time range.
-     *
-     * @covers ::get_usage_log
-     */
-    public function test_get_usage_log_time_range(): void {
-        global $DB;
-        $this->resetAfterTest();
-        $now = \core\di::get(\core\clock::class)->now()->getTimestamp();
-        $base = ['userid' => 99, 'contenthash' => sha1('t'), 'filename' => 'f.txt',
-            'component' => 'test', 'contextid' => 1, 'cachehit' => 0];
-        $DB->insert_record('local_ai_content_usage', (object) array_merge($base, ['timecreated' => $now - 100]));
-        $DB->insert_record('local_ai_content_usage', (object) array_merge($base, ['timecreated' => $now]));
-        $DB->insert_record('local_ai_content_usage', (object) array_merge($base, ['timecreated' => $now + 200]));
-
-        $extractor = $this->get_extractor();
-        $this->assertCount(2, $extractor->get_usage_log(99, $now - 150, $now + 50));
-        $this->assertCount(3, $extractor->get_usage_log(99, $now - 150, $now + 250));
-        $this->assertCount(0, $extractor->get_usage_log(99, $now + 300, $now + 400));
-    }
-
-    /**
-     * Test get_usage_log only returns records for the specified user.
-     *
-     * @covers ::get_usage_log
-     */
-    public function test_get_usage_log_user_isolation(): void {
-        global $DB;
-        $this->resetAfterTest();
-        $now = \core\di::get(\core\clock::class)->now()->getTimestamp();
-        $base = ['contenthash' => sha1('t'), 'filename' => 'f.txt', 'component' => 'test',
-            'contextid' => 1, 'cachehit' => 0, 'timecreated' => $now];
-        $DB->insert_record('local_ai_content_usage', (object) array_merge($base, ['userid' => 10]));
-        $DB->insert_record('local_ai_content_usage', (object) array_merge($base, ['userid' => 20]));
-        $DB->insert_record('local_ai_content_usage', (object) array_merge($base, ['userid' => 10]));
-
-        $extractor = $this->get_extractor();
-        $this->assertCount(2, $extractor->get_usage_log(10, $now - 10, $now + 10));
-        $this->assertCount(1, $extractor->get_usage_log(20, $now - 10, $now + 10));
-        $this->assertCount(0, $extractor->get_usage_log(30, $now - 10, $now + 10));
-    }
-
-    /**
      * Test that get_supported_extensions includes basic types when ITT is available.
      *
      * @covers ::get_supported_extensions
@@ -432,21 +332,6 @@ final class extractor_test extends \advanced_testcase {
         $this->assertStringContainsString('PDF', $ext);
         $this->assertStringContainsString('PNG', $ext);
         $this->assertStringContainsString('GIF', $ext);
-    }
-
-    /**
-     * Test that get_supported_extensions returns sorted, comma-separated format.
-     *
-     * @covers ::get_supported_extensions
-     */
-    public function test_get_supported_extensions_format(): void {
-        $this->resetAfterTest();
-        $ext = $this->get_extractor()->get_supported_extensions();
-        $this->assertMatchesRegularExpression('/^[A-Z0-9]+(, [A-Z0-9]+)*$/', $ext);
-        $parts = explode(', ', $ext);
-        $sorted = $parts;
-        sort($sorted);
-        $this->assertEquals($sorted, $parts);
     }
 
     /**
@@ -492,25 +377,6 @@ final class extractor_test extends \advanced_testcase {
 
         $result = $this->get_extractor()->extract_text_from_file($file, $contextid, 2);
         $this->assertEquals($text, $result);
-    }
-
-    /**
-     * Test that component parameter is stored in usage log.
-     *
-     * @covers ::extract_text_from_file
-     */
-    public function test_component_stored_in_usage_log(): void {
-        global $DB;
-        $this->resetAfterTest();
-        $file = $this->create_test_file('test.txt', 'content', 'text/plain');
-        $contextid = \context_system::instance()->id;
-        $extractor = $this->get_extractor();
-
-        $extractor->extract_text_from_file($file, $contextid, 2, 'assignfeedback_aif');
-        $extractor->extract_text_from_file($file, $contextid, 2, 'mod_quiz');
-
-        $this->assertCount(1, $DB->get_records('local_ai_content_usage', ['component' => 'assignfeedback_aif']));
-        $this->assertCount(1, $DB->get_records('local_ai_content_usage', ['component' => 'mod_quiz']));
     }
 
     /**

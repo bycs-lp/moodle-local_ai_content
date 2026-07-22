@@ -22,7 +22,7 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-$string['ai_content:useextraction'] = 'Use the AI text extraction service via UI';
+$string['ai_content:testextraction'] = 'Test the AI text extraction service via admin UI';
 $string['aicontent'] = 'AI Content';
 $string['backend'] = 'AI backend';
 $string['backend_core_ai_subsystem'] = 'Moodle Core AI Subsystem';
@@ -31,9 +31,6 @@ $string['backend_local_ai_manager'] = 'Local AI Manager';
 $string['cachettl'] = 'Cache lifetime (days)';
 $string['cachettl_desc'] = 'Number of days to keep extracted text in the cache before cleanup. Set to 0 to disable caching.';
 $string['cannottestextraction'] = 'You do not have permission to use the text extraction test.';
-$string['extractionprompt'] = 'Extraction prompt';
-$string['extractionprompt_desc'] = 'The prompt sent to the AI backend when extracting text from images or documents. The AI receives this instruction together with the encoded file content.';
-$string['extractionprompt_default'] = 'Return the text that is written on the image/document. Do not wrap any explanatory text around. Return only the bare content. If the image/document contains graphics, charts or embedded images, add a precise description of them and document in the extracted text in a clear way that this is an image/graphics/chart description.';
 $string['error_ainotavailable'] = 'AI text extraction service is currently not available.';
 $string['error_airequestfailed'] = 'AI text extraction request failed: {$a}';
 $string['error_cannottestextraction'] = 'You do not have the required capability to test text extraction.';
@@ -41,16 +38,12 @@ $string['error_conversionfailed'] = 'Document conversion to text failed: {$a}';
 $string['error_ittnotsupported'] = 'The configured AI backend does not support image-to-text extraction.';
 $string['error_pdfrenderingunavailable'] = 'PDF page rendering is unavailable because the pdftoppm binary is not configured or not executable.';
 $string['error_unsupportedfiletype'] = 'File type not supported for text extraction: {$a}';
+$string['extractionprompt'] = 'Extraction prompt';
+$string['extractionprompt_default'] = 'Return the text that is written on the image/document. Do not wrap any explanatory text around. Return only the bare content. If the image/document contains graphics, charts or embedded images, add a precise description of them and document in the extracted text in a clear way that this is an image/graphics/chart description.';
+$string['extractionprompt_desc'] = 'The prompt sent to the AI backend when extracting text from images or documents. The AI receives this instruction together with the encoded file content.';
 $string['filename'] = 'File name';
 $string['pluginname'] = 'AI Content Manager';
-$string['privacy:metadata:local_ai_content_usage'] = 'Records of text extraction service usage for audit and GDPR compliance.';
-$string['privacy:metadata:local_ai_content_usage:cachehit'] = 'Whether the extraction result was served from the cache.';
-$string['privacy:metadata:local_ai_content_usage:component'] = 'Plugin that requested the extraction.';
-$string['privacy:metadata:local_ai_content_usage:contenthash'] = 'Content hash of the processed file.';
-$string['privacy:metadata:local_ai_content_usage:contextid'] = 'Context in which the extraction was performed.';
-$string['privacy:metadata:local_ai_content_usage:filename'] = 'Name of the processed file.';
-$string['privacy:metadata:local_ai_content_usage:timecreated'] = 'Time when the extraction was performed.';
-$string['privacy:metadata:local_ai_content_usage:userid'] = 'The user who triggered the text extraction.';
+$string['privacy:metadata'] = 'The AI Content Manager plugin does not store any personal user data.';
 $string['task_cleanupcache'] = 'Clean up expired text extraction cache entries';
 $string['test_extraction'] = 'Test text extraction';
 $string['test_extraction_contenthash'] = 'Content hash';

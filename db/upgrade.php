@@ -34,16 +34,26 @@ function xmldb_local_ai_content_upgrade($oldversion) {
 
     $dbman = $DB->get_manager();
 
-    if ($oldversion < 2026071501) {
-        // Add an index on contextid to speed up GDPR context-based queries.
+    if ($oldversion < 2026072200) {
+        // Drop the usage log table — no longer needed.
         $table = new xmldb_table('local_ai_content_usage');
-        $index = new xmldb_index('idx_contextid', XMLDB_INDEX_NOTUNIQUE, ['contextid']);
-
-        if (!$dbman->index_exists($table, $index)) {
-            $dbman->add_index($table, $index);
+        if ($dbman->table_exists($table)) {
+            $dbman->drop_table($table);
         }
 
-        upgrade_plugin_savepoint(true, 2026071501, 'local', 'ai_content');
+        upgrade_plugin_savepoint(true, 2026072200, 'local', 'ai_content');
+    }
+
+    if ($oldversion < 2026072201) {
+        // Add cachehit field to the cache table.
+        $table = new xmldb_table('local_ai_content_cache');
+        $field = new xmldb_field('cachehit', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'extractedcontent');
+
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2026072201, 'local', 'ai_content');
     }
 
     return true;

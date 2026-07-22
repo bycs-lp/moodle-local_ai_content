@@ -66,7 +66,7 @@ if ($hassiteconfig) {
     $ADMIN->add('local_ai_content_category', new admin_externalpage(
         'local_ai_content_test_extraction',
         get_string('test_extraction', 'local_ai_content'),
-        new moodle_url('/local/ai_content/pages/test_extraction.php'),
-        'local/ai_content:useextraction'
+        new moodle_url('/local/ai_content/test_extraction.php'),
+        'local/ai_content:testextraction'
     ));
 }

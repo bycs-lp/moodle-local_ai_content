@@ -92,7 +92,7 @@ Site administration → Plugins → Local plugins → **AI Content Manager**:
 - **Cache lifetime (days)** – how long extracted text is kept before cleanup.
 - **Test text extraction** – upload a file to verify the configured backend.
 
-The capability `local/ai_content:useextraction` controls who may use the test
+The capability `local/ai_content:testextraction` controls who may use the test
 page.
 
 ### Recommended: Poppler `pdftoppm` for PDF extraction

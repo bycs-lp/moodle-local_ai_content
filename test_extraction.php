@@ -30,7 +30,7 @@ require_login();
 $context = context_system::instance();
 \local_ai_content\extractor::require_can_test_extraction($context);
 
-$PAGE->set_url(new moodle_url('/local/ai_content/pages/test_extraction.php'));
+$PAGE->set_url(new moodle_url('/local/ai_content/test_extraction.php'));
 $PAGE->set_context($context);
 $PAGE->set_title(get_string('test_extraction', 'local_ai_content'));
 $PAGE->set_heading(get_string('test_extraction', 'local_ai_content'));

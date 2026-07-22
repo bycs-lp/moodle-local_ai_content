@@ -27,7 +27,6 @@ namespace local_ai_content\task;
  * @covers     \local_ai_content\task\cleanup_cache
  */
 final class cleanup_cache_test extends \advanced_testcase {
-
     /**
      * Test that expired entries are deleted.
      */
