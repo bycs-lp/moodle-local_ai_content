@@ -26,9 +26,9 @@ use local_ai_content\backend\ai_backend;
  * @copyright  2026 ISB Bayern
  * @author     Andreas Wagner
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \local_ai_content\extractor
+ * @covers     \local_ai_content\document_extractor
  */
-final class extractor_test extends \advanced_testcase {
+final class document_extractor_test extends \advanced_testcase {
     /**
      * Set up test environment.
      */
@@ -40,11 +40,11 @@ final class extractor_test extends \advanced_testcase {
 
     /**
      * Initialize the extractor for testing.
-     * @return extractor
+     * @return document_extractor
      */
-    private function get_extractor(): extractor {
-        $extractor = new extractor();
-        $extractor->set_log_outputmode(extractor::LOG_OUTPUT_NONE);
+    private function get_extractor(): document_extractor {
+        $extractor = new document_extractor();
+        $extractor->set_log_outputmode(document_extractor::LOG_OUTPUT_NONE);
         return $extractor;
     }
 

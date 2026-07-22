@@ -28,9 +28,9 @@ require_once(__DIR__ . '/../../../config.php');
 require_login();
 
 $context = context_system::instance();
-\local_ai_content\extractor::require_can_test_extraction($context);
+\local_ai_content\document_extractor::require_can_test_extraction($context);
 
-$PAGE->set_url(new moodle_url('/local/ai_content/test_extraction.php'));
+$PAGE->set_url(new moodle_url('/local/ai_content/test_document_extraction.php'));
 $PAGE->set_context($context);
 $PAGE->set_title(get_string('test_extraction', 'local_ai_content'));
 $PAGE->set_heading(get_string('test_extraction', 'local_ai_content'));
@@ -54,7 +54,7 @@ if ($form->is_cancelled()) {
         $errormessage = get_string('test_extraction_nofile', 'local_ai_content');
     } else {
         $file = reset($files);
-        $extractor = new \local_ai_content\extractor();
+        $extractor = new \local_ai_content\document_extractor();
 
         // Collect file metadata.
         $fileinfo = new stdClass();

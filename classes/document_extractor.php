@@ -27,14 +27,14 @@ use stored_file;
  * by content hash and usage is logged for audit and GDPR compliance.
  *
  * This class is designed to be resolved through the DI container:
- * $extractor = \core\di::get(\local_ai_content\extractor::class);
+ * $extractor = \core\di::get(\local_ai_content\document_extractor::class);
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
  * @author     Andreas Wagner
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class extractor {
+class document_extractor {
     /** @var string[] Image MIME types that can be sent to AI for text extraction via ITT. */
     private const IMAGE_MIMETYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 

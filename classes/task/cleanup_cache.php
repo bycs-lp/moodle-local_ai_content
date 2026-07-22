@@ -47,9 +47,6 @@ class cleanup_cache extends \core\task\scheduled_task {
         global $DB;
 
         $ttldays = (int) get_config('local_ai_content', 'cachettl');
-        if ($ttldays <= 0) {
-            $ttldays = 90;
-        }
 
         $clock = \core\di::get(\core\clock::class);
         $cutoff = $clock->now()->getTimestamp() - ($ttldays * DAYSECS);
