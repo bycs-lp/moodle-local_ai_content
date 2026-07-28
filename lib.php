@@ -15,17 +15,25 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version file for local_ai_content.
+ * Plugin callbacks for local_ai_content.
  *
  * @package    local_ai_content
- * @copyright  2026 MoodleDach
- * @author     MoodleDach
+ * @copyright  2026 ISB Bayern
+ * @author     Philipp Memmel
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-defined('MOODLE_INTERNAL') || die();
 
-$plugin->version  = 2026072800;
-$plugin->requires = 2025041400;
-$plugin->release = '0.3';
-$plugin->component = 'local_ai_content';
-$plugin->maturity = MATURITY_ALPHA;
+/**
+ * Delete extracted cache content when the last file with a content hash is deleted.
+ *
+ * @param stdClass $file The deleted file record from the files table.
+ */
+function local_ai_content_after_file_deleted(stdClass $file): void {
+    global $DB;
+
+    if ($DB->record_exists('files', ['contenthash' => $file->contenthash])) {
+        return;
+    }
+
+    $DB->delete_records('local_ai_content_cache', ['contenthash' => $file->contenthash]);
+}

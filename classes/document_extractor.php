@@ -425,9 +425,20 @@ class document_extractor {
         try {
             $encodedimages = $this->convert_pdf_to_images($file);
         } catch (\Exception $e) {
-            $this->log("local_ai_content: Failed to convert PDF '{$file->get_filename()}' to images: " . $e->getMessage());
-            // Fallback: try core_files converter.
-            return $this->extract_via_converter($file);
+            $firstexception = $e;
+            $this->log("local_ai_content: Failed to convert PDF '{$file->get_filename()}' to images: "
+                . $firstexception->getMessage());
+
+            // Fall back to converter-based extraction when page rendering is unavailable.
+            try {
+                return $this->extract_via_converter($file);
+            } catch (\Exception $fallbackexception) {
+                $this->log("local_ai_content: Converter fallback failed for '{$file->get_filename()}': "
+                    . $fallbackexception->getMessage());
+                // If also our fallback (moodle document converter API) fails, we want to return the first exception,
+                // because what should really be debugged is why the AI-based extraction did not work.
+                throw $firstexception;
+            }
         }
 
         // No renderable pages is a processing failure, not an empty document.
@@ -530,7 +541,7 @@ class document_extractor {
         $format = 'txt';
 
         if (!$converter->can_convert_storedfile_to($file, $format)) {
-            throw new \moodle_exception('error_conversionfailed', 'local_ai_content', '', $file->get_mimetype());
+            throw new \moodle_exception('error_conversionfailed', 'local_ai_content', '', $file->get_filename());
         }
 
         $conversion = $converter->start_conversion($file, $format);

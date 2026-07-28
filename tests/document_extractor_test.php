@@ -271,6 +271,36 @@ final class document_extractor_test extends \advanced_testcase {
     }
 
     /**
+     * Test that missing pdftoppm throws the first exception if fallback also fails.
+     *
+     * @covers ::extract_text_from_file
+     */
+    public function test_extract_text_from_pdf_without_pdftoppm_uses_fallback(): void {
+        global $CFG;
+
+        $this->resetAfterTest();
+        $oldpath = $CFG->pathtopdftoppm ?? null;
+        $CFG->pathtopdftoppm = '/definitely/not/executable/pdftoppm';
+
+        try {
+            $file = $this->create_test_file('doc.pdf', '%PDF-1.4', 'application/pdf');
+            $contextid = \context_system::instance()->id;
+            try {
+                $this->get_extractor()->extract_text_from_file($file, $contextid, null, 'test');
+                $this->fail('Expected moodle_exception was not thrown.');
+            } catch (\moodle_exception $exception) {
+                $this->assertEquals('error_pdfrenderingunavailable', $exception->errorcode);
+            }
+        } finally {
+            if ($oldpath === null) {
+                unset($CFG->pathtopdftoppm);
+            } else {
+                $CFG->pathtopdftoppm = $oldpath;
+            }
+        }
+    }
+
+    /**
      * Test that results are cached and reused.
      *
      * @covers ::extract_text_from_file
