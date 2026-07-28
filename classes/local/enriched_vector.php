@@ -48,6 +48,12 @@ class enriched_vector {
     /** @var int The total number of chunks the content has been split into. */
     private int $maxchunks = 0;
 
+    /** @var string The vector-level locator of this chunk (e.g. a page number or media timestamp). */
+    private string $locator = '';
+
+    /** @var string An optional per-chunk deep link pointing directly at this chunk's location. */
+    private string $url = '';
+
     /**
      * Private constructor to enforce creation via {@see self::create()}.
      */
@@ -62,6 +68,8 @@ class enriched_vector {
      * @param int $sourceid the local_ai_content_sources record ID this vector belongs to
      * @param int $chunk the index of this chunk within the content it belongs to
      * @param int $maxchunks the total number of chunks the content has been split into
+     * @param string $locator the vector-level locator of this chunk (e.g. a page number or media timestamp)
+     * @param string $url an optional per-chunk deep link pointing directly at this chunk's location
      * @return self the created enriched vector object
      */
     public static function create(
@@ -69,7 +77,9 @@ class enriched_vector {
         string $content,
         int $sourceid,
         int $chunk,
-        int $maxchunks
+        int $maxchunks,
+        string $locator = '',
+        string $url = ''
     ): self {
         $enrichedvector = new self();
         $enrichedvector->set_vector($vector);
@@ -77,6 +87,8 @@ class enriched_vector {
         $enrichedvector->set_sourceid($sourceid);
         $enrichedvector->set_chunk($chunk);
         $enrichedvector->set_maxchunks($maxchunks);
+        $enrichedvector->set_locator($locator);
+        $enrichedvector->set_url($url);
         return $enrichedvector;
     }
 
@@ -168,5 +180,41 @@ class enriched_vector {
      */
     public function set_maxchunks(int $maxchunks): void {
         $this->maxchunks = $maxchunks;
+    }
+
+    /**
+     * Standard getter.
+     *
+     * @return string the vector-level locator of this chunk (e.g. a page number or media timestamp)
+     */
+    public function get_locator(): string {
+        return $this->locator;
+    }
+
+    /**
+     * Standard setter.
+     *
+     * @param string $locator the vector-level locator of this chunk (e.g. a page number or media timestamp)
+     */
+    public function set_locator(string $locator): void {
+        $this->locator = $locator;
+    }
+
+    /**
+     * Standard getter.
+     *
+     * @return string the optional per-chunk deep link pointing directly at this chunk's location
+     */
+    public function get_url(): string {
+        return $this->url;
+    }
+
+    /**
+     * Standard setter.
+     *
+     * @param string $url the optional per-chunk deep link pointing directly at this chunk's location
+     */
+    public function set_url(string $url): void {
+        $this->url = $url;
     }
 }

@@ -26,6 +26,8 @@
 $string['aicontent'] = 'AI Content';
 $string['allowindexing'] = "Allow Indexing
 ";
+$string['ai_content:managesources'] = 'Manage and index AI content sources';
+$string['ai_content:usesource'] = 'Use AI content sources for retrieval';
 $string['pluginname'] = 'AI Content Manager';
 $string['ragcontent'] = 'Grounding Context';
 $string['ragcontent_help'] = 'Select the activities you want to use to ground the AI generated content.
@@ -35,6 +37,7 @@ These sources may be scanned and provide additional context to the user prompt.'
 // RAG Contexts form element strings.
 $string['ragcontexts'] = 'Select Activities';
 $string['ragcontextsdesc'] = 'Select the activities you want to include in the RAG context.';
+$string['ragsourcesheading'] = 'Sources:';
 $string['section'] = 'Section {$a}';
 $string['selectall'] = 'Select all';
 $string['selectnone'] = 'Select none';

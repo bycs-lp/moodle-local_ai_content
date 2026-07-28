@@ -66,7 +66,7 @@ function local_ai_content_coursemodule_edit_post_actions($data, $course) {
               $source->set_contextid($context->id);
               $source->set_sourcetype(source::TYPE_MODULE);
               $source->set_allowindex(!empty($data->allowindexing));
-              $source->set_rag(true);
+              $source->set_enabled(true);
               $source->store();
        }
        $tx->allow_commit();

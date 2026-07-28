@@ -15,11 +15,11 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * capabilities for local_ai_manager
+ * Capabilities for local_ai_content.
  *
- * @package    local_ai_manager
- * @copyright  ISB Bayern, 2024
- * @author     Dr. Peter Mayer
+ * @package    local_ai_content
+ * @copyright  2026 ISB Bayern
+ * @author     Philipp Memmel
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -27,4 +27,26 @@ defined('MOODLE_INTERNAL') || die();
 
 $capabilities = [
 
+    // Allows a user to retrieve (use) sources for RAG in a given context.
+    'local/ai_content:usesource' => [
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_MODULE,
+        'archetypes' => [
+            'student' => CAP_ALLOW,
+            'teacher' => CAP_ALLOW,
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
+        ],
+    ],
+
+    // Allows a user to create, edit and index sources in a given context.
+    'local/ai_content:managesources' => [
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_MODULE,
+        'archetypes' => [
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
+        ],
+        'riskbitmask' => RISK_CONFIG,
+    ],
 ];

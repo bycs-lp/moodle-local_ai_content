@@ -126,5 +126,90 @@ function xmldb_local_ai_content_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026070800, 'local', 'ai_content');
     }
 
+    if ($oldversion < 2026070900) {
+        $sourcetable = new \xmldb_table('local_ai_content_sources');
+
+        // Rename the "rag" field to "enabled".
+        $ragfield = new \xmldb_field('rag', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '1', 'content');
+        if ($dbman->field_exists($sourcetable, $ragfield)) {
+            $dbman->rename_field($sourcetable, $ragfield, 'enabled');
+        } else {
+            $enabledfield = new \xmldb_field('enabled', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '1', 'content');
+            if (!$dbman->field_exists($sourcetable, $enabledfield)) {
+                $dbman->add_field($sourcetable, $enabledfield);
+            }
+        }
+
+        // Add the new source metadata fields.
+        $newfields = [
+            new \xmldb_field('description', XMLDB_TYPE_TEXT, null, null, null, null, null, 'name'),
+            new \xmldb_field('externalfilter', XMLDB_TYPE_TEXT, null, null, null, null, null, 'content'),
+            new \xmldb_field('vecstoreid', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'externalfilter'),
+            new \xmldb_field('embeddingmodel', XMLDB_TYPE_CHAR, '255', null, null, null, null, 'vecstoreid'),
+            new \xmldb_field('contenthash', XMLDB_TYPE_CHAR, '64', null, null, null, null, 'embeddingmodel'),
+        ];
+        foreach ($newfields as $newfield) {
+            if (!$dbman->field_exists($sourcetable, $newfield)) {
+                $dbman->add_field($sourcetable, $newfield);
+            }
+        }
+
+        // Add the vecstoreid foreign key.
+        $vecstorekey = new \xmldb_key('vecstoreid', XMLDB_KEY_FOREIGN, ['vecstoreid'], 'local_ai_manager_vecstore', ['id']);
+        $dbman->add_key($sourcetable, $vecstorekey);
+
+        // Add the sourcetype index.
+        $sourcetypeindex = new \xmldb_index('sourcetype', XMLDB_INDEX_NOTUNIQUE, ['sourcetype']);
+        if (!$dbman->index_exists($sourcetable, $sourcetypeindex)) {
+            $dbman->add_index($sourcetable, $sourcetypeindex);
+        }
+
+        // Create the new junction table local_ai_content_ctx_sources.
+        $ctxsourcestable = new \xmldb_table('local_ai_content_ctx_sources');
+        $ctxsourcestable->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $ctxsourcestable->add_field('contextid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $ctxsourcestable->add_field('sourceid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $ctxsourcestable->add_field('usermodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $ctxsourcestable->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $ctxsourcestable->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $ctxsourcestable->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $ctxsourcestable->add_key('sourceid', XMLDB_KEY_FOREIGN, ['sourceid'], 'local_ai_content_sources', ['id']);
+        $ctxsourcestable->add_key('usermodified', XMLDB_KEY_FOREIGN, ['usermodified'], 'user', ['id']);
+        $ctxsourcestable->add_index('contextid_sourceid', XMLDB_INDEX_UNIQUE, ['contextid', 'sourceid']);
+        if (!$dbman->table_exists($ctxsourcestable)) {
+            $dbman->create_table($ctxsourcestable);
+        }
+
+        // Migrate the comma-separated selections into the new junction table.
+        $selectiontable = new \xmldb_table('local_ai_content_sourceselection');
+        if ($dbman->table_exists($selectiontable)) {
+            $now = time();
+            $selections = $DB->get_recordset('local_ai_content_sourceselection');
+            foreach ($selections as $selection) {
+                $sourceids = array_filter(array_map('intval', explode(',', (string) ($selection->sourceids ?? ''))));
+                foreach ($sourceids as $sourceid) {
+                    $exists = $DB->record_exists('local_ai_content_ctx_sources',
+                        ['contextid' => $selection->contextid, 'sourceid' => $sourceid]);
+                    if ($exists) {
+                        continue;
+                    }
+                    $DB->insert_record('local_ai_content_ctx_sources', (object) [
+                        'contextid' => $selection->contextid,
+                        'sourceid' => $sourceid,
+                        'usermodified' => $selection->usermodified ?? 0,
+                        'timecreated' => $selection->timecreated ?? $now,
+                        'timemodified' => $selection->timemodified ?? $now,
+                    ]);
+                }
+            }
+            $selections->close();
+
+            // Drop the obsolete selection table.
+            $dbman->drop_table($selectiontable);
+        }
+
+        upgrade_plugin_savepoint(true, 2026070900, 'local', 'ai_content');
+    }
+
     return true;
 }

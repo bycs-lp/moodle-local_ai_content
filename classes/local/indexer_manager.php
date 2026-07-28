@@ -23,7 +23,11 @@ use local_ai_manager\local\connector_factory;
 require_once($CFG->dirroot . '/course/lib.php');
 
 /**
- * Manages the indexing of course module content into the vector store.
+ * Manages the indexing of Moodle content into the vector store.
+ *
+ * Supports module sources (extracted via content processors) and document sources (indexed directly from their
+ * stored plain-text content). External sources are never indexed here: their vectors already live in a vector
+ * store instance and are only referenced.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
@@ -31,8 +35,8 @@ require_once($CFG->dirroot . '/course/lib.php');
  */
 class indexer_manager {
 
-    /** @var \context Context */
-    protected $context;
+    /** @var \context Context the indexing is triggered for. */
+    protected \context $context;
 
     /** @var \local_ai_manager\manager AI manager instance for embedding requests. */
     protected $ai_manager;
@@ -40,65 +44,132 @@ class indexer_manager {
     /**
      * Constructor.
      *
-     * @param int $contextid The course context ID.
+     * @param int $contextid Any Moodle context ID (system, category, course or module).
      * @param \local_ai_manager\manager $ai_manager AI manager instance for embedding requests.
      */
     public function __construct($contextid, $ai_manager) {
         $this->context = \context::instance_by_id($contextid);
-        if ($this->context->contextlevel !== CONTEXT_COURSE) {
-            throw new \coding_exception('Context must be a course context.');
-        }
         $this->ai_manager = $ai_manager;
     }
 
     /**
-     * Index all course modules that have allowindex = 1.
+     * Index all sources associated with this context that are allowed to be indexed.
+     *
+     * Module sources are indexed for the course the context belongs to; document sources attached directly to
+     * this context are indexed from their stored content.
      */
     public function index(): void {
-        $course = get_course($this->context->instanceid);
-        [$rawcms, $sources] = source::get_module_sources_for_course($course);
+        // Index module sources if the context belongs to a course.
+        $coursecontext = $this->context->get_course_context(false);
+        if ($coursecontext) {
+            $course = get_course($coursecontext->instanceid);
+            [$rawcms, $sources] = source::get_module_sources_for_course($course);
 
-        foreach ($sources as $source) {
-            $cmid = $source->get_cmid();
-            if (!isset($rawcms[$cmid])) {
-                continue;
-            }
-            $rawcm = $rawcms[$cmid];
-            $cm = get_coursemodule_from_id($rawcm->mod, $rawcm->cm, 0, false, MUST_EXIST);
-            $processor = $this->get_content_processor($rawcm->mod, $cm);
-            if (!$processor) {
-                continue;
-            }
-
-            $content = $processor->extract();
-            $sourceid = $source->get_id();
-
-            if (method_exists($processor, 'get_chunks')) {
-                $chunks = $processor->get_chunks($content);
-                if ($chunks) {
-                    $chunkcount = 1;
-                    $maxchunks = count($chunks);
-                    $enrichedvectors = [];
-                    foreach ($chunks as $chunk) {
-                        $vectorrequest = $this->ai_manager->perform_request($chunk, 'local_ai_content', $this->context->id);
-                        $enrichedvectors[] = enriched_vector::create(
-                            $vectorrequest->get_content(),
-                            $chunk,
-                            $sourceid,
-                            $chunkcount,
-                            $maxchunks
-                        );
-                        $chunkcount++;
-                    }
-                    \core\di::get(connector_factory::class)->get_primary_vecstore()->insert_embeddings($enrichedvectors);
+            foreach ($sources as $source) {
+                if (!$source->get_allowindex()) {
+                    continue;
                 }
-            } else {
-                // Content processor does not support chunking — store as single vector.
-                $vectorrequest = $this->ai_manager->perform_request($content, 'local_ai_content', $this->context->id);
-                $ev = enriched_vector::create($vectorrequest->get_content(), $content, $sourceid, 1, 1);
-                \core\di::get(connector_factory::class)->get_primary_vecstore()->insert_embeddings([$ev]);
+                $cmid = $source->get_cmid();
+                if (!isset($rawcms[$cmid])) {
+                    continue;
+                }
+                $rawcm = $rawcms[$cmid];
+                $cm = get_coursemodule_from_id($rawcm->mod, $rawcm->cm, 0, false, MUST_EXIST);
+                $processor = $this->get_content_processor($rawcm->mod, $cm);
+                if (!$processor) {
+                    continue;
+                }
+
+                $content = $processor->extract();
+                $chunks = method_exists($processor, 'get_chunks') ? $processor->get_chunks($content) : [$content];
+                $this->index_source($source, $chunks ?: [$content]);
             }
         }
+
+        // Index document sources attached directly to this context.
+        $documentsources = source::get_records_by_contextids([$this->context->id]);
+        foreach ($documentsources as $source) {
+            if ($source->get_sourcetype() !== source::TYPE_DOCUMENT) {
+                continue;
+            }
+            if (!$source->get_allowindex()) {
+                continue;
+            }
+            $content = (string) $source->get_content();
+            if ($content === '') {
+                continue;
+            }
+            $this->index_source($source, [$content]);
+        }
+    }
+
+    /**
+     * Embeds the given content chunks of a source and stores them in the source's vector store instance.
+     *
+     * Records the used embedding model, the content hash and the indexing timestamp on the source record.
+     *
+     * @param source $source The source to index.
+     * @param string[] $chunks The content chunks to embed and store.
+     */
+    protected function index_source(source $source, array $chunks): void {
+        $chunks = array_values(array_filter(array_map('trim', $chunks), static fn(string $c): bool => $c !== ''));
+        if (empty($chunks)) {
+            return;
+        }
+
+        $sourceid = $source->get_id();
+        $maxchunks = count($chunks);
+        $embeddingmodel = '';
+        $enrichedvectors = [];
+        $chunkcount = 1;
+        foreach ($chunks as $chunk) {
+            $vectorrequest = $this->ai_manager->perform_request($chunk, 'local_ai_content', $this->context->id);
+            if ($embeddingmodel === '') {
+                $embeddingmodel = $vectorrequest->get_modelinfo();
+            }
+            $enrichedvectors[] = enriched_vector::create(
+                $vectorrequest->get_content(),
+                $chunk,
+                $sourceid,
+                $chunkcount,
+                $maxchunks
+            );
+            $chunkcount++;
+        }
+
+        $vecstore = $this->get_vecstore_for_source($source);
+        if ($vecstore === null) {
+            return;
+        }
+        $vecstore->insert_embeddings($enrichedvectors);
+
+        // Persist indexing metadata on the source record.
+        $clock = \core\di::get(\core\clock::class);
+        $source->set_embeddingmodel($embeddingmodel);
+        $source->set_contenthash(hash('sha256', implode("\n", $chunks)));
+        $source->set_lastindexed($clock->time());
+        $source->store();
+    }
+
+    /**
+     * Resolves the vector store driver a source's vectors should be stored in.
+     *
+     * Uses the source's explicitly configured vector store instance if present, otherwise falls back to the
+     * tenant's primary vector store.
+     *
+     * @param source $source The source whose target vector store is resolved.
+     * @return ?\local_ai_manager\base_vecstore The vector store driver, or null if none is available.
+     */
+    protected function get_vecstore_for_source(source $source): ?\local_ai_manager\base_vecstore {
+        $connectorfactory = \core\di::get(connector_factory::class);
+        $vecstoreid = $source->get_vecstoreid();
+        if ($vecstoreid) {
+            $vecstorefactory = \core\di::get(\local_ai_manager\local\vecstore_factory::class);
+            if ($vecstorefactory->instance_exists($vecstoreid)) {
+                return $vecstorefactory->get_vecstore_by_id($vecstoreid);
+            }
+        }
+        return $connectorfactory->get_primary_vecstore();
     }
 
     /**

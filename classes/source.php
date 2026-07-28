@@ -17,6 +17,7 @@
 namespace local_ai_content;
 
 use core_course\modinfo;
+use local_ai_content\local\source_citation;
 
 /**
  * Wrapper class for local_ai_content_sources records.
@@ -31,6 +32,9 @@ class source {
 
     /** @var string Source type for manually entered documents. */
     public const TYPE_DOCUMENT = 'document';
+
+    /** @var string Source type for external content already present in a vector store. */
+    public const TYPE_EXTERNAL = 'external';
 
     /** @var ?\stdClass Raw DB record. */
     protected ?\stdClass $record = null;
@@ -50,11 +54,29 @@ class source {
     /** @var ?string Optional source display name. */
     protected ?string $name = null;
 
+    /** @var ?string Optional source description. */
+    protected ?string $description = null;
+
     /** @var ?string Optional plain-text content for document sources. */
     protected ?string $content = null;
 
+    /** @var ?string Optional JSON filter identifying the vectors of an external source. */
+    protected ?string $externalfilter = null;
+
+    /** @var ?source_citation Optional source-level citation metadata. */
+    protected ?source_citation $citation = null;
+
+    /** @var ?int Vector store instance id (local_ai_manager_vecstore.id) holding this source's vectors. */
+    protected ?int $vecstoreid = null;
+
+    /** @var ?string Name of the embedding model used to index this source. */
+    protected ?string $embeddingmodel = null;
+
+    /** @var ?string SHA-256 of the last indexed content, used for change detection. */
+    protected ?string $contenthash = null;
+
     /** @var bool Whether this source participates in RAG retrieval. */
-    protected bool $rag = true;
+    protected bool $enabled = true;
 
     /** @var bool Whether this source can be indexed. */
     protected bool $allowindex = false;
@@ -106,8 +128,14 @@ class source {
         $record->sourcetype = $this->sourcetype;
         $record->cmid = $this->cmid;
         $record->name = $this->name;
+        $record->description = $this->description;
         $record->content = $this->content;
-        $record->rag = $this->rag ? 1 : 0;
+        $record->externalfilter = $this->externalfilter;
+        $record->citation = $this->citation !== null ? $this->citation->to_json() : null;
+        $record->vecstoreid = $this->vecstoreid;
+        $record->embeddingmodel = $this->embeddingmodel;
+        $record->contenthash = $this->contenthash;
+        $record->enabled = $this->enabled ? 1 : 0;
         $record->allowindex = $this->allowindex ? 1 : 0;
         $record->lastindexed = $this->lastindexed;
         $record->usermodified = $this->usermodified ?: (int)($USER->id ?? 0);
@@ -184,6 +212,48 @@ class source {
     }
 
     /**
+     * Retrieve source instances attached to any of the given context ids.
+     *
+     * @param int[] $contextids Moodle context ids.
+     * @return self[]
+     */
+    public static function get_records_by_contextids(array $contextids): array {
+        global $DB;
+
+        $contextids = array_values(array_unique(array_filter(array_map('intval', $contextids))));
+        if (empty($contextids)) {
+            return [];
+        }
+        $records = $DB->get_records_list('local_ai_content_sources', 'contextid', $contextids);
+        $instances = [];
+        foreach ($records as $record) {
+            $instances[] = self::from_record($record);
+        }
+        return $instances;
+    }
+
+    /**
+     * Retrieve source instances by their record ids.
+     *
+     * @param int[] $ids local_ai_content_sources record ids.
+     * @return self[] Indexed by record id.
+     */
+    public static function get_records_by_ids(array $ids): array {
+        global $DB;
+
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        if (empty($ids)) {
+            return [];
+        }
+        $records = $DB->get_records_list('local_ai_content_sources', 'id', $ids);
+        $instances = [];
+        foreach ($records as $record) {
+            $instances[(int) $record->id] = self::from_record($record);
+        }
+        return $instances;
+    }
+
+    /**
      * Build wrapper object from DB record.
      *
      * @param \stdClass $record Database record.
@@ -207,8 +277,14 @@ class source {
         $this->sourcetype = (string)$record->sourcetype;
         $this->cmid = isset($record->cmid) ? (int)$record->cmid : null;
         $this->name = $record->name ?? null;
+        $this->description = $record->description ?? null;
         $this->content = $record->content ?? null;
-        $this->rag = !empty($record->rag);
+        $this->externalfilter = $record->externalfilter ?? null;
+        $this->citation = source_citation::from_json($record->citation ?? null);
+        $this->vecstoreid = isset($record->vecstoreid) ? (int)$record->vecstoreid : null;
+        $this->embeddingmodel = $record->embeddingmodel ?? null;
+        $this->contenthash = $record->contenthash ?? null;
+        $this->enabled = !empty($record->enabled);
         $this->allowindex = !empty($record->allowindex);
         $this->lastindexed = (int)($record->lastindexed ?? 0);
         $this->usermodified = (int)($record->usermodified ?? 0);
@@ -251,6 +327,16 @@ class source {
         $this->allowindex = $allowindex;
     }
 
+    /** @return int */
+    public function get_lastindexed(): int {
+        return $this->lastindexed;
+    }
+
+    /** @param int $lastindexed */
+    public function set_lastindexed(int $lastindexed): void {
+        $this->lastindexed = $lastindexed;
+    }
+
     /** @return string */
     public function get_sourcetype(): string {
         return $this->sourcetype;
@@ -262,13 +348,13 @@ class source {
     }
 
     /** @return bool */
-    public function get_rag(): bool {
-        return $this->rag;
+    public function get_enabled(): bool {
+        return $this->enabled;
     }
 
-    /** @param bool $rag */
-    public function set_rag(bool $rag): void {
-        $this->rag = $rag;
+    /** @param bool $enabled */
+    public function set_enabled(bool $enabled): void {
+        $this->enabled = $enabled;
     }
 
     /** @return ?string */
@@ -282,6 +368,16 @@ class source {
     }
 
     /** @return ?string */
+    public function get_description(): ?string {
+        return $this->description;
+    }
+
+    /** @param ?string $description */
+    public function set_description(?string $description): void {
+        $this->description = $description;
+    }
+
+    /** @return ?string */
     public function get_content(): ?string {
         return $this->content;
     }
@@ -289,5 +385,95 @@ class source {
     /** @param ?string $content */
     public function set_content(?string $content): void {
         $this->content = $content;
+    }
+
+    /** @return ?string */
+    public function get_externalfilter(): ?string {
+        return $this->externalfilter;
+    }
+
+    /** @param ?string $externalfilter */
+    public function set_externalfilter(?string $externalfilter): void {
+        $this->externalfilter = $externalfilter;
+    }
+
+    /** @return ?int */
+    public function get_vecstoreid(): ?int {
+        return $this->vecstoreid;
+    }
+
+    /** @param ?int $vecstoreid */
+    public function set_vecstoreid(?int $vecstoreid): void {
+        $this->vecstoreid = $vecstoreid;
+    }
+
+    /** @return ?string */
+    public function get_embeddingmodel(): ?string {
+        return $this->embeddingmodel;
+    }
+
+    /** @param ?string $embeddingmodel */
+    public function set_embeddingmodel(?string $embeddingmodel): void {
+        $this->embeddingmodel = $embeddingmodel;
+    }
+
+    /** @return ?string */
+    public function get_contenthash(): ?string {
+        return $this->contenthash;
+    }
+
+    /** @param ?string $contenthash */
+    public function set_contenthash(?string $contenthash): void {
+        $this->contenthash = $contenthash;
+    }
+
+    /** @return ?source_citation */
+    public function get_citation(): ?source_citation {
+        return $this->citation;
+    }
+
+    /** @param ?source_citation $citation */
+    public function set_citation(?source_citation $citation): void {
+        $this->citation = $citation;
+    }
+
+    /**
+     * Returns the citation to display for this source, deriving sensible defaults from the source itself.
+     *
+     * The stored source-level citation (if any) always takes precedence. Missing fields are filled from the
+     * source: an empty title falls back to the source name, and for internal module sources an empty URL is
+     * derived from the related course module. External sources are expected to carry their own citation.
+     *
+     * @return source_citation the effective citation (may still be empty if nothing could be derived)
+     */
+    public function get_effective_citation(): source_citation {
+        $citation = $this->citation ?? source_citation::create();
+
+        if ($citation->get_title() === '' && !empty($this->name)) {
+            $citation->set_title((string) $this->name);
+        }
+
+        if ($citation->get_url() === '' && $this->sourcetype === self::TYPE_MODULE && !empty($this->cmid)) {
+            $url = $this->derive_module_url($this->cmid);
+            if ($url !== '') {
+                $citation->set_url($url);
+            }
+        }
+
+        return $citation;
+    }
+
+    /**
+     * Derives the view URL of a course module from its id.
+     *
+     * @param int $cmid The course module id.
+     * @return string The module view URL, or an empty string if it could not be derived.
+     */
+    protected function derive_module_url(int $cmid): string {
+        $cm = get_coursemodule_from_id('', $cmid, 0, false, IGNORE_MISSING);
+        if (!$cm) {
+            return '';
+        }
+        return (new \moodle_url('/mod/' . $cm->modname . '/view.php', ['id' => $cm->id]))->out(false);
     }
 }
