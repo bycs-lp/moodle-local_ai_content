@@ -1,135 +1,144 @@
 # moodle-local_ai_content
 
-Central text extraction service for Moodle files.
+Utility and service plugin for AI-related content handling in Moodle.
 
-`local_ai_content` extracts text from various file types (plain text, images,
-PDFs and office documents) using a configurable AI backend or Moodle's document
-converters. Results are cached by content hash to avoid repeated expensive AI
-calls, and every extraction is logged for auditing and GDPR compliance.
+`local_ai_content` is designed as a reusable foundation for other plugins that
+need to process content for AI workflows. It provides shared service interfaces,
+centralized processing logic and common operational features (cache, logging,
+privacy handling), so consuming plugins do not need to reimplement the same
+infrastructure.
 
-## Features
+At the moment, the plugin ships with one production-ready service:
+**text extraction from Moodle files**.
 
-- **Unified extraction API** – a single `extractor` service that other plugins
-  can consume via the DI container.
-- **Pluggable AI backends** – `local_ai_manager` (ITT purpose) or the Moodle
-  core AI subsystem, selectable in the plugin settings.
-- **Content-hash cache** – identical files share one cache entry; a scheduled
-  task cleans up entries that exceed the configured TTL.
-- **Usage logging & privacy** – full GDPR provider (export & delete) for the
-  usage log.
-- **Admin test page** – upload a file and inspect the extraction result,
-  metadata and processing log.
+## Positioning
 
-## Supported file types
+- **Service plugin for other plugins** - not a standalone end-user feature plugin.
+- **AI content utility layer** - central place for content preprocessing
+  capabilities used by AI-enabled Moodle plugins.
 
-- **Text formats** – read directly, no AI required:
-  `text/plain`, `text/html`, `text/xml`, `text/markdown`, `text/rtf`,
-  `text/csv`.
-- **Images** (PNG, JPEG, WebP, GIF) – via AI image-to-text (ITT), when the
-  backend provides ITT.
-- **PDF** – via native backend support or page-by-page rendering via Poppler
-  `pdftoppm` plus ITT; falls back to a document converter if available.
-- **Office documents** – via enabled `core_files` converters. Candidate
-  extensions checked: DOC, DOCX, RTF, ODT, XLS, XLSX, ODS, PPT, PPTX, ODP,
-  HTML, CSV.
-- **Connector-native types** – any additional MIME types the configured AI
-  backend declares as natively supported.
+## Currently available service
 
-The actual availability of images, PDF and office formats depends on the
-configured AI backend (ITT capability) and the installed `core_files`
-converters. Use the admin test page or `extractor::get_supported_extensions()`
-to see what is currently available on your site.
+### Text extraction service
 
-## Usage
+The text extraction service reads textual content from different file types
+(plain text, images, PDFs, office documents) using a configurable AI backend
+and Moodle document conversion capabilities where required.
+
+Key behavior:
+
+- **Unified extraction API** via `\local_ai_content\extractor`.
+- **Pluggable backend selection** (`local_ai_manager` ITT purpose or Moodle core
+  AI subsystem, based on plugin settings).
+- **Content-hash caching** to avoid repeated expensive extraction runs.
+- **Admin test page** to validate extraction behavior for current site config.
+
+## Typical integration
+
+Consumer plugins resolve the service via DI and call the extractor:
 
 ```php
 $extractor = \core\di::get(\local_ai_content\extractor::class);
 $text = $extractor->extract_text_from_file($file, $contextid, $userid, 'your_component');
 ```
 
-## Error handling
+The `your_component` value should identify the caller component for traceability
+in logging/auditing.
 
-`extract_text_from_file()` follows a strict contract: it returns an **empty
-string only when the document genuinely has no extractable content**. Every
-actual failure raises a `moodle_exception`. Callers should therefore wrap the
-call in a `try/catch` and treat an empty string as “document without content”,
-not as an error.
+## Supported file types (text extraction)
 
-### Returns an empty string (genuine emptiness)
+- **Text formats** - direct read, no AI required:
+  `text/plain`, `text/html`, `text/xml`, `text/markdown`, `text/rtf`,
+  `text/csv`.
+- **Images** (PNG, JPEG, WebP, GIF) - via AI image-to-text when supported by
+  the configured backend.
+- **PDF** - via backend-native handling or PDF page rendering (`pdftoppm`) plus
+  image-to-text; converter fallback if available.
+- **Office documents** - via enabled `core_files` converters. Candidate
+  extensions include DOC, DOCX, RTF, ODT, XLS, XLSX, ODS, PPT, PPTX, ODP,
+  HTML, CSV.
+- **Connector-native types** - additional MIME types declared by the configured
+  backend.
 
-- An empty plain-text file.
-- A document that converts successfully but contains no text.
-- An image or connector-native file for which the AI returns no text.
-- A PDF whose pages are all processed successfully but contain no text.
+Availability depends on backend capabilities and server converter setup. Use the
+admin test page or `extractor::get_supported_extensions()` to inspect the
+current effective support.
 
-### Throws a `moodle_exception`
+## Error contract (text extraction)
 
-| Situation | Error string |
-|-----------|--------------|
-| File type not supported by any extraction path | `error_unsupportedfiletype` |
-| AI backend unavailable / request failed (image or native type) | `error_ainotavailable`, `error_airequestfailed` |
-| Selected backend cannot do image-to-text (e.g. core AI) | `error_ittnotsupported` |
-| Document converter cannot convert, does not complete, or yields no file | `error_conversionfailed` |
-| PDF rendering produced no pages | `error_conversionfailed` |
-| At least one PDF page fails during AI extraction (even on partial success) | the first backend exception |
-| PDF page rendering unavailable because `pdftoppm` is not configured/executable | `error_pdfrenderingunavailable` (caught internally, falls back to the converter) |
+`extract_text_from_file()` returns an empty string **only** when content is
+truly empty/unextractable as text, and throws `moodle_exception` for actual
+processing failures.
 
-### Internal fallbacks (no exception surfaced)
+Callers should therefore:
 
-- Native PDF extraction failure → falls back to page-by-page image rendering.
-- `pdftoppm` unavailable or rendering failure → falls back to the
-  `core_files` converter (which then either succeeds or throws
-  `error_conversionfailed`).
+- handle empty string as "no text content" (not an error), and
+- use `try/catch` for operational failures.
 
-Successful results are cached; empty results are **not** cached and are
-recomputed on the next request.
+Representative error strings include:
+
+- `error_unsupportedfiletype`
+- `error_ainotavailable`
+- `error_airequestfailed`
+- `error_ittnotsupported`
+- `error_conversionfailed`
+- `error_pdfrenderingunavailable`
 
 ## Configuration
 
-Site administration → Plugins → Local plugins → **AI Content Manager**:
+Site administration -> Plugins -> Local plugins -> **AI Content Manager**:
 
-- **AI backend** – choose the backend used for image/document extraction.
-- **Cache lifetime (days)** – how long extracted text is kept before cleanup.
-- **Test text extraction** – upload a file to verify the configured backend.
+- **AI backend** - backend used by extraction paths that require AI.
+- **Cache lifetime (days)** - retention for extracted text cache entries.
+- **Test text extraction** - upload and inspect extraction behavior.
 
-The capability `local/ai_content:testextraction` controls who may use the test
-page.
+Capability for test page access:
 
-### Recommended: Poppler `pdftoppm` for PDF extraction
+- `local/ai_content:testextraction`
 
-For reliable PDF text extraction it is strongly recommended to install the
-**Poppler `pdftoppm`** binary on the server. The extractor uses it to render
-PDF pages to PNG images (150 DPI) which are then processed by the AI backend
-via image-to-text (ITT).
+## PDF rendering recommendation
 
-**Installation:**
+For reliable PDF extraction quality, install Poppler `pdftoppm`.
 
-On Debian/Ubuntu:
+Debian/Ubuntu:
 
 ```bash
 sudo apt-get install poppler-utils
 ```
 
-On RHEL/CentOS/Fedora:
+RHEL/CentOS/Fedora:
 
 ```bash
 sudo dnf install poppler-utils
 ```
 
-**Global admin setting:**
+Configure in:
 
-Site administration → Server → System paths → **Path to pdftoppm**
+Site administration -> Server -> System paths -> **Path to pdftoppm**
 
-This corresponds to `$CFG->pathtopdftoppm`. If left empty, the plugin assumes
-`pdftoppm` is available in the system `PATH`. If a path is configured but does
-not point to an executable file, PDF extraction will fail with
-`error_pdfrenderingunavailable`.
+This maps to `$CFG->pathtopdftoppm`. If not configured, `pdftoppm` is expected
+in system `PATH`.
 
-Without a working `pdftoppm` binary the plugin falls back to the `core_files`
-document converter, which may yield lower-quality results or fail entirely
-depending on the server configuration.
+## Roadmap direction
 
-## License
+`local_ai_content` is intended to host additional reusable AI content services
+in the future (for example, normalization, chunking, metadata enrichment, or
+other preprocessing utilities), while keeping a stable service-plugin contract
+for consuming plugins.
 
-GNU GPL v3 or later.
+## License ##
 
+2026, ISB Bayern
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
