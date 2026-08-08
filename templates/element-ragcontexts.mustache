@@ -1,0 +1,125 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template local_ai_content/element-ragcontexts
+
+    Template for the ragcontexts form element.
+
+    Context variables required for this template:
+    * sections
+        * id
+        * name
+        * hasactivities
+        * activities
+            * cmid
+            * name
+            * checked
+            * sectionid
+            * subsectionid
+        * subsections
+            * id
+            * name
+            * activities
+                * cmid
+                * name
+                * checked
+                * sectionid
+                * subsectionid
+
+    Example context (json):
+    {
+        label: "Example label",
+        "element": {
+            "sections": [
+                {
+                    "id": 1,
+                    "name": "General",
+                    "hasactivities": true,
+                    "activities": [
+                        {
+                            "cmid": 10,
+                            "name": "Introduction Forum",
+                            "checked": true,
+                            "sectionid": 1,
+                            "subsectionid": null
+                        }
+                    ],
+                    "subsections": []
+                }
+            ]
+        }
+
+    }
+}}
+{{< core_form/element-template }}
+    {{$element}}
+        
+        <div class="ragcontexts-container" id="{{element.id}}_control">
+            {{# element.sections}}
+                <div class="ragcontexts-section{{# hasactivities}}{{/ hasactivities}}{{^ hasactivities}} ragcontexts-empty-section{{/ hasactivities}}" data-section-id="{{id}}">
+                    <strong>{{name}}</strong>
+
+                    {{# activities}}
+                        <div class="ragcontexts-activity">
+                            <input type="checkbox"
+                                class="ragcontexts-checkbox"
+                                name="{{element.name}}[]"
+                                value="{{cmid}}"
+                                data-section-id="{{sectionid}}"
+                                data-subsection-id="{{subsectionid}}"
+                                {{#checked}}checked{{/checked}} />
+                            <label class="mb-0">{{name}}</label>
+                        </div>
+                    {{/ activities}}
+
+                    {{# subsections}}
+                        <div class="ragcontexts-subsection" data-subsection-id="{{id}}">
+                            <div class="ragcontexts-subsection-header">
+                                <input type="checkbox"
+                                    class="ragcontexts-selectall"
+                                    data-group-type="subsection"
+                                    data-group-id="{{id}}"
+                                    data-parent-section-id="{{../id}}" />
+                                <span class="ragcontexts-subsection-label">{{name}}</span>
+                            </div>
+                            <div class="ragcontexts-subsection-activities">
+                                {{# activities}}
+                                    <div class="ragcontexts-activity">
+                                        <input type="checkbox"
+                                            class="ragcontexts-checkbox"
+                                            name="{{element.name}}[]"
+                                            value="{{cmid}}"
+                                            data-section-id="{{sectionid}}"
+                                            data-subsection-id="{{subsectionid}}"
+                                            {{#checked}}checked{{/checked}} />
+                                        <label class="mb-0">{{name}}</label>
+                                    </div>
+                                {{/ activities}}
+                            </div>
+                        </div>
+                    {{/ subsections}}
+                </div>
+            {{/ element.sections}}
+        </div>
+    {{/ element }}
+{{/ core_form/element-template }}
+
+{{#js}}
+require(['local_ai_content/ragcontexts'], function(module) {
+    module.enhance({{#quote}}#{{element.id}}_control{{/quote}});
+});
+{{/js}}
