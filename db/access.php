@@ -34,4 +34,25 @@ $capabilities = [
         ],
         'riskbitmask' => RISK_CONFIG,
     ],
+    // Allows a user to retrieve (use) sources for RAG in a given context.
+    'local/ai_content:usesource' => [
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_MODULE,
+        'archetypes' => [
+            'student' => CAP_ALLOW,
+            'teacher' => CAP_ALLOW,
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
+        ],
+    ],
+    // Allows a user to create, edit and index sources in a given context.
+    'local/ai_content:managesources' => [
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_MODULE,
+        'archetypes' => [
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
+        ],
+        'riskbitmask' => RISK_CONFIG,
+    ],
 ];

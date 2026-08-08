@@ -1,0 +1,5 @@
+{{#js}}
+require(['local_ai_content/ragcontexts'], function(module) {
+    module.enhance({{#quote}}#{{element.id}}_control{{/quote}});
+});
+{{/js}}

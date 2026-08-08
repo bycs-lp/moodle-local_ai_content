@@ -23,8 +23,11 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+$string['ai_content:managesources'] = 'Manage and index AI content sources';
 $string['ai_content:testextraction'] = 'Test the AI text extraction service via admin UI';
+$string['ai_content:usesource'] = 'Use AI content sources for retrieval';
 $string['aicontent'] = 'AI Content';
+$string['allowindexing'] = "Allow Indexing";
 $string['backend'] = 'AI backend';
 $string['backend_core_ai_subsystem'] = 'Moodle Core AI Subsystem';
 $string['backend_desc'] = 'Select the AI backend to use for text extraction from images and documents.';
@@ -48,6 +51,19 @@ $string['privacy:metadata:cache'] = 'Text extracted from files processed by AI f
 $string['privacy:metadata:cache:contenthash'] = 'The SHA1 content hash of the file the text was extracted from.';
 $string['privacy:metadata:cache:extractedcontent'] = 'The full text extracted from the file, which may contain personal data.';
 $string['privacy:metadata:cache:timecreated'] = 'The time the cache entry was created.';
+$string['ragcontent'] = 'Grounding Context';
+$string['ragcontent_help'] = 'Select the activities you want to use to ground the AI generated content.
+
+These sources may be scanned and provide additional context to the user prompt.';
+$string['ragcontexts'] = 'Select Activities';
+$string['ragcontextsdesc'] = 'Select the activities you want to include in the RAG context.';
+$string['ragsourcesheading'] = 'Sources:';
+$string['section'] = 'Section {$a}';
+$string['selectall'] = 'Select all';
+$string['selectnone'] = 'Select none';
+$string['showemptysections'] = 'Show empty sections';
+$string['showemptysections_desc'] = 'When enabled, sections with no activities will be displayed in the RAG contexts selector. When disabled, only sections with activities are shown.';
+$string['subsection'] = 'Sub-section {$a}';
 $string['task_cleanupcache'] = 'Clean up expired text extraction cache entries';
 $string['test_extraction'] = 'Test text extraction';
 $string['test_extraction_contenthash'] = 'Content hash';
