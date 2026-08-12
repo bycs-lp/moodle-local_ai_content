@@ -102,7 +102,7 @@ function RagContextSelector({ contextid }) {
     publishSelected(contextid, [...selected].join(","));
   }, [contextid, selected]);
   if (loading) {
-    return /* @__PURE__ */ jsxDEV("div", { className: "rag-context-selector rag-context-selector--loading", children: "Loading\u2026" }, void 0, false, {
+    return /* @__PURE__ */ jsxDEV("div", { className: "rag-context-selector rag-context-selector--loading", children: "Loading..." }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/rag_context_selector.tsx",
       lineNumber: 193,
       columnNumber: 16
@@ -151,7 +151,7 @@ function RagContextSelector({ contextid }) {
           size: "sm",
           onClick: handleSave,
           disabled: saving,
-          label: saving ? "Saving\u2026" : "Save selected sources for this context"
+          label: saving ? "Saving..." : "Save selected sources for this context"
         },
         void 0,
         false,
@@ -162,7 +162,7 @@ function RagContextSelector({ contextid }) {
         },
         this
       ),
-      saveSuccess && /* @__PURE__ */ jsxDEV("span", { className: "text-success small", children: "\u2713 Saved" }, void 0, false, {
+      saveSuccess && /* @__PURE__ */ jsxDEV("span", { className: "text-success small", children: "Saved" }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/rag_context_selector.tsx",
         lineNumber: 231,
         columnNumber: 21

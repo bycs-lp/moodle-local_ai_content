@@ -84,6 +84,27 @@ class source {
     /** @var int Last indexing timestamp. */
     protected int $lastindexed = 0;
 
+    /** @var string Current indexing status for UI/task tracking. */
+    protected string $indexstatus = self::INDEXSTATUS_IDLE;
+
+    /** @var ?int Last queued adhoc indexing task id. */
+    protected ?int $indextaskid = null;
+
+    /** @var string Source is currently not queued/running for indexing. */
+    public const INDEXSTATUS_IDLE = 'idle';
+
+    /** @var string Source indexing was queued as adhoc task. */
+    public const INDEXSTATUS_QUEUED = 'queued';
+
+    /** @var string Source is actively being indexed. */
+    public const INDEXSTATUS_RUNNING = 'running';
+
+    /** @var string Source indexing completed successfully. */
+    public const INDEXSTATUS_INDEXED = 'indexed';
+
+    /** @var string Source indexing failed. */
+    public const INDEXSTATUS_FAILED = 'failed';
+
     /** @var int User id that last modified this record. */
     protected int $usermodified = 0;
 
@@ -138,6 +159,8 @@ class source {
         $record->enabled = $this->enabled ? 1 : 0;
         $record->allowindex = $this->allowindex ? 1 : 0;
         $record->lastindexed = $this->lastindexed;
+        $record->indexstatus = $this->indexstatus;
+        $record->indextaskid = $this->indextaskid;
         $record->usermodified = $this->usermodified ?: (int)($USER->id ?? 0);
         $record->timemodified = $clock->time();
 
@@ -287,6 +310,8 @@ class source {
         $this->enabled = !empty($record->enabled);
         $this->allowindex = !empty($record->allowindex);
         $this->lastindexed = (int)($record->lastindexed ?? 0);
+        $this->indexstatus = (string)($record->indexstatus ?? self::INDEXSTATUS_IDLE);
+        $this->indextaskid = isset($record->indextaskid) ? (int)$record->indextaskid : null;
         $this->usermodified = (int)($record->usermodified ?? 0);
         $this->timecreated = (int)($record->timecreated ?? 0);
         $this->timemodified = (int)($record->timemodified ?? 0);
@@ -335,6 +360,26 @@ class source {
     /** @param int $lastindexed */
     public function set_lastindexed(int $lastindexed): void {
         $this->lastindexed = $lastindexed;
+    }
+
+    /** @return string */
+    public function get_indexstatus(): string {
+        return $this->indexstatus;
+    }
+
+    /** @param string $indexstatus */
+    public function set_indexstatus(string $indexstatus): void {
+        $this->indexstatus = $indexstatus;
+    }
+
+    /** @return ?int */
+    public function get_indextaskid(): ?int {
+        return $this->indextaskid;
+    }
+
+    /** @param ?int $indextaskid */
+    public function set_indextaskid(?int $indextaskid): void {
+        $this->indextaskid = $indextaskid;
     }
 
     /** @return string */
