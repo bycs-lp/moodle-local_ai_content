@@ -43,11 +43,12 @@ class source_access {
      * @return int[] the subset of source ids the user may retrieve from
      */
     public static function filter_accessible_sourceids(array $sourceids, ?int $userid = null): array {
+        global $USER;
         $sourceids = array_values(array_unique(array_filter(array_map('intval', $sourceids))));
         if (empty($sourceids)) {
             return [];
         }
-        $userid = self::resolve_userid($userid);
+        $userid = $userid ?? (int) $USER->id;
         $sources = source::get_records_by_ids($sourceids);
         $accessible = [];
         foreach ($sources as $source) {
@@ -66,7 +67,9 @@ class source_access {
      * @return bool true if the user may retrieve from the source
      */
     public static function can_access_source(source $source, ?int $userid = null): bool {
-        $userid = self::resolve_userid($userid);
+        global $USER;
+
+        $userid = $userid ?? (int) $USER->id;
         if ($source->get_sourcetype() === source::TYPE_MODULE) {
             return self::user_can_access_module_source($source, $userid);
         }
@@ -131,16 +134,5 @@ class source_access {
             return false;
         }
         return has_capability('local/ai_content:usesource', $context, $userid);
-    }
-
-    /**
-     * Resolves the user id to check access for, defaulting to the current user.
-     *
-     * @param ?int $userid the given user id, or null for the current user
-     * @return int the resolved user id
-     */
-    protected static function resolve_userid(?int $userid): int {
-        global $USER;
-        return $userid ?? (int) $USER->id;
     }
 }

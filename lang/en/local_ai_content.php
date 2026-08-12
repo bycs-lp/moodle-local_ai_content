@@ -51,18 +51,18 @@ $string['privacy:metadata:cache'] = 'Text extracted from files processed by AI f
 $string['privacy:metadata:cache:contenthash'] = 'The SHA1 content hash of the file the text was extracted from.';
 $string['privacy:metadata:cache:extractedcontent'] = 'The full text extracted from the file, which may contain personal data.';
 $string['privacy:metadata:cache:timecreated'] = 'The time the cache entry was created.';
-$string['ragcontent'] = 'Grounding Context';
-$string['ragcontent_help'] = 'Select the activities you want to use to ground the AI generated content.
+$string['ragcontent'] = 'Context source selection';
+$string['ragcontent_help'] = 'Select which sources should be used for this context when generating AI content.
 
 These sources may be scanned and provide additional context to the user prompt.';
-$string['ragcontexts'] = 'Select Activities';
-$string['ragcontextsdesc'] = 'Select the activities you want to include in the RAG context.';
-$string['ragsourcesheading'] = 'Sources:';
+$string['ragcontexts'] = 'Select sources for this context';
+$string['ragcontextsdesc'] = 'Choose which sources are selected for this context.';
+$string['ragsourcesheading'] = 'Selected sources for this context:';
 $string['section'] = 'Section {$a}';
 $string['selectall'] = 'Select all';
 $string['selectnone'] = 'Select none';
 $string['showemptysections'] = 'Show empty sections';
-$string['showemptysections_desc'] = 'When enabled, sections with no activities will be displayed in the RAG contexts selector. When disabled, only sections with activities are shown.';
+$string['showemptysections_desc'] = 'When enabled, sections with no selectable sources will be displayed in the context source selector. When disabled, only sections with selectable sources are shown.';
 $string['subsection'] = 'Sub-section {$a}';
 $string['task_cleanupcache'] = 'Clean up expired text extraction cache entries';
 $string['test_extraction'] = 'Test text extraction';
