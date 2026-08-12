@@ -2,7 +2,7 @@ var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 import { jsxDEV } from "react/jsx-dev-runtime";
 /**
- * React component for selecting RAG context (indexable activities) for a given context.
+ * React component for selecting sources for a given context.
  *
  * @module     local_ai_content/rag_context_selector
  * @copyright  2026 ISB Bayern
@@ -10,26 +10,32 @@ import { jsxDEV } from "react/jsx-dev-runtime";
  */
 import { useState, useEffect } from "react";
 import Fetch from "@moodle/lms/core/fetch";
+import { Button } from "@moodlehq/design-system";
+import { Checkbox } from "@moodlehq/design-system";
 const BRIDGE_KEY = "localAiContentRagSelection";
+const selectioncache = /* @__PURE__ */ new Map();
 function getRagSelectionBridge() {
   const scope = window;
   const existing = scope[BRIDGE_KEY];
-  if (existing && typeof existing.getSelected === "function" && typeof existing.setSelected === "function") {
+  if (existing && typeof existing.getSelected === "function" && typeof existing.getRequestData === "function") {
     return existing;
   }
-  const cache = /* @__PURE__ */ new Map();
   const bridge = {
-    setSelected(contextid, sourceids) {
-      cache.set(contextid, sourceids);
-    },
     getSelected(contextid) {
-      return cache.get(contextid) ?? "";
+      return selectioncache.get(contextid) ?? "";
+    },
+    getRequestData(contextid) {
+      return { selectedsourceids: selectioncache.get(contextid) ?? "" };
     }
   };
   scope[BRIDGE_KEY] = bridge;
   return bridge;
 }
 __name(getRagSelectionBridge, "getRagSelectionBridge");
+function publishSelected(contextid, selectedsourceids) {
+  selectioncache.set(contextid, selectedsourceids);
+}
+__name(publishSelected, "publishSelected");
 function parseIds(raw) {
   if (!raw) {
     return /* @__PURE__ */ new Set();
@@ -40,7 +46,7 @@ function parseIds(raw) {
 }
 __name(parseIds, "parseIds");
 function RagContextSelector({ contextid }) {
-  const [available, setAvailable] = useState([]);
+  const [availablesources, setAvailablesources] = useState([]);
   const [selected, setSelected] = useState(/* @__PURE__ */ new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -51,14 +57,14 @@ function RagContextSelector({ contextid }) {
     setLoading(true);
     setError(null);
     Fetch.performGet("local_ai_content", `ragcontext/${contextid}`).then((res) => res.json()).then((data) => {
-      setAvailable(data.available ?? []);
-      const selectedraw = data.selected ?? "";
-      setSelected(parseIds(selectedraw));
-      bridge.setSelected(contextid, selectedraw);
+      setAvailablesources(data.availablesources ?? []);
+      const selectedsourceids = data.selectedsourceids ?? "";
+      setSelected(parseIds(selectedsourceids));
+      publishSelected(contextid, selectedsourceids);
       setLoading(false);
       return data;
     }).catch(() => {
-      setError("Failed to load RAG context data.");
+      setError("Failed to load source selection for this context.");
       setLoading(false);
     });
   }, [contextid]);
@@ -78,111 +84,102 @@ function RagContextSelector({ contextid }) {
     setSaving(true);
     setSaveSuccess(false);
     setError(null);
-    const sourceids = [...selected].join(",");
+    publishSelected(contextid, [...selected].join(","));
+    const requestdata = bridge.getRequestData(contextid);
     const res = await Fetch.performPost(
       "local_ai_content",
       `ragcontext/${contextid}`,
-      { body: JSON.stringify({ sourceids }) }
+      { body: JSON.stringify(requestdata) }
     );
     if (!res.ok) {
-      setError(`Failed to save RAG context selection (HTTP ${res.status}).`);
+      setError(`Failed to save source selection for this context (HTTP ${res.status}).`);
     } else {
       setSaveSuccess(true);
     }
     setSaving(false);
   }, "handleSave");
   useEffect(() => {
-    bridge.setSelected(contextid, [...selected].join(","));
-  }, [bridge, contextid, selected]);
+    publishSelected(contextid, [...selected].join(","));
+  }, [contextid, selected]);
   if (loading) {
     return /* @__PURE__ */ jsxDEV("div", { className: "rag-context-selector rag-context-selector--loading", children: "Loading\u2026" }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/rag_context_selector.tsx",
-      lineNumber: 174,
+      lineNumber: 193,
       columnNumber: 16
     }, this);
   }
-  if (available.length === 0) {
-    return /* @__PURE__ */ jsxDEV("div", { className: "rag-context-selector rag-context-selector--empty", children: "No indexable activities found in this course." }, void 0, false, {
+  if (availablesources.length === 0) {
+    return /* @__PURE__ */ jsxDEV("div", { className: "rag-context-selector rag-context-selector--empty", children: "No selectable sources found for this context." }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/rag_context_selector.tsx",
-      lineNumber: 179,
+      lineNumber: 198,
       columnNumber: 13
     }, this);
   }
   return /* @__PURE__ */ jsxDEV("div", { className: "rag-context-selector", children: [
-    /* @__PURE__ */ jsxDEV("ul", { className: "rag-context-selector__list list-unstyled", children: available.map((activity) => /* @__PURE__ */ jsxDEV("li", { className: "rag-context-selector__item", children: /* @__PURE__ */ jsxDEV("label", { className: "d-flex align-items-center gap-2", children: [
-      /* @__PURE__ */ jsxDEV(
-        "input",
-        {
-          type: "checkbox",
-          value: activity.id,
-          checked: selected.has(activity.id),
-          onChange: () => handleToggle(activity.id),
-          className: "form-check-input"
-        },
-        void 0,
-        false,
-        {
-          fileName: "public/local/ai_content/js/esm/src/rag_context_selector.tsx",
-          lineNumber: 191,
-          columnNumber: 29
-        },
-        this
-      ),
-      /* @__PURE__ */ jsxDEV("span", { children: activity.name }, void 0, false, {
+    /* @__PURE__ */ jsxDEV("ul", { className: "rag-context-selector__list list-unstyled", children: availablesources.map((source) => /* @__PURE__ */ jsxDEV("li", { className: "rag-context-selector__item", children: /* @__PURE__ */ jsxDEV(
+      Checkbox,
+      {
+        id: `rag-context-source-${contextid}-${source.id}`,
+        checked: selected.has(source.id),
+        onChange: () => handleToggle(source.id),
+        label: source.name,
+        supportingText: source.sourcetype ?? ""
+      },
+      void 0,
+      false,
+      {
         fileName: "public/local/ai_content/js/esm/src/rag_context_selector.tsx",
-        lineNumber: 198,
-        columnNumber: 29
-      }, this)
-    ] }, void 0, true, {
+        lineNumber: 209,
+        columnNumber: 25
+      },
+      this
+    ) }, source.id, false, {
       fileName: "public/local/ai_content/js/esm/src/rag_context_selector.tsx",
-      lineNumber: 190,
-      columnNumber: 25
-    }, this) }, activity.id, false, {
-      fileName: "public/local/ai_content/js/esm/src/rag_context_selector.tsx",
-      lineNumber: 189,
+      lineNumber: 208,
       columnNumber: 21
     }, this)) }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/rag_context_selector.tsx",
-      lineNumber: 187,
+      lineNumber: 206,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("div", { className: "rag-context-selector__actions mt-2 d-flex align-items-center gap-3", children: [
       /* @__PURE__ */ jsxDEV(
-        "button",
+        Button,
         {
           type: "button",
-          className: "btn btn-primary btn-sm",
+          variant: "primary",
+          size: "sm",
           onClick: handleSave,
           disabled: saving,
-          children: saving ? "Saving\u2026" : "Save selection"
+          label: saving ? "Saving\u2026" : "Save selected sources for this context"
         },
         void 0,
         false,
         {
           fileName: "public/local/ai_content/js/esm/src/rag_context_selector.tsx",
-          lineNumber: 205,
+          lineNumber: 221,
           columnNumber: 17
         },
         this
       ),
       saveSuccess && /* @__PURE__ */ jsxDEV("span", { className: "text-success small", children: "\u2713 Saved" }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/rag_context_selector.tsx",
-        lineNumber: 215,
+        lineNumber: 231,
         columnNumber: 21
       }, this),
       error && /* @__PURE__ */ jsxDEV("span", { className: "text-danger small", children: error }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/rag_context_selector.tsx",
-        lineNumber: 218,
+        lineNumber: 234,
         columnNumber: 21
       }, this)
     ] }, void 0, true, {
       fileName: "public/local/ai_content/js/esm/src/rag_context_selector.tsx",
-      lineNumber: 204,
+      lineNumber: 220,
       columnNumber: 13
     }, this)
   ] }, void 0, true, {
     fileName: "public/local/ai_content/js/esm/src/rag_context_selector.tsx",
-    lineNumber: 186,
+    lineNumber: 205,
     columnNumber: 9
   }, this);
 }

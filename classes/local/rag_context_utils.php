@@ -20,7 +20,7 @@ use local_ai_content\context_source;
 use local_ai_content\source;
 
 /**
- * Utility functions for source selection.
+ * Utility functions for context-specific source selection.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
@@ -28,7 +28,7 @@ use local_ai_content\source;
  */
 class rag_context_utils {
     /**
-     * Return all sources available for RAG in the given context.
+     * Return all sources selectable for RAG in the given context.
      *
      * The available sources are:
      *  - module sources of the course the context belongs to that have allowindex = 1;
@@ -111,7 +111,7 @@ class rag_context_utils {
     }
 
     /**
-     * Return only the IDs of available local_ai_content_sources records for a context.
+     * Return only the IDs of selectable local_ai_content_sources records for a context.
      *
      * Convenience wrapper around {@see get_available_sources_for_context()}.
      *
@@ -124,7 +124,7 @@ class rag_context_utils {
     }
 
     /**
-     * Return the currently saved sourceids string for a context, or null.
+     * Return the currently saved selected source IDs for a context, or null.
      *
      * @param int $contextid The Moodle context ID.
      * @return ?string The stored comma-separated IDs, or null if nothing is saved.
@@ -138,7 +138,7 @@ class rag_context_utils {
     }
 
     /**
-     * Save (replace) the selected sourceids for a context.
+     * Save (replace) the selected source IDs for a context.
      *
      * @param int $contextid The Moodle context ID.
      * @param string $sourceids Comma-separated list of local_ai_content_sources record IDs.
