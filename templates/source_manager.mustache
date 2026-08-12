@@ -15,15 +15,12 @@
     along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 }}
 {{!
-    @template local_ai_content/rag_context_selector
+    @template local_ai_content/source_manager
 
-    Renders the context source selector React component for a given Moodle context.
-
-    The component lets users pick which sources should be selected for the current
-    context. The selection is fetched from and saved to the REST API.
+    Renders the source management React component for a given Moodle course context.
 
     Context variables required for this template:
-    * contextid (int) - The Moodle context ID for which source selection is managed.
+    * contextid (int) - The Moodle context ID for which source management is rendered.
 
     Example context (json):
     {
@@ -32,16 +29,12 @@
 }}
 {{#react}}
 {
-    "component": "@moodle/lms/local_ai_content/rag_context_selector",
+    "component": "@moodle/lms/local_ai_content/source_manager",
     "props": {
         "contextid": {{contextid}}
     },
-    "class": "rag-context-selector-wrapper"
+    "class": "local-ai-content-source-manager-wrapper"
 }
 {{> core/loading }}
 {{/react}}
-
-
-
-
 

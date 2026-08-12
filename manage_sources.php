@@ -15,18 +15,37 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version file for local_ai_content.
+ * Course source management page.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
- * @author     Philipp Memmel
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-defined('MOODLE_INTERNAL') || die();
 
-$plugin->version  = 2026082700;
-$plugin->requires = 2025041400;
-$plugin->supported = [500, 502];
-$plugin->release = '0.1.1';
-$plugin->component = 'local_ai_content';
-$plugin->maturity = MATURITY_BETA;
+require_once(__DIR__ . '/../../../config.php');
+
+global $OUTPUT, $PAGE;
+
+$courseid = required_param('courseid', PARAM_INT);
+require_course_login($courseid);
+
+$course = get_course($courseid);
+$context = context_course::instance($courseid);
+require_capability('local/ai_content:managesources', $context);
+
+$url = new moodle_url('/local/ai_content/manage_sources.php', ['courseid' => $courseid]);
+$PAGE->set_url($url);
+$PAGE->set_context($context);
+$PAGE->set_title(get_string('managesourcespage', 'local_ai_content'));
+$PAGE->set_heading(format_string($course->fullname, true, ['context' => $context]));
+
+echo $OUTPUT->header();
+
+echo $OUTPUT->render_from_template('local_ai_content/source_manager', [
+    'contextid' => $context->id,
+]);
+
+echo $OUTPUT->footer();
+
+
+

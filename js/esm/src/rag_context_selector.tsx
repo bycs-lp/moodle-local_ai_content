@@ -190,7 +190,7 @@ export default function RagContextSelector({contextid}: Props) {
     }, [contextid, selected]);
 
     if (loading) {
-        return <div className="rag-context-selector rag-context-selector--loading">Loading…</div>;
+        return <div className="rag-context-selector rag-context-selector--loading">Loading...</div>;
     }
 
     if (availablesources.length === 0) {
@@ -224,11 +224,11 @@ export default function RagContextSelector({contextid}: Props) {
                     size="sm"
                     onClick={handleSave}
                     disabled={saving}
-                    label={saving ? 'Saving…' : 'Save selected sources for this context'}
+                    label={saving ? 'Saving...' : 'Save selected sources for this context'}
                 />
 
                 {saveSuccess && (
-                    <span className="text-success small">✓ Saved</span>
+                    <span className="text-success small">Saved</span>
                 )}
                 {error && (
                     <span className="text-danger small">{error}</span>
@@ -237,5 +237,3 @@ export default function RagContextSelector({contextid}: Props) {
         </div>
     );
 }
-
-

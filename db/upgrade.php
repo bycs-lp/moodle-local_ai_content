@@ -56,5 +56,22 @@ function xmldb_local_ai_content_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026072201, 'local', 'ai_content');
     }
 
+    if ($oldversion < 2026082700) {
+        // Add source indexing status and adhoc task tracking fields.
+        $table = new xmldb_table('local_ai_content_sources');
+
+        $indexstatus = new xmldb_field('indexstatus', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, 'idle', 'lastindexed');
+        if (!$dbman->field_exists($table, $indexstatus)) {
+            $dbman->add_field($table, $indexstatus);
+        }
+
+        $indextaskid = new xmldb_field('indextaskid', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'indexstatus');
+        if (!$dbman->field_exists($table, $indextaskid)) {
+            $dbman->add_field($table, $indextaskid);
+        }
+
+        upgrade_plugin_savepoint(true, 2026082700, 'local', 'ai_content');
+    }
+
     return true;
 }

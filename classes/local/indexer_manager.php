@@ -78,10 +78,7 @@ class indexer_manager {
                 if (!$processor) {
                     continue;
                 }
-
-                $content = $processor->extract();
-                $chunks = method_exists($processor, 'get_chunks') ? $processor->get_chunks($content) : [$content];
-                $this->index_source($source, $chunks ?: [$content]);
+                $this->index_single_source($source, $processor);
             }
         }
 
@@ -94,12 +91,66 @@ class indexer_manager {
             if (!$source->get_allowindex()) {
                 continue;
             }
-            $content = (string) $source->get_content();
-            if ($content === '') {
-                continue;
-            }
-            $this->index_source($source, [$content]);
+            $this->index_single_source($source);
         }
+    }
+
+    /**
+     * Indexes one source record.
+     *
+     * @param source $source The source to index.
+     * @param ?object $processor Optional pre-resolved module content processor.
+     */
+    public function index_single_source(source $source, ?object $processor = null): void {
+        if (!$source->get_allowindex()) {
+            return;
+        }
+
+        if ($source->get_sourcetype() === source::TYPE_MODULE) {
+            $cmid = $source->get_cmid();
+            if (empty($cmid)) {
+                return;
+            }
+            $cm = get_coursemodule_from_id('', $cmid, 0, false, IGNORE_MISSING);
+            if (!$cm) {
+                return;
+            }
+            $processor = $processor ?? $this->get_content_processor($cm->modname, $cm);
+            if (!$processor) {
+                return;
+            }
+            $content = $processor->extract();
+            $chunks = method_exists($processor, 'get_chunks') ? $processor->get_chunks($content) : [$content];
+            $this->index_source($source, $chunks ?: [$content]);
+            return;
+        }
+
+        if ($source->get_sourcetype() !== source::TYPE_DOCUMENT) {
+            return;
+        }
+
+        $content = (string) $source->get_content();
+        if ($content === '') {
+            return;
+        }
+        $this->index_source($source, [$content]);
+    }
+
+    /**
+     * Deletes all stored vectors for a source.
+     *
+     * @param source $source The source whose vectors should be removed.
+     */
+    public function delete_source_embeddings(source $source): void {
+        $sourceid = $source->get_id();
+        if ($sourceid <= 0) {
+            return;
+        }
+        $vecstore = $this->get_vecstore_for_source($source);
+        if ($vecstore === null) {
+            return;
+        }
+        $vecstore->delete_embeddings($sourceid);
     }
 
     /**
