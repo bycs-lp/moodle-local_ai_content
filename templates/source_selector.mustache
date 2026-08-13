@@ -15,7 +15,7 @@
     along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 }}
 {{!
-    @template local_ai_content/rag_context_selector
+    @template local_ai_content/source_selector
 
     Renders the context source selector React component for a given Moodle context.
 
@@ -32,11 +32,11 @@
 }}
 {{#react}}
 {
-    "component": "@moodle/lms/local_ai_content/rag_context_selector",
+    "component": "@moodle/lms/local_ai_content/source_selector",
     "props": {
         "contextid": {{contextid}}
     },
-    "class": "rag-context-selector-wrapper"
+    "class": "source-selector-wrapper"
 }
 {{> core/loading }}
 {{/react}}

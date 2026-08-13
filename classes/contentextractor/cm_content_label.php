@@ -14,14 +14,33 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace local_ai_content\local\contentprocessor;
+namespace local_ai_content\contentextractor;
+
+use local_ai_content\cm_content_extractor;
 
 /**
- * Class content_label
+ * Class cm_content_label
  *
  * @package    local_ai_content
- * @copyright  2026 YOUR NAME <your@email.com>
+ * @copyright  2026 ISB Bayern
+ * @author     Philipp Memmel
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class content_label {
+class cm_content_label extends cm_content_extractor {
+    #[\Override]
+    public function is_cm_supported(\core_course\cm_info $cm): bool {
+        return $cm->modname === 'label';
+    }
+
+    #[\Override]
+    public function extract(\core_course\cm_info $cm): string {
+        $instance = $cm->get_instance_record();
+        $content = (string)($instance->intro ?? '');
+        return $this->format_extracted_cm_content($content);
+    }
 }
+
+
+
+
+

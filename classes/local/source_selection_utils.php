@@ -26,9 +26,9 @@ use local_ai_content\source;
  * @copyright  2026 ISB Bayern
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class rag_context_utils {
+class source_selection_utils {
     /**
-     * Return all sources selectable for RAG in the given context.
+     * Return all sources selectable for this context.
      *
      * The available sources are:
      *  - module sources of the course the context belongs to that have allowindex = 1;
