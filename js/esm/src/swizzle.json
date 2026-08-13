@@ -1,5 +1,5 @@
 {
-  "rag_context_selector": {
+  "source_selector": {
     "eject": "risky",
     "wrap": "risky"
   },

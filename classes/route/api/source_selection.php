@@ -18,27 +18,28 @@ namespace local_ai_content\route\api;
 
 use core\param;
 use core\router\route;
+use core\router\schema\objects\schema_object;
 use core\router\schema\objects\scalar_type;
 use core\router\schema\response\payload_response;
 use core\router\schema\response\content\payload_response_type;
-use local_ai_content\local\rag_context_utils;
+use local_ai_content\local\source_selection_utils;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
  * REST API routes for context-specific source selection.
  *
- * GET  /api/rest/v2/local_ai_content/ragcontext/{contextid}
+ * GET  /api/rest/v2/local_ai_content/contexts/{contextId}/source-selections
  *     Returns selectable sources for the context and the currently saved source selection.
  *
- * POST /api/rest/v2/local_ai_content/ragcontext/{contextid}
+ * PATCH /api/rest/v2/local_ai_content/contexts/{contextId}/source-selections
  *     Saves the selected source IDs for the given context.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class ragcontext {
+class source_selection {
     /**
      * Retrieve selectable source records and the current selection for a context.
      *
@@ -48,33 +49,46 @@ class ragcontext {
      * @return payload_response
      */
     #[route(
-        path: '/ragcontext/{contextid}',
+        path: '/contexts/{contextId}/source-selections',
         method: ['GET'],
         title: 'Get selectable sources and selected source IDs for a context',
         description: 'Returns all selectable sources for this context and the source IDs currently selected for it.',
         pathtypes: [
             new \core\router\schema\parameters\path_parameter(
-                name: 'contextid',
+                name: 'contextId',
                 type: param::INT,
                 description: 'The Moodle context ID.',
             ),
         ],
+        responses: [
+            new \core\router\schema\response\response(
+                statuscode: 200,
+                description: 'OK',
+            ),
+        ],
     )]
-    public function get_ragcontext(
+    public function get_source_selection(
         ServerRequestInterface $request,
         ResponseInterface $response,
-        int $contextid,
+        int $contextId,
     ): payload_response {
-        $context = \context_helper::instance_by_id($contextid);
+        $context = \context_helper::instance_by_id($contextId);
         self::require_login_and_access($context);
 
-        $availablesources = rag_context_utils::get_available_sources_for_context($contextid);
-        $selectedsourceids = rag_context_utils::get_selected_sourceids($contextid) ?? '';
+        $availablesources = source_selection_utils::get_available_sources_for_context($contextId);
+        $selectedsourceids = source_selection_utils::get_selected_sourceids($contextId) ?? '';
 
         return new payload_response(
             payload: [
-                'availablesources' => $availablesources,
-                'selectedsourceids' => $selectedsourceids,
+                'items' => [[
+                    'availableSources' => $availablesources,
+                    'selectedSourceIds' => $selectedsourceids,
+                ]],
+                'pagination' => [
+                    'page' => 1,
+                    'pageSize' => 1,
+                    'totalItems' => 1,
+                ],
             ],
             request: $request,
             response: $response,
@@ -90,42 +104,55 @@ class ragcontext {
      * @return payload_response
      */
     #[route(
-        path: '/ragcontext/{contextid}',
-        method: ['POST'],
+        path: '/contexts/{contextId}/source-selections',
+        method: ['PATCH'],
         title: 'Save selected source IDs for a context',
         description: 'Persists the comma-separated list of source IDs selected for this context.',
         pathtypes: [
             new \core\router\schema\parameters\path_parameter(
-                name: 'contextid',
+                name: 'contextId',
                 type: param::INT,
                 description: 'The Moodle context ID.',
             ),
         ],
         requestbody: new \core\router\schema\request_body(
             content: new payload_response_type(
-                schema: [
-                    'selectedsourceids' => new scalar_type(param::SEQUENCE),
-                ],
+                schema: new schema_object([
+                    'selectedSourceIds' => new scalar_type(param::SEQUENCE),
+                ]),
             ),
         ),
+        responses: [
+            new \core\router\schema\response\response(
+                statuscode: 200,
+                description: 'OK',
+            ),
+        ],
     )]
-    public function save_ragcontext(
+    public function save_source_selection(
         ServerRequestInterface $request,
         ResponseInterface $response,
-        int $contextid,
+        int $contextId,
     ): payload_response {
-        $context = \context_helper::instance_by_id($contextid);
+        $context = \context_helper::instance_by_id($contextId);
         self::require_login_and_access($context);
 
-        $body = $request->getParsedBody();
-        $selectedsourceids = clean_param($body['selectedsourceids'] ?? '', PARAM_SEQUENCE);
+        $body = self::get_request_payload($request);
+        $selectedsourceids = clean_param((string)($body['selectedSourceIds'] ?? ''), PARAM_SEQUENCE);
 
-        rag_context_utils::save_selected_sourceids($contextid, $selectedsourceids);
+        source_selection_utils::save_selected_sourceids($contextId, $selectedsourceids);
 
         return new payload_response(
             payload: [
-                'success' => true,
-                'selectedsourceids' => $selectedsourceids,
+                'items' => [[
+                    'selectedSourceIds' => $selectedsourceids,
+                    'success' => true,
+                ]],
+                'pagination' => [
+                    'page' => 1,
+                    'pageSize' => 1,
+                    'totalItems' => 1,
+                ],
             ],
             request: $request,
             response: $response,
@@ -141,4 +168,33 @@ class ragcontext {
         require_login();
         require_capability('moodle/course:view', $context->get_course_context());
     }
+
+    /**
+     * Read a request payload robustly across parsed/raw JSON formats.
+     *
+     * @param ServerRequestInterface $request
+     * @return array
+     */
+    private static function get_request_payload(ServerRequestInterface $request): array {
+        $payload = $request->getParsedBody();
+        if (is_array($payload)) {
+            return $payload;
+        }
+
+        if (is_string($payload) && $payload !== '') {
+            $decoded = json_decode($payload, true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        $raw = (string)$request->getBody();
+        if ($raw === '') {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
 }

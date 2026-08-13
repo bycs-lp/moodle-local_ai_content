@@ -52,12 +52,12 @@ $string['privacy:metadata:cache'] = 'Text extracted from files processed by AI f
 $string['privacy:metadata:cache:contenthash'] = 'The SHA1 content hash of the file the text was extracted from.';
 $string['privacy:metadata:cache:extractedcontent'] = 'The full text extracted from the file, which may contain personal data.';
 $string['privacy:metadata:cache:timecreated'] = 'The time the cache entry was created.';
-$string['ragcontent'] = 'Context source selection';
-$string['ragcontent_help'] = 'Select which sources should be used for this context when generating AI content.
+$string['sourceselection'] = 'Context source selection';
+$string['sourceselection_help'] = 'Select which sources should be used for this context when generating AI content.
 
 These sources may be scanned and provide additional context to the user prompt.';
-$string['ragcontexts'] = 'Select sources for this context';
-$string['ragcontextsdesc'] = 'Choose which sources are selected for this context.';
+$string['sourceselectiontitle'] = 'Select sources for this context';
+$string['sourceselectiondesc'] = 'Choose which sources are selected for this context.';
 $string['ragsourcesheading'] = 'Selected sources for this context:';
 $string['indexingstatus_idle'] = 'Not indexed';
 $string['indexingstatus_queued'] = 'Queued';

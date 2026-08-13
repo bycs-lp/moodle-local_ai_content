@@ -16,6 +16,7 @@
 
 namespace local_ai_content\local;
 
+use local_ai_content\cm_content_extractor;
 use local_ai_content\source;
 use local_ai_manager\local\connector_factory;
 
@@ -25,7 +26,7 @@ require_once($CFG->dirroot . '/course/lib.php');
 /**
  * Manages the indexing of Moodle content into the vector store.
  *
- * Supports module sources (extracted via content processors) and document sources (indexed directly from their
+ * Supports module sources (extracted via content extractors) and document sources (indexed directly from their
  * stored plain-text content). External sources are never indexed here: their vectors already live in a vector
  * store instance and are only referenced.
  *
@@ -73,12 +74,12 @@ class indexer_manager {
                     continue;
                 }
                 $rawcm = $rawcms[$cmid];
-                $cm = get_coursemodule_from_id($rawcm->mod, $rawcm->cm, 0, false, MUST_EXIST);
-                $processor = $this->get_content_processor($rawcm->mod, $cm);
-                if (!$processor) {
+                $cm = get_fast_modinfo($course)->get_cm($rawcm->cm);
+                $extractor = $this->get_cm_content_extractor($rawcm->mod, $cm);
+                if (!$extractor) {
                     continue;
                 }
-                $this->index_single_source($source, $processor);
+                $this->index_single_source($source, $extractor);
             }
         }
 
@@ -99,9 +100,9 @@ class indexer_manager {
      * Indexes one source record.
      *
      * @param source $source The source to index.
-     * @param ?object $processor Optional pre-resolved module content processor.
+     * @param ?cm_content_extractor $extractor Optional pre-resolved module content extractor.
      */
-    public function index_single_source(source $source, ?object $processor = null): void {
+    public function index_single_source(source $source, ?cm_content_extractor $extractor = null): void {
         if (!$source->get_allowindex()) {
             return;
         }
@@ -111,17 +112,17 @@ class indexer_manager {
             if (empty($cmid)) {
                 return;
             }
-            $cm = get_coursemodule_from_id('', $cmid, 0, false, IGNORE_MISSING);
-            if (!$cm) {
+            $rawcm = get_coursemodule_from_id('', $cmid, 0, false, IGNORE_MISSING);
+            if (!$rawcm) {
                 return;
             }
-            $processor = $processor ?? $this->get_content_processor($cm->modname, $cm);
-            if (!$processor) {
+            $cm = get_fast_modinfo($rawcm->course)->get_cm($cmid);
+            $extractor = $extractor ?? $this->get_cm_content_extractor($cm->modname, $cm);
+            if (!$extractor) {
                 return;
             }
-            $content = $processor->extract();
-            $chunks = method_exists($processor, 'get_chunks') ? $processor->get_chunks($content) : [$content];
-            $this->index_source($source, $chunks ?: [$content]);
+            $chunks = $extractor->extract_as_chunks($cm);
+            $this->index_source($source, $chunks);
             return;
         }
 
@@ -223,17 +224,25 @@ class indexer_manager {
     }
 
     /**
-     * Resolves and instantiates the content processor for the given module type.
+     * Resolves and instantiates the content extractor for the given module type.
      *
      * @param string $modname The module name (e.g. 'resource', 'page').
-     * @param \stdClass $cm The course module object.
-     * @return object|null The processor instance, or null if none is registered.
+     * @param \core_course\cm_info $cm The course module info object.
+     * @return cm_content_extractor|null The extractor instance, or null if none is registered.
      */
-    protected function get_content_processor(string $modname, \stdClass $cm): ?object {
-        $classname = 'local_ai_content\local\contentprocessor\content_' . $modname;
-        if (class_exists($classname)) {
-            return new $classname($cm);
+    protected function get_cm_content_extractor(string $modname, \core_course\cm_info $cm): ?cm_content_extractor {
+        $classname = 'local_ai_content\contentextractor\cm_content_' . $modname;
+        if (!class_exists($classname)) {
+            return null;
         }
-        return null;
+
+        $extractor = new $classname();
+        if (!($extractor instanceof cm_content_extractor)) {
+            return null;
+        }
+        if (!$extractor->is_cm_supported($cm)) {
+            return null;
+        }
+        return $extractor;
     }
 }

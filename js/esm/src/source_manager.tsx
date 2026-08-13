@@ -21,10 +21,10 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-import {useEffect, useMemo, useState} from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
 import Fetch from '@moodle/lms/core/fetch';
 // @ts-ignore - path resolved via Moodle import map at runtime
-import {Button} from '@moodlehq/design-system';
+import {Button, ProgressBar} from '@moodlehq/design-system';
 
 type ModuleSource = {
     cmid: number;
@@ -36,7 +36,7 @@ type ModuleSource = {
     allowindex: boolean;
     indexstatus: string;
     indexstatuslabel: string;
-    lastindexed: number;
+    lastindexed: string | null;
     indextaskid: number;
     progressrecordid: number;
     progresspercent: number;
@@ -49,9 +49,11 @@ type DocumentSource = {
     name: string;
     description: string;
     content: string;
+    enabled: boolean;
+    allowindex: boolean;
     indexstatus: string;
     indexstatuslabel: string;
-    lastindexed: number;
+    lastindexed: string | null;
     indextaskid: number;
     progressrecordid: number;
     progresspercent: number;
@@ -60,41 +62,48 @@ type DocumentSource = {
     canedit: boolean;
 };
 
-type ImportableCourse = {
-    id: number;
-    name: string;
-    shortname: string;
-};
-
-type ImportableSource = {
-    key: string;
-    type: string;
-    name: string;
-    meta: string;
+type SourceManagementApiResponse = {
+    coursecontextid: number;
+    canmanagesystemsources: boolean;
+    items?: {
+        modules?: Array<Record<string, unknown>>;
+        globaldocuments?: Array<Record<string, unknown>>;
+        coursedocuments?: Array<Record<string, unknown>>;
+    };
+    modules?: Array<Record<string, unknown>>;
+    globaldocuments?: Array<Record<string, unknown>>;
+    coursedocuments?: Array<Record<string, unknown>>;
 };
 
 type SourceManagementResponse = {
     coursecontextid: number;
     canmanagesystemsources: boolean;
-    importablecourses: ImportableCourse[];
     modules: ModuleSource[];
     globaldocuments: DocumentSource[];
     coursedocuments: DocumentSource[];
 };
 
-type SaveActionPayload = {
-    action: string;
-    cmid?: number;
-    sourceid?: number;
-    enabled?: boolean;
-    allowindex?: boolean;
-    scope?: string;
-    name?: string;
-    description?: string;
-    content?: string;
-    sourcecourseid?: number;
-    selectedimportkeys?: string[];
-    sesskey?: string;
+type SourceProgressItem = {
+    sourceid: number;
+    sourcetype: string;
+    cmid: number;
+    indexstatus: string;
+    indexstatuslabel: string;
+    indextaskid: number;
+    lastIndexedAt: string | null;
+    progressrecordid: number;
+    progresspercent: number;
+    progressmessage: string;
+    progresserror: boolean;
+};
+
+type SourceProgressResponse = {
+    items: SourceProgressItem[];
+    pollIntervalSeconds?: number;
+};
+
+type DocumentTableRow = DocumentSource & {
+    scope: 'global' | 'course';
 };
 
 type EditableDocument = {
@@ -108,33 +117,111 @@ type Props = {
     contextid: number;
 };
 
-function formatTimestamp(timestamp: number): string {
-    if (!timestamp || timestamp <= 0) {
+const DEFAULT_PROGRESS_POLL_MS = 5000;
+
+function normalizeProgressPollMs(timeoutseconds?: number): number {
+    if (!Number.isFinite(timeoutseconds)) {
+        return DEFAULT_PROGRESS_POLL_MS;
+    }
+
+    // Keep polling within reasonable bounds even if backend config is misconfigured.
+    const secondssafe = Math.max(1, Math.min(60, Math.round(timeoutseconds ?? 5)));
+    return secondssafe * 1000;
+}
+
+function formatTimestamp(timestamp?: string | null): string {
+    if (!timestamp) {
         return '-';
     }
-    return new Date(timestamp * 1000).toLocaleString();
+
+    const parsed = new Date(timestamp);
+    if (isNaN(parsed.getTime())) {
+        return '-';
+    }
+
+    return parsed.toLocaleString();
+}
+
+function normalizeManagementResponse(data: SourceManagementApiResponse): SourceManagementResponse {
+    const sourceitems = data.items ?? {};
+    const normalizemodule = (raw: Record<string, unknown>): ModuleSource => ({
+        cmid: Number(raw.cmid ?? 0),
+        modname: String(raw.modname ?? ''),
+        moddisplayname: String(raw.moddisplayname ?? ''),
+        name: String(raw.name ?? ''),
+        sourceid: Number(raw.sourceid ?? 0),
+        enabled: Boolean(raw.enabled ?? false),
+        allowindex: Boolean(raw.allowindex ?? false),
+        indexstatus: String(raw.indexstatus ?? ''),
+        indexstatuslabel: String(raw.indexstatuslabel ?? ''),
+        lastindexed: (raw.lastindexed as string | null | undefined) ?? (raw.lastIndexedAt as string | null | undefined) ?? null,
+        indextaskid: Number(raw.indextaskid ?? 0),
+        progressrecordid: Number(raw.progressrecordid ?? 0),
+        progresspercent: Number(raw.progresspercent ?? 0),
+        progressmessage: String(raw.progressmessage ?? ''),
+        progresserror: Boolean(raw.progresserror ?? false),
+    });
+    const normalizedocument = (raw: Record<string, unknown>): DocumentSource => ({
+        id: Number(raw.id ?? 0),
+        name: String(raw.name ?? ''),
+        description: String(raw.description ?? ''),
+        content: String(raw.content ?? ''),
+        enabled: Boolean(raw.enabled ?? false),
+        allowindex: Boolean(raw.allowindex ?? false),
+        indexstatus: String(raw.indexstatus ?? ''),
+        indexstatuslabel: String(raw.indexstatuslabel ?? ''),
+        lastindexed: (raw.lastindexed as string | null | undefined) ?? (raw.lastIndexedAt as string | null | undefined) ?? null,
+        indextaskid: Number(raw.indextaskid ?? 0),
+        progressrecordid: Number(raw.progressrecordid ?? 0),
+        progresspercent: Number(raw.progresspercent ?? 0),
+        progressmessage: String(raw.progressmessage ?? ''),
+        progresserror: Boolean(raw.progresserror ?? false),
+        canedit: Boolean(raw.canedit ?? false),
+    });
+
+    const modules = (sourceitems.modules ?? data.modules ?? []).map((item) => normalizemodule(item));
+    const globaldocuments = (sourceitems.globaldocuments ?? data.globaldocuments ?? []).map((item) => normalizedocument(item));
+    const coursedocuments = (sourceitems.coursedocuments ?? data.coursedocuments ?? []).map((item) => normalizedocument(item));
+
+    return {
+        coursecontextid: data.coursecontextid,
+        canmanagesystemsources: data.canmanagesystemsources,
+        modules,
+        globaldocuments,
+        coursedocuments,
+    };
 }
 
 function isActiveStatus(status: string): boolean {
     return status === 'queued' || status === 'running';
 }
 
-function StoredProgress({percent, message, error}: {percent: number; message: string; error: boolean}) {
+function shouldRenderProgress(status: string, progressrecordid: number, indextaskid: number): boolean {
+    return isActiveStatus(status) || progressrecordid > 0 || indextaskid > 0;
+}
+
+function StoredProgress({percent, message, error, active}: {
+    percent: number;
+    message: string;
+    error: boolean;
+    active: boolean;
+}) {
     const normalized = Math.max(0, Math.min(100, Number.isFinite(percent) ? percent : 0));
-    const barClass = error ? 'bg-danger' : 'bg-primary';
+    const visiblepercent = active && normalized === 0 ? 2 : normalized;
+    const status = error ? 'error' : active ? 'loading' : 'in-progress';
 
     return (
         <div className="mt-1">
-            <div className="progress" style={{height: '0.65rem'}}>
-                <div
-                    className={`progress-bar ${barClass}`}
-                    role="progressbar"
-                    style={{width: `${normalized}%`}}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={normalized}
-                />
-            </div>
+            <ProgressBar
+                value={visiblepercent}
+                min={0}
+                max={100}
+                status={status}
+                labelVariant="none"
+                title={message || 'Indexing progress'}
+                count={`${Math.round(normalized)}%`}
+                animated={active}
+            />
             {(message || error) && (
                 <div className={`small ${error ? 'text-danger' : 'text-muted'} mt-1`}>{message}</div>
             )}
@@ -142,9 +229,64 @@ function StoredProgress({percent, message, error}: {percent: number; message: st
     );
 }
 
-function getSesskey(): string {
-    const moodle = window as unknown as {M?: {cfg?: {sesskey?: string}}};
-    return moodle.M?.cfg?.sesskey ?? '';
+function mergeProgressData(payload: SourceManagementResponse, items: SourceProgressItem[]): SourceManagementResponse {
+    const updates = new Map<number, SourceProgressItem>();
+    items.forEach((item) => updates.set(item.sourceid, item));
+
+    return {
+        ...payload,
+        modules: payload.modules.map((row) => {
+            const update = updates.get(row.sourceid);
+            if (!update) {
+                return row;
+            }
+            return {
+                ...row,
+                indexstatus: update.indexstatus,
+                indexstatuslabel: update.indexstatuslabel,
+                indextaskid: update.indextaskid,
+                lastindexed: update.lastIndexedAt,
+                progressrecordid: update.progressrecordid,
+                progresspercent: update.progresspercent,
+                progressmessage: update.progressmessage,
+                progresserror: update.progresserror,
+            };
+        }),
+        globaldocuments: payload.globaldocuments.map((row) => {
+            const update = updates.get(row.id);
+            if (!update) {
+                return row;
+            }
+            return {
+                ...row,
+                indexstatus: update.indexstatus,
+                indexstatuslabel: update.indexstatuslabel,
+                indextaskid: update.indextaskid,
+                lastindexed: update.lastIndexedAt,
+                progressrecordid: update.progressrecordid,
+                progresspercent: update.progresspercent,
+                progressmessage: update.progressmessage,
+                progresserror: update.progresserror,
+            };
+        }),
+        coursedocuments: payload.coursedocuments.map((row) => {
+            const update = updates.get(row.id);
+            if (!update) {
+                return row;
+            }
+            return {
+                ...row,
+                indexstatus: update.indexstatus,
+                indexstatuslabel: update.indexstatuslabel,
+                indextaskid: update.indextaskid,
+                lastindexed: update.lastIndexedAt,
+                progressrecordid: update.progressrecordid,
+                progresspercent: update.progresspercent,
+                progressmessage: update.progressmessage,
+                progresserror: update.progresserror,
+            };
+        }),
+    };
 }
 
 export default function SourceManager({contextid}: Props) {
@@ -154,38 +296,99 @@ export default function SourceManager({contextid}: Props) {
     const [error, setError] = useState<string | null>(null);
 
     const [editingDocument, setEditingDocument] = useState<EditableDocument | null>(null);
+    const [deleteCandidate, setDeleteCandidate] = useState<DocumentTableRow | null>(null);
     const [createScope, setCreateScope] = useState<'global' | 'course' | null>(null);
     const [newDocument, setNewDocument] = useState<EditableDocument>({id: 0, name: '', description: '', content: ''});
-
-    const [importModalOpen, setImportModalOpen] = useState<boolean>(false);
-    const [importStep, setImportStep] = useState<1 | 2>(1);
-    const [importCourseId, setImportCourseId] = useState<number>(0);
-    const [importables, setImportables] = useState<ImportableSource[]>([]);
-    const [selectedImportKeys, setSelectedImportKeys] = useState<Set<string>>(new Set());
+    const [progressPollMs, setProgressPollMs] = useState<number>(DEFAULT_PROGRESS_POLL_MS);
 
     const plusIcon = <i className="icon fa fa-plus" aria-hidden="true" />;
+    const refreshInFlightRef = useRef<boolean>(false);
+
+    const documentRows = useMemo<DocumentTableRow[]>(() => {
+        if (!payload) {
+            return [];
+        }
+        const globalrows = payload.globaldocuments.map((row) => ({...row, scope: 'global' as const}));
+        const courserows = payload.coursedocuments.map((row) => ({...row, scope: 'course' as const}));
+        return [...globalrows, ...courserows].sort((a, b) => a.name.localeCompare(b.name));
+    }, [payload]);
 
     const hasActiveTasks = useMemo(() => {
         if (!payload) {
             return false;
         }
-        const modulesActive = payload.modules.some((row) => isActiveStatus(row.indexstatus) && row.progressrecordid > 0);
-        const globalActive = payload.globaldocuments.some((row) => isActiveStatus(row.indexstatus) && row.progressrecordid > 0);
-        const courseActive = payload.coursedocuments.some((row) => isActiveStatus(row.indexstatus) && row.progressrecordid > 0);
+        const modulesActive = payload.modules.some((row) =>
+            shouldRenderProgress(row.indexstatus, row.progressrecordid, row.indextaskid)
+        );
+        const globalActive = payload.globaldocuments.some((row) =>
+            shouldRenderProgress(row.indexstatus, row.progressrecordid, row.indextaskid)
+        );
+        const courseActive = payload.coursedocuments.some((row) =>
+            shouldRenderProgress(row.indexstatus, row.progressrecordid, row.indextaskid)
+        );
         return modulesActive || globalActive || courseActive;
     }, [payload]);
 
-    const loadPayload = async() => {
-        setLoading(true);
+    const loadPayload = async(background = false) => {
+        if (background && refreshInFlightRef.current) {
+            return;
+        }
+        if (!background) {
+            setLoading(true);
+        } else {
+            refreshInFlightRef.current = true;
+        }
         setError(null);
         try {
-            const res = await Fetch.performGet('local_ai_content', `sourcemanagement/${contextid}`);
-            const data = await res.json() as SourceManagementResponse;
-            setPayload(data);
+            const res = await Fetch.performGet('local_ai_content', `contexts/${contextid}/sources`);
+            const data = await res.json() as SourceManagementApiResponse;
+            setPayload(normalizeManagementResponse(data));
         } catch {
             setError('Die Quellen konnten nicht geladen werden.');
         } finally {
-            setLoading(false);
+            if (!background) {
+                setLoading(false);
+            } else {
+                refreshInFlightRef.current = false;
+            }
+        }
+    };
+
+    const loadProgress = async() => {
+        try {
+            const res = await Fetch.performGet('local_ai_content', `contexts/${contextid}/source-progresses`);
+            const data = await res.json() as SourceProgressResponse;
+            setProgressPollMs(normalizeProgressPollMs(data.pollIntervalSeconds));
+            setPayload((current) => {
+                if (!current) {
+                    return current;
+                }
+                return mergeProgressData(current, data.items ?? []);
+            });
+        } catch {
+            // Keep last known progress state and let regular interactions surface blocking errors.
+        }
+    };
+
+    const performWrite = async(method: string, path: string, body?: Record<string, unknown>) => {
+        setSaving(true);
+        setError(null);
+        try {
+            const res = await Fetch.request('local_ai_content', path, {
+                method,
+                body,
+            });
+            if (!res.ok) {
+                setError(`Speichern fehlgeschlagen (HTTP ${res.status}).`);
+                return false;
+            }
+            await loadPayload(true);
+            return true;
+        } catch {
+            setError('Die Aktion konnte nicht ausgeführt werden.');
+            return false;
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -197,56 +400,35 @@ export default function SourceManager({contextid}: Props) {
         let timer: number | null = null;
         if (hasActiveTasks) {
             timer = window.setInterval(() => {
-                void loadPayload();
-            }, 5000);
+                void loadProgress();
+            }, progressPollMs);
         }
         return () => {
             if (timer !== null) {
                 window.clearInterval(timer);
             }
         };
-    }, [hasActiveTasks]);
-
-    const executeAction = async(actionPayload: SaveActionPayload) => {
-        setSaving(true);
-        setError(null);
-        try {
-            const res = await Fetch.request('local_ai_content', `sourcemanagement/${contextid}`, {
-                method: 'POST',
-                params: {sesskey: getSesskey()},
-                body: {...actionPayload, sesskey: getSesskey()},
-            });
-            if (!res.ok) {
-                setError(`Speichern fehlgeschlagen (HTTP ${res.status}).`);
-                return null;
-            }
-            return res.json();
-        } catch {
-            setError('Die Aktion konnte nicht ausgeführt werden.');
-            return null;
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const executeAndRefresh = async(actionPayload: SaveActionPayload) => {
-        const data = await executeAction(actionPayload) as SourceManagementResponse | null;
-        if (data) {
-            setPayload(data);
-        }
-    };
+    }, [hasActiveTasks, contextid, progressPollMs]);
 
     const handleModuleEnabledToggle = async(row: ModuleSource, enabled: boolean) => {
-        await executeAndRefresh({action: 'toggle_module_enabled', cmid: row.cmid, enabled});
+        await performWrite('PATCH', `contexts/${contextid}/module-sources/${row.cmid}`, {enabled});
     };
 
     const handleModuleAllowIndexToggle = async(row: ModuleSource, allowindex: boolean) => {
-        await executeAndRefresh({action: 'toggle_module_allowindex', cmid: row.cmid, allowindex});
+        await performWrite('PATCH', `contexts/${contextid}/module-sources/${row.cmid}`, {allowIndex: allowindex});
     };
 
-    const openCreateModal = (scope: 'global' | 'course') => {
+    const handleDocumentEnabledToggle = async(row: DocumentTableRow, enabled: boolean) => {
+        await performWrite('PATCH', `contexts/${contextid}/document-sources/${row.id}`, {enabled});
+    };
+
+    const handleDocumentAllowIndexToggle = async(row: DocumentTableRow, allowindex: boolean) => {
+        await performWrite('PATCH', `contexts/${contextid}/document-sources/${row.id}`, {allowIndex: allowindex});
+    };
+
+    const openCreateModal = () => {
         setError(null);
-        setCreateScope(scope);
+        setCreateScope('course');
         setNewDocument({id: 0, name: '', description: '', content: ''});
     };
 
@@ -262,113 +444,62 @@ export default function SourceManager({contextid}: Props) {
             setError('Bitte einen Namen für das Dokument angeben.');
             return;
         }
-        await executeAndRefresh({
-            action: 'create_document',
+        const saved = await performWrite('POST', `contexts/${contextid}/document-sources`, {
             scope: createScope,
             name: newDocument.name,
             description: newDocument.description,
             content: newDocument.content,
         });
-        setCreateScope(null);
+        if (saved) {
+            setCreateScope(null);
+        }
     };
 
     const handleUpdateDocument = async() => {
         if (!editingDocument) {
             return;
         }
-        await executeAndRefresh({
-            action: 'update_document',
-            sourceid: editingDocument.id,
+        const saved = await performWrite('PATCH', `contexts/${contextid}/document-sources/${editingDocument.id}`, {
             name: editingDocument.name,
             description: editingDocument.description,
             content: editingDocument.content,
         });
-        setEditingDocument(null);
+        if (saved) {
+            setEditingDocument(null);
+        }
     };
 
-    const handleDeleteDocument = async(sourceid: number) => {
-        await executeAndRefresh({action: 'delete_source', sourceid});
-    };
-
-    const openImportModal = () => {
-        setError(null);
-        setImportModalOpen(true);
-        setImportStep(1);
-        setImportCourseId(0);
-        setImportables([]);
-        setSelectedImportKeys(new Set());
-    };
-
-    const closeImportModal = () => {
-        setImportModalOpen(false);
-        setImportStep(1);
-    };
-
-    const loadImportables = async() => {
-        if (!importCourseId) {
-            setError('Bitte zuerst einen Kurs auswählen.');
+    const handleDeleteDocument = async() => {
+        if (!deleteCandidate) {
             return;
         }
-        setSaving(true);
-        setError(null);
-        try {
-            const res = await Fetch.performGet('local_ai_content', `sourcemanagement/${contextid}/importables/${importCourseId}`);
-            const data = await res.json() as {importables?: ImportableSource[]};
-            setImportables(data.importables ?? []);
-            setSelectedImportKeys(new Set());
-            setImportStep(2);
-        } catch {
-            setError('Die Aktivitäten und Dokumente konnten nicht geladen werden.');
-        } finally {
-            setSaving(false);
+        const deleted = await performWrite('DELETE', `contexts/${contextid}/document-sources/${deleteCandidate.id}`);
+        if (deleted) {
+            setDeleteCandidate(null);
         }
     };
 
-    const toggleImportKey = (key: string) => {
-        setSelectedImportKeys((prev) => {
-            const next = new Set(prev);
-            if (next.has(key)) {
-                next.delete(key);
-            } else {
-                next.add(key);
-            }
-            return next;
-        });
-    };
-
-    const submitImport = async() => {
-        if (!importCourseId || selectedImportKeys.size === 0) {
-            setError('Bitte mindestens eine Quelle zum Hinzufügen auswählen.');
-            return;
-        }
-        await executeAndRefresh({
-            action: 'import_sources',
-            sourcecourseid: importCourseId,
-            selectedimportkeys: [...selectedImportKeys],
-        });
-        closeImportModal();
-    };
-
-    const renderDocumentTable = (title: string, rows: DocumentSource[], canCreate: boolean, scope: 'global' | 'course') => (
+    const renderDocumentTable = (rows: DocumentTableRow[]) => (
         <section className="mb-4">
             <div className="d-flex justify-content-between align-items-center mb-2">
-                <h5 className="mb-0">{title}</h5>
-                {canCreate && (
-                    <Button
-                        type="button"
-                        variant="primary"
-                        disabled={saving}
-                        onClick={() => openCreateModal(scope)}
-                        startIcon={plusIcon}
-                        label="Dokument anlegen"
-                    />
-                )}
+                <h5 className="mb-0">Dokumente</h5>
+                <Button
+                    type="button"
+                    variant="primary"
+                    disabled={saving}
+                    onClick={openCreateModal}
+                    startIcon={plusIcon}
+                    label="Dokument anlegen"
+                />
             </div>
             <table className="table table-sm table-striped">
                 <thead>
                     <tr>
                         <th>Name</th>
                         <th>Beschreibung</th>
+                        <th>Geltungsbereich</th>
+                        <th>Für KI-Zugriff aktiv</th>
+                        <th>In Vektorstore indizieren</th>
                         <th>Status</th>
                         <th>Last indexed</th>
                         <th>Aktionen</th>
@@ -380,12 +511,48 @@ export default function SourceManager({contextid}: Props) {
                             <td>{row.name}</td>
                             <td>{row.description || '-'}</td>
                             <td>
+                                {row.scope === 'global' ? (
+                                    <i className="icon fa fa-globe" aria-label="Globale Quelle" title="Globale Quelle" />
+                                ) : (
+                                    <i className="icon fa fa-graduation-cap" aria-label="Kursquelle" title="Kursquelle" />
+                                )}
+                            </td>
+                            <td>
+                                <div className="form-check form-switch m-0">
+                                    <input
+                                        id={`document-enabled-${row.id}`}
+                                        className="form-check-input"
+                                        type="checkbox"
+                                        role="switch"
+                                        checked={row.enabled}
+                                        disabled={saving || !row.canedit}
+                                        onChange={() => handleDocumentEnabledToggle(row, !row.enabled)}
+                                        aria-label={`Dokument ${row.name} für KI-Zugriff aktivieren`}
+                                    />
+                                </div>
+                            </td>
+                            <td>
+                                <div className="form-check form-switch m-0">
+                                    <input
+                                        id={`document-index-${row.id}`}
+                                        className="form-check-input"
+                                        type="checkbox"
+                                        role="switch"
+                                        checked={row.allowindex}
+                                        disabled={saving || !row.enabled || !row.canedit}
+                                        onChange={() => handleDocumentAllowIndexToggle(row, !row.allowindex)}
+                                        aria-label={`Dokument ${row.name} in Vektorstore indizieren`}
+                                    />
+                                </div>
+                            </td>
+                            <td>
                                 <span className="badge badge-light">{row.indexstatuslabel}</span>
-                                {row.progressrecordid > 0 && isActiveStatus(row.indexstatus) && (
+                                {shouldRenderProgress(row.indexstatus, row.progressrecordid, row.indextaskid) && (
                                     <StoredProgress
                                         percent={row.progresspercent}
-                                        message={row.progressmessage}
+                                        message={row.progressmessage || row.indexstatuslabel}
                                         error={row.progresserror}
+                                        active={isActiveStatus(row.indexstatus)}
                                     />
                                 )}
                             </td>
@@ -393,9 +560,9 @@ export default function SourceManager({contextid}: Props) {
                             <td>
                                 {row.canedit && (
                                     <div className="d-flex gap-1">
-                                        <Button
+                                        <button
                                             type="button"
-                                            variant="secondary"
+                                            className="btn btn-link p-0"
                                             disabled={saving}
                                             onClick={() => setEditingDocument({
                                                 id: row.id,
@@ -403,15 +570,21 @@ export default function SourceManager({contextid}: Props) {
                                                 description: row.description,
                                                 content: row.content,
                                             })}
-                                            label="Bearbeiten"
-                                        />
-                                        <Button
+                                            aria-label={`Dokument ${row.name} bearbeiten`}
+                                            title="Bearbeiten"
+                                        >
+                                            <i className="icon fa fa-pencil" aria-hidden="true" />
+                                        </button>
+                                        <button
                                             type="button"
-                                            variant="danger"
+                                            className="btn btn-link text-danger p-0"
                                             disabled={saving}
-                                            onClick={() => handleDeleteDocument(row.id)}
-                                            label="Löschen"
-                                        />
+                                            onClick={() => setDeleteCandidate(row)}
+                                            aria-label={`Dokument ${row.name} löschen`}
+                                            title="Löschen"
+                                        >
+                                            <i className="icon fa fa-trash" aria-hidden="true" />
+                                        </button>
                                     </div>
                                 )}
                             </td>
@@ -419,7 +592,7 @@ export default function SourceManager({contextid}: Props) {
                     ))}
                     {rows.length === 0 && (
                         <tr>
-                            <td colSpan={5} className="text-muted">Keine Dokumente vorhanden.</td>
+                            <td colSpan={8} className="text-muted">Keine Dokumente vorhanden.</td>
                         </tr>
                     )}
                 </tbody>
@@ -437,31 +610,7 @@ export default function SourceManager({contextid}: Props) {
 
     return (
         <div className="local-ai-content-source-manager">
-            {renderDocumentTable(
-                'Globale Dokumente (Systemkontext)',
-                payload.globaldocuments,
-                payload.canmanagesystemsources,
-                'global',
-            )}
-
-            {renderDocumentTable('Dokumente dieses Kurses', payload.coursedocuments, true, 'course')}
-
-            <section className="mb-4">
-                <div className="d-flex justify-content-between align-items-center mb-2">
-                    <h5 className="mb-0">Dokumente aus anderen Kursen</h5>
-                    <Button
-                        type="button"
-                        variant="primary"
-                        disabled={saving}
-                        onClick={openImportModal}
-                        startIcon={plusIcon}
-                        label="Hinzufügen"
-                    />
-                </div>
-                <div className="small text-muted">
-                    Quellen aus anderen Kursen werden nicht automatisch gelistet und müssen explizit hinzugefügt werden.
-                </div>
-            </section>
+            {renderDocumentTable(documentRows)}
 
             <section className="mb-4">
                 <h5>Aktivitäten dieses Kurses</h5>
@@ -511,11 +660,12 @@ export default function SourceManager({contextid}: Props) {
                                 </td>
                                 <td>
                                     <span className="badge badge-light">{row.indexstatuslabel}</span>
-                                    {row.progressrecordid > 0 && isActiveStatus(row.indexstatus) && (
+                                    {shouldRenderProgress(row.indexstatus, row.progressrecordid, row.indextaskid) && (
                                         <StoredProgress
                                             percent={row.progresspercent}
-                                            message={row.progressmessage}
+                                            message={row.progressmessage || row.indexstatuslabel}
                                             error={row.progresserror}
+                                            active={isActiveStatus(row.indexstatus)}
                                         />
                                     )}
                                 </td>
@@ -557,6 +707,20 @@ export default function SourceManager({contextid}: Props) {
                                     </button>
                                 </div>
                                 <div className="modal-body">
+                                    {payload.canmanagesystemsources && (
+                                        <div className="form-group">
+                                            <label htmlFor="source-create-scope">Quelle anlegen in</label>
+                                            <select
+                                                id="source-create-scope"
+                                                className="custom-select"
+                                                value={createScope ?? 'course'}
+                                                onChange={(e) => setCreateScope(e.target.value === 'global' ? 'global' : 'course')}
+                                            >
+                                                <option value="course">Diesem Kurs</option>
+                                                <option value="global">Systemkontext (global)</option>
+                                            </select>
+                                        </div>
+                                    )}
                                     <div className="form-group">
                                         <label>Name</label>
                                         <input
@@ -606,165 +770,124 @@ export default function SourceManager({contextid}: Props) {
                 </>
             )}
 
-            {importModalOpen && (
+            {editingDocument && (
                 <>
                     <div
                         className="modal fade show d-block"
                         role="dialog"
                         aria-modal="true"
-                        aria-labelledby="source-import-modal-title"
+                        aria-labelledby="source-edit-modal-title"
                     >
                         <div className="modal-dialog modal-lg modal-dialog-scrollable" role="document">
                             <div className="modal-content">
                                 <div className="modal-header">
-                                    <h5 id="source-import-modal-title" className="modal-title">
-                                        Quellen aus anderen Kursen hinzufügen
-                                    </h5>
+                                    <h5 id="source-edit-modal-title" className="modal-title">Dokument bearbeiten</h5>
                                     <button
                                         type="button"
                                         className="close"
                                         aria-label="Close"
-                                        onClick={closeImportModal}
+                                        onClick={() => setEditingDocument(null)}
                                         disabled={saving}
                                     >
                                         <span aria-hidden="true">&times;</span>
                                     </button>
                                 </div>
                                 <div className="modal-body">
-                                    {importStep === 1 && (
-                                        <div className="form-group mb-0">
-                                            <label htmlFor="source-import-course-select">Kurs auswählen</label>
-                                            <select
-                                                id="source-import-course-select"
-                                                className="custom-select"
-                                                value={importCourseId}
-                                                onChange={(e) => setImportCourseId(parseInt(e.target.value, 10) || 0)}
-                                            >
-                                                <option value={0}>Bitte Kurs wählen</option>
-                                                {payload.importablecourses.map((course) => (
-                                                    <option key={course.id} value={course.id}>
-                                                        {course.name} ({course.shortname})
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    )}
-                                    {importStep === 2 && (
-                                        <>
-                                            <div className="small text-muted mb-2">
-                                                Verfügbare Dokumente und Aktivitäten im gewählten Kurs:
-                                            </div>
-                                            <div className="border rounded p-2" style={{maxHeight: '320px', overflowY: 'auto'}}>
-                                                {importables.length === 0 && (
-                                                    <div className="small text-muted">Keine importierbaren Quellen gefunden.</div>
-                                                )}
-                                                {importables.map((item) => (
-                                                    <div key={item.key} className="form-check mb-1">
-                                                        <input
-                                                            id={`importable-${item.key}`}
-                                                            className="form-check-input"
-                                                            type="checkbox"
-                                                            checked={selectedImportKeys.has(item.key)}
-                                                            onChange={() => toggleImportKey(item.key)}
-                                                        />
-                                                        <label htmlFor={`importable-${item.key}`} className="form-check-label">
-                                                            {item.name}
-                                                            {item.meta ? ` (${item.meta})` : ''}
-                                                        </label>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </>
-                                    )}
+                                    <div className="form-group">
+                                        <label>Name</label>
+                                        <input
+                                            className="form-control form-control-sm"
+                                            value={editingDocument.name}
+                                            onChange={(e) => setEditingDocument({...editingDocument, name: e.target.value})}
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Beschreibung</label>
+                                        <input
+                                            className="form-control form-control-sm"
+                                            value={editingDocument.description}
+                                            onChange={(e) => setEditingDocument({...editingDocument, description: e.target.value})}
+                                        />
+                                    </div>
+                                    <div className="form-group mb-0">
+                                        <label>Inhalt</label>
+                                        <textarea
+                                            className="form-control form-control-sm"
+                                            rows={8}
+                                            value={editingDocument.content}
+                                            onChange={(e) => setEditingDocument({...editingDocument, content: e.target.value})}
+                                        />
+                                    </div>
                                 </div>
                                 <div className="modal-footer">
-                                    {importStep === 2 && (
-                                        <Button
-                                            type="button"
-                                            variant="secondary"
-                                            disabled={saving}
-                                            onClick={() => setImportStep(1)}
-                                            label="Zurück"
-                                        />
-                                    )}
                                     <Button
                                         type="button"
                                         variant="secondary"
                                         disabled={saving}
-                                        onClick={closeImportModal}
+                                        onClick={() => setEditingDocument(null)}
                                         label="Abbrechen"
                                     />
-                                    {importStep === 1 && (
-                                        <Button
-                                            type="button"
-                                            variant="primary"
-                                            disabled={saving || !importCourseId}
-                                            onClick={loadImportables}
-                                            label="Weiter"
-                                        />
-                                    )}
-                                    {importStep === 2 && (
-                                        <Button
-                                            type="button"
-                                            variant="primary"
-                                            disabled={saving || selectedImportKeys.size === 0}
-                                            onClick={submitImport}
-                                            label="Auswahl hinzufügen"
-                                        />
-                                    )}
+                                    <Button
+                                        type="button"
+                                        variant="primary"
+                                        disabled={saving}
+                                        onClick={handleUpdateDocument}
+                                        label="Speichern"
+                                    />
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div className="modal-backdrop fade show" onClick={closeImportModal} />
+                    <div className="modal-backdrop fade show" onClick={() => setEditingDocument(null)} />
                 </>
             )}
 
-            {editingDocument && (
-                <div className="border rounded p-3 mb-3">
-                    <h6 className="mb-2">Dokument bearbeiten</h6>
-                    <div className="form-group">
-                        <label>Name</label>
-                        <input
-                            className="form-control form-control-sm"
-                            value={editingDocument.name}
-                            onChange={(e) => setEditingDocument({...editingDocument, name: e.target.value})}
-                        />
+            {deleteCandidate && (
+                <>
+                    <div
+                        className="modal fade show d-block"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="source-delete-modal-title"
+                    >
+                        <div className="modal-dialog" role="document">
+                            <div className="modal-content">
+                                <div className="modal-header">
+                                    <h5 id="source-delete-modal-title" className="modal-title">Quelle löschen</h5>
+                                    <button
+                                        type="button"
+                                        className="close"
+                                        aria-label="Close"
+                                        onClick={() => setDeleteCandidate(null)}
+                                        disabled={saving}
+                                    >
+                                        <span aria-hidden="true">&times;</span>
+                                    </button>
+                                </div>
+                                <div className="modal-body">
+                                    Möchtest du die Quelle „{deleteCandidate.name}“ wirklich löschen?
+                                </div>
+                                <div className="modal-footer">
+                                    <Button
+                                        type="button"
+                                        variant="secondary"
+                                        disabled={saving}
+                                        onClick={() => setDeleteCandidate(null)}
+                                        label="Abbrechen"
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="danger"
+                                        disabled={saving}
+                                        onClick={handleDeleteDocument}
+                                        label="Löschen"
+                                    />
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div className="form-group">
-                        <label>Beschreibung</label>
-                        <input
-                            className="form-control form-control-sm"
-                            value={editingDocument.description}
-                            onChange={(e) => setEditingDocument({...editingDocument, description: e.target.value})}
-                        />
-                    </div>
-                    <div className="form-group">
-                        <label>Inhalt</label>
-                        <textarea
-                            className="form-control form-control-sm"
-                            rows={5}
-                            value={editingDocument.content}
-                            onChange={(e) => setEditingDocument({...editingDocument, content: e.target.value})}
-                        />
-                    </div>
-                    <div className="d-flex gap-2">
-                        <Button
-                            type="button"
-                            variant="primary"
-                            disabled={saving}
-                            onClick={handleUpdateDocument}
-                            label="Speichern"
-                        />
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            disabled={saving}
-                            onClick={() => setEditingDocument(null)}
-                            label="Abbrechen"
-                        />
-                    </div>
-                </div>
+                    <div className="modal-backdrop fade show" onClick={() => setDeleteCandidate(null)} />
+                </>
             )}
 
             {error && <div className="text-danger small mt-2">{error}</div>}

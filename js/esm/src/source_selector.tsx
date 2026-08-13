@@ -16,15 +16,13 @@
 /**
  * React component for selecting sources for a given context.
  *
- * @module     local_ai_content/rag_context_selector
+ * @module     local_ai_content/source_selector
  * @copyright  2026 ISB Bayern
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 import {useState, useEffect} from 'react';
 import Fetch from '@moodle/lms/core/fetch';
-// @ts-ignore - path resolved via Moodle import map at runtime
-import {Button} from '@moodlehq/design-system';
 // @ts-ignore - path resolved via Moodle import map at runtime
 import {Checkbox} from '@moodlehq/design-system';
 
@@ -36,10 +34,12 @@ type SourceOption = {
     sourcetype?: string;
 };
 
-/** Shape of the GET /ragcontext/{contextid} response. */
+/** Shape of the GET /contexts/{contextId}/source-selections response. */
 type ContextSourceSelectionResponse = {
-    availablesources: SourceOption[];
-    selectedsourceids: string;
+    items?: Array<{
+        availableSources?: SourceOption[];
+        selectedSourceIds?: string;
+    }>;
 };
 
 /** Component props passed from the Mustache template via data-react-props. */
@@ -48,36 +48,50 @@ type Props = {
     contextid: number;
 };
 
-type RagSelectionBridge = {
+type SourceSelectionBridge = {
     getSelected: (contextid: number) => string;
-    getRequestData: (contextid: number) => {selectedsourceids: string};
+    getRequestData: (contextid: number) => {selectedSourceIds: string};
+    saveSelection: (contextid: number) => Promise<boolean>;
 };
 
-const BRIDGE_KEY = 'localAiContentRagSelection';
+const BRIDGE_KEY = 'localAiContentSourceSelection';
 const selectioncache = new Map<number, string>();
+const savehandlercache: Map<number, () => Promise<boolean>> = new Map();
 
 /**
  * Ensure the global bridge object exists and return it.
  *
  * External usage example:
- *   const api = (window as unknown as {[key: string]: unknown})['localAiContentRagSelection'] as RagSelectionBridge;
+ *   const api = (window as unknown as {[key: string]: unknown})['localAiContentSourceSelection'] as SourceSelectionBridge;
  *   const requestdata = api.getRequestData(contextid);
  *
- * @returns {RagSelectionBridge} The global bridge.
+ * @returns {SourceSelectionBridge} The global bridge.
  */
-function getRagSelectionBridge(): RagSelectionBridge {
+function getSourceSelectionBridge(): SourceSelectionBridge {
     const scope = window as unknown as {[key: string]: unknown};
-    const existing = scope[BRIDGE_KEY] as RagSelectionBridge | undefined;
-    if (existing && typeof existing.getSelected === 'function' && typeof existing.getRequestData === 'function') {
+    const existing = scope[BRIDGE_KEY] as SourceSelectionBridge | undefined;
+    if (
+        existing
+        && typeof existing.getSelected === 'function'
+        && typeof existing.getRequestData === 'function'
+        && typeof existing.saveSelection === 'function'
+    ) {
         return existing;
     }
 
-    const bridge: RagSelectionBridge = {
+    const bridge: SourceSelectionBridge = {
         getSelected(contextid: number): string {
             return selectioncache.get(contextid) ?? '';
         },
-        getRequestData(contextid: number): {selectedsourceids: string} {
-            return {selectedsourceids: selectioncache.get(contextid) ?? ''};
+        getRequestData(contextid: number): {selectedSourceIds: string} {
+            return {selectedSourceIds: selectioncache.get(contextid) ?? ''};
+        },
+        async saveSelection(contextid: number): Promise<boolean> {
+            const handler = savehandlercache.get(contextid);
+            if (!handler) {
+                return false;
+            }
+            return handler();
         },
     };
     scope[BRIDGE_KEY] = bridge;
@@ -120,24 +134,25 @@ function parseIds(raw: string): Set<number> {
  * @param {Props} props Component props.
  * @returns {JSX.Element} The rendered component.
  */
-export default function RagContextSelector({contextid}: Props) {
+export default function SourceSelector({contextid}: Props) {
     const [availablesources, setAvailablesources] = useState<SourceOption[]>([]);
     const [selected, setSelected] = useState<Set<number>>(new Set());
     const [loading, setLoading] = useState<boolean>(true);
     const [saving, setSaving] = useState<boolean>(false);
     const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
-    const bridge = getRagSelectionBridge();
+    const bridge = getSourceSelectionBridge();
 
     useEffect(() => {
         setLoading(true);
         setError(null);
 
-        Fetch.performGet('local_ai_content', `ragcontext/${contextid}`)
+        Fetch.performGet('local_ai_content', `contexts/${contextid}/source-selections`)
             .then((res: Response) => res.json() as Promise<ContextSourceSelectionResponse>)
             .then((data: ContextSourceSelectionResponse) => {
-                setAvailablesources(data.availablesources ?? []);
-                const selectedsourceids = data.selectedsourceids ?? '';
+                const item = data.items?.[0] ?? {};
+                setAvailablesources(item.availableSources ?? []);
+                const selectedsourceids = item.selectedSourceIds ?? '';
                 setSelected(parseIds(selectedsourceids));
                 publishSelected(contextid, selectedsourceids);
                 setLoading(false);
@@ -162,7 +177,7 @@ export default function RagContextSelector({contextid}: Props) {
         setSaveSuccess(false);
     };
 
-    const handleSave = async() => {
+    const handleSave = async(): Promise<boolean> => {
         setSaving(true);
         setSaveSuccess(false);
         setError(null);
@@ -170,44 +185,53 @@ export default function RagContextSelector({contextid}: Props) {
         publishSelected(contextid, [...selected].join(','));
         const requestdata = bridge.getRequestData(contextid);
 
-        const res = await Fetch.performPost(
-            'local_ai_content',
-            `ragcontext/${contextid}`,
-            {body: JSON.stringify(requestdata)},
-        );
+        const res = await Fetch.request('local_ai_content', `contexts/${contextid}/source-selections`, {
+            method: 'PATCH',
+            body: requestdata,
+        });
 
         if (!res.ok) {
             setError(`Failed to save source selection for this context (HTTP ${res.status}).`);
+            setSaving(false);
+            return false;
         } else {
             setSaveSuccess(true);
         }
 
         setSaving(false);
+        return true;
     };
 
     useEffect(() => {
         publishSelected(contextid, [...selected].join(','));
     }, [contextid, selected]);
 
+    useEffect(() => {
+        savehandlercache.set(contextid, handleSave);
+        return () => {
+            savehandlercache.delete(contextid);
+        };
+    }, [contextid, selected]);
+
     if (loading) {
-        return <div className="rag-context-selector rag-context-selector--loading">Loading...</div>;
+        return <div className="source-selector source-selector--loading">Loading...</div>;
     }
 
     if (availablesources.length === 0) {
         return (
-            <div className="rag-context-selector rag-context-selector--empty">
+            <div className="source-selector source-selector--empty">
                 No selectable sources found for this context.
             </div>
         );
     }
 
     return (
-        <div className="rag-context-selector">
-            <ul className="rag-context-selector__list list-unstyled">
+        <div className="source-selector">
+            <ul className="source-selector__list list-unstyled">
                 {availablesources.map((source) => (
-                    <li key={source.id} className="rag-context-selector__item">
+                    <li key={source.id} className="source-selector__item">
                         <Checkbox
-                            id={`rag-context-source-${contextid}-${source.id}`}
+                            id={`source-selector-source-${contextid}-${source.id}`}
                             checked={selected.has(source.id)}
                             onChange={() => handleToggle(source.id)}
                             label={source.name}
@@ -217,15 +241,10 @@ export default function RagContextSelector({contextid}: Props) {
                 ))}
             </ul>
 
-            <div className="rag-context-selector__actions mt-2 d-flex align-items-center gap-3">
-                <Button
-                    type="button"
-                    variant="primary"
-                    size="sm"
-                    onClick={handleSave}
-                    disabled={saving}
-                    label={saving ? 'Saving...' : 'Save selected sources for this context'}
-                />
+            <div className="source-selector__actions mt-2 d-flex align-items-center gap-3">
+                {saving && (
+                    <span className="text-muted small">Saving...</span>
+                )}
 
                 {saveSuccess && (
                     <span className="text-success small">Saved</span>
