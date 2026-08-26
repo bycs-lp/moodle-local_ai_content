@@ -26,7 +26,7 @@ use local_ai_manager\manager;
  * Manager encapsulating the retrieval augmented generation (RAG) retrieval logic.
  *
  * Given a user prompt, this class embeds the user prompt using the "embedding" purpose, performs a similarity search
- * against the relevant vector store(s) and assembles the matching content into a single string that can be injected
+ * against the relevant vector store(s) and assembles the matching content into a structured result object that can be injected
  * into the system prompt of a chat request. The vector store returns the matches as {@see enriched_vector} objects.
  *
  * Retrieval distinguishes two kinds of sources:
@@ -55,7 +55,7 @@ class rag_manager {
      * @param string $component the component from which the (embedding) request is being performed
      * @param int $contextid the context id from which the (embedding) request is being performed
      * @param int $topk the maximum number of chunks to include in the assembled RAG content
-     * @return string the assembled RAG content, or an empty string if no content could be retrieved
+     * @return rag_result the assembled RAG result
      */
     public function get_rag_content(
         string $userprompt,
@@ -63,34 +63,34 @@ class rag_manager {
         string $component,
         int $contextid,
         int $topk = self::DEFAULT_TOPK
-    ): string {
+    ): rag_result {
         $sourceids = array_values(array_unique(array_filter(array_map('intval', $sourceids))));
         if (empty($sourceids)) {
-            return '';
+            return new rag_result('');
         }
 
         // Embed the user prompt using the embedding purpose.
         $embeddingmanager = new manager('embedding');
         $response = $embeddingmanager->perform_request($userprompt, $component, $contextid);
         if ($response->get_code() !== 200) {
-            return '';
+            return new rag_result('');
         }
         $embedding = json_decode($response->get_content(), true);
         if (!is_array($embedding) || empty($embedding)) {
-            return '';
+            return new rag_result('');
         }
 
         // Load the selected source records and split them into Moodle and external sources.
         $sources = source::get_records_by_ids($sourceids);
         if (empty($sources)) {
-            return '';
+            return new rag_result('');
         }
 
         // Security: restrict the selection to the sources the requesting user is actually allowed to retrieve from.
         $accessiblesourceids = source_access::filter_accessible_sourceids(array_keys($sources));
         $sources = array_intersect_key($sources, array_flip($accessiblesourceids));
         if (empty($sources)) {
-            return '';
+            return new rag_result('');
         }
 
         $matches = [];
@@ -133,10 +133,10 @@ class rag_manager {
         }
 
         if (empty($matches)) {
-            return '';
+            return new rag_result('');
         }
 
-        // Assemble the resulting content string, capped to topk chunks, followed by the collected source citations.
+        // Keep backend relevance order and cap to topk chunks.
         $sourcesbyid = $this->load_sources_by_id($matches, $sources);
         $chunks = [];
         $references = [];
@@ -146,24 +146,27 @@ class rag_manager {
                 continue;
             }
             $chunks[] = $content;
-            $reference = $this->build_reference($match, $sourcesbyid);
-            if ($reference !== '') {
-                $references[$reference] = $reference;
+            $reference = $this->build_source_reference($match, $sourcesbyid);
+            if ($reference !== null) {
+                $referencekey = implode('|', [
+                    $reference->get_sourceid(),
+                    $reference->get_title(),
+                    $reference->get_url(),
+                    $reference->get_locator(),
+                ]);
+                if (!array_key_exists($referencekey, $references)) {
+                    $references[$referencekey] = $reference;
+                }
             }
             if (count($chunks) >= $topk) {
                 break;
             }
         }
         if (empty($chunks)) {
-            return '';
+            return new rag_result('');
         }
 
-        $result = implode("\n\n---\n\n", $chunks);
-        if (!empty($references)) {
-            $result .= "\n\n===\n\n" . get_string('ragsourcesheading', 'local_ai_content') . "\n"
-                . implode("\n", array_values($references));
-        }
-        return $result;
+        return new rag_result(implode("\n\n---\n\n", $chunks), array_values($references));
     }
 
     /**
@@ -192,44 +195,30 @@ class rag_manager {
     }
 
     /**
-     * Builds a human-readable citation reference for a single match.
+     * Builds a source reference object for a single match.
      *
      * Combines the source-level citation (resolved from the match's source id) with the vector-level locator and
      * deep link carried on the match itself.
      *
      * @param enriched_vector $match the query match
      * @param source[] $sourcesbyid the referenced sources indexed by record id
-     * @return string the citation reference line, or an empty string if no citation data is available
+     * @return ?rag_source source reference or null when no usable title exists
      */
-    protected function build_reference(enriched_vector $match, array $sourcesbyid): string {
+    protected function build_source_reference(enriched_vector $match, array $sourcesbyid): ?rag_source {
         $source = $sourcesbyid[$match->get_sourceid()] ?? null;
         $citation = $source !== null ? $source->get_effective_citation() : source_citation::create();
 
-        $parts = [];
-        if ($citation->get_title() !== '') {
-            $parts[] = $citation->get_title();
+        $title = trim((string)$citation->get_title());
+        if ($title === '' && $source !== null && (string)$source->get_name() !== '') {
+            $title = (string)$source->get_name();
         }
-        if ($citation->get_author() !== '') {
-            $parts[] = $citation->get_author();
+        if ($title === '') {
+            return null;
         }
-        if ($citation->get_date() !== '') {
-            $parts[] = $citation->get_date();
-        }
+
         // A per-chunk deep link takes precedence over the source-level canonical URL.
         $url = $match->get_url() !== '' ? $match->get_url() : $citation->get_url();
-        if ($url !== '') {
-            $parts[] = $url;
-        }
-        if ($match->get_locator() !== '') {
-            $parts[] = $match->get_locator();
-        }
-        if ($citation->get_license() !== '') {
-            $parts[] = $citation->get_license();
-        }
-        if (empty($parts)) {
-            return '';
-        }
-        return '- ' . implode(', ', $parts);
+        return new rag_source($match->get_sourceid(), $title, $url, $match->get_locator());
     }
 
     /**
