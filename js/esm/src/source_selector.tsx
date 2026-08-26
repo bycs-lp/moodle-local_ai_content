@@ -88,54 +88,29 @@ type Props = {
     contextid: number;
 };
 
-type SourceSelectionBridge = {
-    getSelected: (contextid: number) => string;
-    getRequestData: (contextid: number) => {selectedSourceIds: string};
-    saveSelection: (contextid: number) => Promise<boolean>;
+type SourceSelectionDataManager = {
+    setSelectedSourceIdsForContext: (contextid: number, sourceids: number[]) => void;
+    getSelectedSourceIdsForContext: (contextid: number) => number[];
 };
 
-const BRIDGE_KEY = 'localAiContentSourceSelection';
-const selectioncache = new Map<number, string>();
-const savehandlercache: Map<number, () => Promise<boolean>> = new Map();
+const DATA_MANAGER_KEY = 'sourcesSelectionDataManager';
 
 /**
- * Ensure the global bridge object exists and return it.
+ * Get the global source selection data manager.
  *
- * External usage example:
- *   const api = (window as unknown as {[key: string]: unknown})['localAiContentSourceSelection'] as SourceSelectionBridge;
- *   const requestdata = api.getRequestData(contextid);
- *
- * @returns {SourceSelectionBridge} The global bridge.
+ * @returns {?SourceSelectionDataManager} The manager or null when unavailable.
  */
-function getSourceSelectionBridge(): SourceSelectionBridge {
+function getSourceSelectionDataManager(): SourceSelectionDataManager | null {
     const scope = window as unknown as {[key: string]: unknown};
-    const existing = scope[BRIDGE_KEY] as SourceSelectionBridge | undefined;
+    const existing = scope[DATA_MANAGER_KEY] as SourceSelectionDataManager | undefined;
     if (
         existing
-        && typeof existing.getSelected === 'function'
-        && typeof existing.getRequestData === 'function'
-        && typeof existing.saveSelection === 'function'
+        && typeof existing.setSelectedSourceIdsForContext === 'function'
+        && typeof existing.getSelectedSourceIdsForContext === 'function'
     ) {
         return existing;
     }
-
-    const bridge: SourceSelectionBridge = {
-        getSelected(contextid: number): string {
-            return selectioncache.get(contextid) ?? '';
-        },
-        getRequestData(contextid: number): {selectedSourceIds: string} {
-            return {selectedSourceIds: selectioncache.get(contextid) ?? ''};
-        },
-        async saveSelection(contextid: number): Promise<boolean> {
-            const handler = savehandlercache.get(contextid);
-            if (!handler) {
-                return false;
-            }
-            return handler();
-        },
-    };
-    scope[BRIDGE_KEY] = bridge;
-    return bridge;
+    return null;
 }
 
 /**
@@ -145,8 +120,13 @@ function getSourceSelectionBridge(): SourceSelectionBridge {
  * @param {string} selectedsourceids Comma-separated selected source IDs.
  */
 function publishSelected(contextid: number, selectedsourceids: string): void {
-    selectioncache.set(contextid, selectedsourceids);
+    const datamanager = getSourceSelectionDataManager();
+    if (!datamanager) {
+        return;
+    }
+    datamanager.setSelectedSourceIdsForContext(contextid, Array.from(parseIds(selectedsourceids)));
 }
+
 
 /**
  * Parse a comma-separated string of integers into a Set<number>.
@@ -300,7 +280,6 @@ export default function SourceSelector({contextid}: Props) {
     const [saving, setSaving] = useState<boolean>(false);
     const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
-    const bridge = getSourceSelectionBridge();
 
     useEffect(() => {
         setLoading(true);
@@ -449,40 +428,33 @@ export default function SourceSelector({contextid}: Props) {
         setSaveSuccess(false);
     };
 
-    const handleSave = async(): Promise<boolean> => {
+    const handleSave = async() => {
         setSaving(true);
         setSaveSuccess(false);
         setError(null);
 
-        publishSelected(contextid, [...selected].join(','));
-        const requestdata = bridge.getRequestData(contextid);
+        const selectedsourceids = [...selected].join(',');
+        publishSelected(contextid, selectedsourceids);
 
-        const res = await Fetch.request('local_ai_content', `contexts/${contextid}/source-selections`, {
+        const response = await Fetch.request('local_ai_content', `contexts/${contextid}/source-selections`, {
             method: 'PATCH',
-            body: requestdata,
+            body: {
+                selectedSourceIds: selectedsourceids,
+            },
         });
 
-        if (!res.ok) {
-            setError(`Failed to save source selection for this context (HTTP ${res.status}).`);
+        if (!response.ok) {
+            setError(`Failed to save source selection for this context (HTTP ${response.status}).`);
             setSaving(false);
-            return false;
-        } else {
-            setSaveSuccess(true);
+            return;
         }
 
+        setSaveSuccess(true);
         setSaving(false);
-        return true;
     };
 
     useEffect(() => {
         publishSelected(contextid, [...selected].join(','));
-    }, [contextid, selected]);
-
-    useEffect(() => {
-        savehandlercache.set(contextid, handleSave);
-        return () => {
-            savehandlercache.delete(contextid);
-        };
     }, [contextid, selected]);
 
     if (loading) {
@@ -645,6 +617,14 @@ export default function SourceSelector({contextid}: Props) {
             </div>
 
             <div className="source-selector__actions mt-2 d-flex align-items-center gap-3">
+                <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={handleSave}
+                    disabled={saving}
+                >
+                    Speichern
+                </button>
                 {saving && (
                     <span className="text-muted small">Speichere...</span>
                 )}
@@ -652,6 +632,7 @@ export default function SourceSelector({contextid}: Props) {
                 {saveSuccess && (
                     <span className="text-success small">Gespeichert</span>
                 )}
+
                 {error && (
                     <span className="text-danger small">{error}</span>
                 )}

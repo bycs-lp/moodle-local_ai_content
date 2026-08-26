@@ -11,36 +11,22 @@ import { Fragment, jsxDEV } from "react/jsx-dev-runtime";
 import { useState, useEffect } from "react";
 import Fetch from "@moodle/lms/core/fetch";
 import { Checkbox } from "@moodlehq/design-system";
-const BRIDGE_KEY = "localAiContentSourceSelection";
-const selectioncache = /* @__PURE__ */ new Map();
-const savehandlercache = /* @__PURE__ */ new Map();
-function getSourceSelectionBridge() {
+const DATA_MANAGER_KEY = "sourcesSelectionDataManager";
+function getSourceSelectionDataManager() {
   const scope = window;
-  const existing = scope[BRIDGE_KEY];
-  if (existing && typeof existing.getSelected === "function" && typeof existing.getRequestData === "function" && typeof existing.saveSelection === "function") {
+  const existing = scope[DATA_MANAGER_KEY];
+  if (existing && typeof existing.setSelectedSourceIdsForContext === "function" && typeof existing.getSelectedSourceIdsForContext === "function") {
     return existing;
   }
-  const bridge = {
-    getSelected(contextid) {
-      return selectioncache.get(contextid) ?? "";
-    },
-    getRequestData(contextid) {
-      return { selectedSourceIds: selectioncache.get(contextid) ?? "" };
-    },
-    async saveSelection(contextid) {
-      const handler = savehandlercache.get(contextid);
-      if (!handler) {
-        return false;
-      }
-      return handler();
-    }
-  };
-  scope[BRIDGE_KEY] = bridge;
-  return bridge;
+  return null;
 }
-__name(getSourceSelectionBridge, "getSourceSelectionBridge");
+__name(getSourceSelectionDataManager, "getSourceSelectionDataManager");
 function publishSelected(contextid, selectedsourceids) {
-  selectioncache.set(contextid, selectedsourceids);
+  const datamanager = getSourceSelectionDataManager();
+  if (!datamanager) {
+    return;
+  }
+  datamanager.setSelectedSourceIdsForContext(contextid, Array.from(parseIds(selectedsourceids)));
 }
 __name(publishSelected, "publishSelected");
 function parseIds(raw) {
@@ -75,12 +61,12 @@ function SourceListSection({
   return /* @__PURE__ */ jsxDEV("section", { className: "mb-3", children: [
     /* @__PURE__ */ jsxDEV("h6", { className: "mb-2", children: sectiontitle }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 202,
+      lineNumber: 182,
       columnNumber: 13
     }, this),
     sources.length === 0 && /* @__PURE__ */ jsxDEV("div", { className: "text-muted small", children: emptytext }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 203,
+      lineNumber: 183,
       columnNumber: 38
     }, this),
     sources.length > 0 && /* @__PURE__ */ jsxDEV("ul", { className: "source-selector__list list-unstyled mb-0", children: sources.map((source) => /* @__PURE__ */ jsxDEV("li", { className: "source-selector__item mb-1", children: /* @__PURE__ */ jsxDEV("div", { className: "d-flex justify-content-between align-items-start gap-2", children: [
@@ -97,13 +83,13 @@ function SourceListSection({
         false,
         {
           fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-          lineNumber: 210,
+          lineNumber: 190,
           columnNumber: 37
         },
         this
       ) }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 209,
+        lineNumber: 189,
         columnNumber: 33
       }, this),
       onRemove && /* @__PURE__ */ jsxDEV(
@@ -117,7 +103,7 @@ function SourceListSection({
           disabled: saving,
           children: /* @__PURE__ */ jsxDEV("i", { className: "icon fa fa-unlink", "aria-hidden": "true" }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-            lineNumber: 227,
+            lineNumber: 207,
             columnNumber: 41
           }, this)
         },
@@ -125,27 +111,27 @@ function SourceListSection({
         false,
         {
           fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-          lineNumber: 219,
+          lineNumber: 199,
           columnNumber: 37
         },
         this
       )
     ] }, void 0, true, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 208,
+      lineNumber: 188,
       columnNumber: 29
     }, this) }, source.id, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 207,
+      lineNumber: 187,
       columnNumber: 25
     }, this)) }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 205,
+      lineNumber: 185,
       columnNumber: 17
     }, this)
   ] }, void 0, true, {
     fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-    lineNumber: 201,
+    lineNumber: 181,
     columnNumber: 9
   }, this);
 }
@@ -161,12 +147,12 @@ function ImportListSection({
   return /* @__PURE__ */ jsxDEV("section", { className: "mb-3", children: [
     /* @__PURE__ */ jsxDEV("h6", { className: "mb-2", children: sectiontitle }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 255,
+      lineNumber: 235,
       columnNumber: 13
     }, this),
     sources.length === 0 && /* @__PURE__ */ jsxDEV("div", { className: "text-muted small", children: emptytext }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 256,
+      lineNumber: 236,
       columnNumber: 38
     }, this),
     sources.length > 0 && /* @__PURE__ */ jsxDEV("ul", { className: "source-selector__list list-unstyled mb-0", children: sources.map((source) => /* @__PURE__ */ jsxDEV("li", { className: "source-selector__item mb-1", children: /* @__PURE__ */ jsxDEV(
@@ -182,22 +168,22 @@ function ImportListSection({
       false,
       {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 261,
+        lineNumber: 241,
         columnNumber: 29
       },
       this
     ) }, source.id, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 260,
+      lineNumber: 240,
       columnNumber: 25
     }, this)) }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 258,
+      lineNumber: 238,
       columnNumber: 17
     }, this)
   ] }, void 0, true, {
     fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-    lineNumber: 254,
+    lineNumber: 234,
     columnNumber: 9
   }, this);
 }
@@ -218,7 +204,6 @@ function SourceSelector({ contextid }) {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState(null);
-  const bridge = getSourceSelectionBridge();
   useEffect(() => {
     setLoading(true);
     setError(null);
@@ -355,35 +340,29 @@ function SourceSelector({ contextid }) {
     setSaving(true);
     setSaveSuccess(false);
     setError(null);
-    publishSelected(contextid, [...selected].join(","));
-    const requestdata = bridge.getRequestData(contextid);
-    const res = await Fetch.request("local_ai_content", `contexts/${contextid}/source-selections`, {
+    const selectedsourceids = [...selected].join(",");
+    publishSelected(contextid, selectedsourceids);
+    const response = await Fetch.request("local_ai_content", `contexts/${contextid}/source-selections`, {
       method: "PATCH",
-      body: requestdata
+      body: {
+        selectedSourceIds: selectedsourceids
+      }
     });
-    if (!res.ok) {
-      setError(`Failed to save source selection for this context (HTTP ${res.status}).`);
+    if (!response.ok) {
+      setError(`Failed to save source selection for this context (HTTP ${response.status}).`);
       setSaving(false);
-      return false;
-    } else {
-      setSaveSuccess(true);
+      return;
     }
+    setSaveSuccess(true);
     setSaving(false);
-    return true;
   }, "handleSave");
   useEffect(() => {
     publishSelected(contextid, [...selected].join(","));
   }, [contextid, selected]);
-  useEffect(() => {
-    savehandlercache.set(contextid, handleSave);
-    return () => {
-      savehandlercache.delete(contextid);
-    };
-  }, [contextid, selected]);
   if (loading) {
     return /* @__PURE__ */ jsxDEV("div", { className: "source-selector source-selector--loading", children: "Lade Quellen..." }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 489,
+      lineNumber: 461,
       columnNumber: 16
     }, this);
   }
@@ -392,7 +371,7 @@ function SourceSelector({ contextid }) {
       /* @__PURE__ */ jsxDEV("div", { className: "d-flex justify-content-between align-items-center mb-3", children: [
         /* @__PURE__ */ jsxDEV("h6", { className: "mb-0", children: "Fremdkurs ausw\xE4hlen" }, void 0, false, {
           fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-          lineNumber: 496,
+          lineNumber: 468,
           columnNumber: 21
         }, this),
         /* @__PURE__ */ jsxDEV(
@@ -408,31 +387,31 @@ function SourceSelector({ contextid }) {
           false,
           {
             fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-            lineNumber: 497,
+            lineNumber: 469,
             columnNumber: 21
           },
           this
         )
       ] }, void 0, true, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 495,
+        lineNumber: 467,
         columnNumber: 17
       }, this),
       loadingimportview && /* @__PURE__ */ jsxDEV("div", { className: "text-muted small mb-2", children: "Lade Kurse..." }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 507,
+        lineNumber: 479,
         columnNumber: 39
       }, this),
       !loadingimportview && importablecourses.length === 0 && /* @__PURE__ */ jsxDEV("div", { className: "text-muted small mb-2", children: "Keine weiteren Kurse mit nutzbaren Quellen gefunden." }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 509,
+        lineNumber: 481,
         columnNumber: 21
       }, this),
       !loadingimportview && importablecourses.length > 0 && /* @__PURE__ */ jsxDEV(Fragment, { children: [
         /* @__PURE__ */ jsxDEV("div", { className: "form-group", children: [
           /* @__PURE__ */ jsxDEV("label", { htmlFor: `source-selector-import-course-${contextid}`, children: "Kurs" }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-            lineNumber: 514,
+            lineNumber: 486,
             columnNumber: 29
           }, this),
           /* @__PURE__ */ jsxDEV(
@@ -445,7 +424,7 @@ function SourceSelector({ contextid }) {
               disabled: saving,
               children: importablecourses.map((course) => /* @__PURE__ */ jsxDEV("option", { value: course.id, children: course.name }, course.id, false, {
                 fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-                lineNumber: 523,
+                lineNumber: 495,
                 columnNumber: 37
               }, this))
             },
@@ -453,14 +432,14 @@ function SourceSelector({ contextid }) {
             false,
             {
               fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-              lineNumber: 515,
+              lineNumber: 487,
               columnNumber: 29
             },
             this
           )
         ] }, void 0, true, {
           fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-          lineNumber: 513,
+          lineNumber: 485,
           columnNumber: 25
         }, this),
         /* @__PURE__ */ jsxDEV(
@@ -476,24 +455,24 @@ function SourceSelector({ contextid }) {
           false,
           {
             fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-            lineNumber: 527,
+            lineNumber: 499,
             columnNumber: 25
           },
           this
         )
       ] }, void 0, true, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 512,
+        lineNumber: 484,
         columnNumber: 21
       }, this),
       error && /* @__PURE__ */ jsxDEV("div", { className: "text-danger small mt-2", children: error }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 538,
+        lineNumber: 510,
         columnNumber: 27
       }, this)
     ] }, void 0, true, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 494,
+      lineNumber: 466,
       columnNumber: 13
     }, this);
   }
@@ -502,7 +481,7 @@ function SourceSelector({ contextid }) {
       /* @__PURE__ */ jsxDEV("div", { className: "d-flex justify-content-between align-items-center mb-3", children: [
         /* @__PURE__ */ jsxDEV("h6", { className: "mb-0", children: "Quellen aus Fremdkurs hinzuf\xFCgen" }, void 0, false, {
           fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-          lineNumber: 547,
+          lineNumber: 519,
           columnNumber: 21
         }, this),
         /* @__PURE__ */ jsxDEV(
@@ -518,19 +497,19 @@ function SourceSelector({ contextid }) {
           false,
           {
             fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-            lineNumber: 548,
+            lineNumber: 520,
             columnNumber: 21
           },
           this
         )
       ] }, void 0, true, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 546,
+        lineNumber: 518,
         columnNumber: 17
       }, this),
       loadingimportview && /* @__PURE__ */ jsxDEV("div", { className: "text-muted small", children: "Lade Quellen..." }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 558,
+        lineNumber: 530,
         columnNumber: 39
       }, this),
       !loadingimportview && /* @__PURE__ */ jsxDEV(Fragment, { children: [
@@ -548,7 +527,7 @@ function SourceSelector({ contextid }) {
           false,
           {
             fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-            lineNumber: 561,
+            lineNumber: 533,
             columnNumber: 25
           },
           this
@@ -567,7 +546,7 @@ function SourceSelector({ contextid }) {
           false,
           {
             fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-            lineNumber: 569,
+            lineNumber: 541,
             columnNumber: 25
           },
           this
@@ -586,7 +565,7 @@ function SourceSelector({ contextid }) {
             false,
             {
               fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-              lineNumber: 579,
+              lineNumber: 551,
               columnNumber: 29
             },
             this
@@ -604,29 +583,29 @@ function SourceSelector({ contextid }) {
             false,
             {
               fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-              lineNumber: 587,
+              lineNumber: 559,
               columnNumber: 29
             },
             this
           )
         ] }, void 0, true, {
           fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-          lineNumber: 578,
+          lineNumber: 550,
           columnNumber: 25
         }, this)
       ] }, void 0, true, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 560,
+        lineNumber: 532,
         columnNumber: 21
       }, this),
       error && /* @__PURE__ */ jsxDEV("div", { className: "text-danger small mt-2", children: error }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 599,
+        lineNumber: 571,
         columnNumber: 27
       }, this)
     ] }, void 0, true, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 545,
+      lineNumber: 517,
       columnNumber: 13
     }, this);
   }
@@ -646,7 +625,7 @@ function SourceSelector({ contextid }) {
       false,
       {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 606,
+        lineNumber: 578,
         columnNumber: 13
       },
       this
@@ -666,7 +645,7 @@ function SourceSelector({ contextid }) {
       false,
       {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 615,
+        lineNumber: 587,
         columnNumber: 13
       },
       this
@@ -687,7 +666,7 @@ function SourceSelector({ contextid }) {
       false,
       {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 624,
+        lineNumber: 596,
         columnNumber: 13
       },
       this
@@ -702,7 +681,7 @@ function SourceSelector({ contextid }) {
         children: [
           /* @__PURE__ */ jsxDEV("i", { className: "icon fa fa-plus mr-1", "aria-hidden": "true" }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-            lineNumber: 642,
+            lineNumber: 614,
             columnNumber: 21
           }, this),
           "Quelle hinzuf\xFCgen"
@@ -712,39 +691,57 @@ function SourceSelector({ contextid }) {
       true,
       {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 636,
+        lineNumber: 608,
         columnNumber: 17
       },
       this
     ) }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 635,
+      lineNumber: 607,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("div", { className: "source-selector__actions mt-2 d-flex align-items-center gap-3", children: [
+      /* @__PURE__ */ jsxDEV(
+        "button",
+        {
+          type: "button",
+          className: "btn btn-primary btn-sm",
+          onClick: handleSave,
+          disabled: saving,
+          children: "Speichern"
+        },
+        void 0,
+        false,
+        {
+          fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
+          lineNumber: 620,
+          columnNumber: 17
+        },
+        this
+      ),
       saving && /* @__PURE__ */ jsxDEV("span", { className: "text-muted small", children: "Speichere..." }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 649,
+        lineNumber: 629,
         columnNumber: 21
       }, this),
       saveSuccess && /* @__PURE__ */ jsxDEV("span", { className: "text-success small", children: "Gespeichert" }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 653,
+        lineNumber: 633,
         columnNumber: 21
       }, this),
       error && /* @__PURE__ */ jsxDEV("span", { className: "text-danger small", children: error }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 656,
+        lineNumber: 637,
         columnNumber: 21
       }, this)
     ] }, void 0, true, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 647,
+      lineNumber: 619,
       columnNumber: 13
     }, this)
   ] }, void 0, true, {
     fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-    lineNumber: 605,
+    lineNumber: 577,
     columnNumber: 9
   }, this);
 }
