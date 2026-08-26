@@ -39,8 +39,3 @@ class cm_content_label extends cm_content_extractor {
         return $this->format_extracted_cm_content($content);
     }
 }
-
-
-
-
-

@@ -561,7 +561,6 @@ class sourcemanagement {
             'coursecontextid' => $coursecontext->id,
             'canmanagesystemsources' => $canmanagesystemsources,
             'items' => [
-                'importablecourses' => self::get_importable_courses($coursecontext),
                 'modules' => $modulerows,
                 'globaldocuments' => $globaldocuments,
                 'coursedocuments' => $coursedocuments,

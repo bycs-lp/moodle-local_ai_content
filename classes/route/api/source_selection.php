@@ -18,6 +18,7 @@ namespace local_ai_content\route\api;
 
 use core\param;
 use core\router\route;
+use core\router\schema\parameters\query_parameter;
 use core\router\schema\objects\schema_object;
 use core\router\schema\objects\scalar_type;
 use core\router\schema\response\payload_response;
@@ -75,14 +76,133 @@ class source_selection {
         $context = \context_helper::instance_by_id($contextId);
         self::require_login_and_access($context);
 
-        $availablesources = source_selection_utils::get_available_sources_for_context($contextId);
+        $groupedsources = source_selection_utils::get_grouped_sources_for_context($contextId);
         $selectedsourceids = source_selection_utils::get_selected_sourceids($contextId) ?? '';
 
         return new payload_response(
             payload: [
                 'items' => [[
-                    'availableSources' => $availablesources,
+                    'globalDocuments' => $groupedsources['globaldocuments'],
+                    'courseActivities' => $groupedsources['courseactivities'],
+                    'externalSources' => $groupedsources['externalsources'],
                     'selectedSourceIds' => $selectedsourceids,
+                ]],
+                'pagination' => [
+                    'page' => 1,
+                    'pageSize' => 1,
+                    'totalItems' => 1,
+                ],
+            ],
+            request: $request,
+            response: $response,
+        );
+    }
+
+    /**
+     * Retrieve selectable foreign courses for the source-add flow.
+     *
+     * @param ServerRequestInterface $request
+     * @param ResponseInterface $response
+     * @param int $contextId The Moodle context ID.
+     * @return payload_response
+     */
+    #[route(
+        path: '/contexts/{contextId}/source-selections/importable-courses',
+        method: ['GET'],
+        title: 'Get source-selection importable courses',
+        description: 'Returns all courses from which the user may attach external sources.',
+        pathtypes: [
+            new \core\router\schema\parameters\path_parameter(
+                name: 'contextId',
+                type: param::INT,
+                description: 'The Moodle context ID.',
+            ),
+        ],
+        responses: [
+            new \core\router\schema\response\response(
+                statuscode: 200,
+                description: 'OK',
+            ),
+        ],
+    )]
+    public function get_importable_courses(
+        ServerRequestInterface $request,
+        ResponseInterface $response,
+        int $contextId,
+    ): payload_response {
+        $context = \context_helper::instance_by_id($contextId);
+        self::require_login_and_access($context);
+
+        $courses = source_selection_utils::get_importable_courses_for_context($contextId);
+
+        return new payload_response(
+            payload: [
+                'items' => $courses,
+                'pagination' => [
+                    'page' => 1,
+                    'pageSize' => count($courses),
+                    'totalItems' => count($courses),
+                ],
+            ],
+            request: $request,
+            response: $response,
+        );
+    }
+
+    /**
+     * Retrieve available sources for one selected foreign course.
+     *
+     * @param ServerRequestInterface $request
+     * @param ResponseInterface $response
+     * @param int $contextId The Moodle context ID.
+     * @param int $sourceCourseId The source course ID.
+     * @return payload_response
+     */
+    #[route(
+        path: '/contexts/{contextId}/source-selections/importable-sources',
+        method: ['GET'],
+        title: 'Get source-selection importable sources',
+        description: 'Returns selectable source options for one foreign course.',
+        pathtypes: [
+            new \core\router\schema\parameters\path_parameter(
+                name: 'contextId',
+                type: param::INT,
+                description: 'The Moodle context ID.',
+            ),
+        ],
+        queryparams: [
+            new query_parameter(
+                name: 'sourceCourseId',
+                type: param::INT,
+                description: 'The source course ID.',
+                required: true,
+            ),
+        ],
+        responses: [
+            new \core\router\schema\response\response(
+                statuscode: 200,
+                description: 'OK',
+            ),
+        ],
+    )]
+    public function get_importable_sources(
+        ServerRequestInterface $request,
+        ResponseInterface $response,
+        int $contextId,
+    ): payload_response {
+        $context = \context_helper::instance_by_id($contextId);
+        self::require_login_and_access($context);
+
+        $queryparams = $request->getQueryParams();
+        $sourcecourseid = clean_param((string)($queryparams['sourceCourseId'] ?? '0'), PARAM_INT);
+
+        $sources = source_selection_utils::get_importable_sources_for_course($contextId, (int)$sourcecourseid);
+
+        return new payload_response(
+            payload: [
+                'items' => [[
+                    'courseActivities' => $sources['courseactivities'],
+                    'courseDocuments' => $sources['coursedocuments'],
                 ]],
                 'pagination' => [
                     'page' => 1,
@@ -166,7 +286,11 @@ class source_selection {
      */
     private static function require_login_and_access(\context $context): void {
         require_login();
-        require_capability('moodle/course:view', $context->get_course_context());
+
+        $coursecontext = $context->get_course_context(false);
+        if ($coursecontext !== false) {
+            require_capability('moodle/course:view', $coursecontext);
+        }
     }
 
     /**
