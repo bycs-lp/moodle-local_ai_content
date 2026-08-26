@@ -20,9 +20,6 @@ use local_ai_content\cm_content_extractor;
 use local_ai_content\source;
 use local_ai_manager\local\connector_factory;
 
-// This is required because course_get_format() is in course/lib.php and isn't loaded automatically.
-require_once($CFG->dirroot . '/course/lib.php');
-
 /**
  * Manages the indexing of Moodle content into the vector store.
  *

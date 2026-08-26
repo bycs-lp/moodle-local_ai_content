@@ -14,28 +14,27 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace local_ai_content\contentextractor;
+namespace local_ai_content\local;
 
-use local_ai_content\cm_content_extractor;
+use local_ai_content\source;
 
 /**
- * Class cm_content_label
+ * Access helper for source-management operations.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
- * @author     Philipp Memmel
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class cm_content_label extends cm_content_extractor {
-    #[\Override]
-    public function is_cm_supported(\core_course\cm_info $cm): bool {
-        return $cm->modname === 'label';
-    }
+class source_management_access {
+    /**
+     * Require source-management capability for the context of the given source.
+     *
+     * @param source $source Source to validate access for.
+     */
+    public function require_manage_access_for_source(source $source): void {
+        require_login();
 
-    #[\Override]
-    public function extract(\core_course\cm_info $cm): string {
-        $instance = $cm->get_instance_record();
-        $content = (string)($instance->intro ?? '');
-        return $this->format_extracted_cm_content($content);
+        $context = \context_helper::instance_by_id($source->get_contextid(), MUST_EXIST);
+        require_capability('local/ai_content:managesources', $context);
     }
 }

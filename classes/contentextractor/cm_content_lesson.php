@@ -51,7 +51,3 @@ class cm_content_lesson extends cm_content_extractor {
     }
 }
 
-
-
-
-

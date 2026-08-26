@@ -41,7 +41,3 @@ class cm_content_page extends cm_content_extractor {
         return $this->format_extracted_cm_content($content);
     }
 }
-
-
-
-

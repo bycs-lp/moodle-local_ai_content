@@ -23,7 +23,7 @@
 
 import {useEffect, useMemo, useRef, useState} from 'react';
 import Fetch from '@moodle/lms/core/fetch';
-// @ts-ignore - path resolved via Moodle import map at runtime
+import Config from '@moodle/lms/core/config';
 import {Button, ProgressBar} from '@moodlehq/design-system';
 
 type ModuleSource = {
@@ -102,6 +102,23 @@ type SourceProgressResponse = {
     pollIntervalSeconds?: number;
 };
 
+type SourceVectorStatusResponse = {
+    sourceId: number;
+    connected: boolean;
+    hasEntries: boolean;
+    status: string;
+    message: string;
+    allowIndex: boolean;
+    indexStatus: string;
+    indexStatusLabel: string;
+    lastIndexedAt: string | null;
+};
+
+type SourceVectorCheckState = {
+    checking: boolean;
+    error: string | null;
+};
+
 type DocumentTableRow = DocumentSource & {
     scope: 'global' | 'course';
 };
@@ -118,6 +135,63 @@ type Props = {
 };
 
 const DEFAULT_PROGRESS_POLL_MS = 5000;
+
+function buildApiUrl(path: string): string {
+    const normalizedpath = path.replace(/^\/+/, '');
+    const url = new URL(Config.apibase);
+    const basepathname = url.pathname.replace(/\/+$/, '');
+
+    url.pathname = `${basepathname}/rest/v2/local_ai_content/${normalizedpath}`.replace(/\/{2,}/g, '/');
+    return url.toString();
+}
+
+async function extractApiErrorMessage(response: Response): Promise<string | null> {
+    const contenttype = response.headers.get('content-type') ?? '';
+    if (contenttype.includes('application/json')) {
+        try {
+            const payload = await response.json() as Record<string, unknown>;
+            const message = typeof payload.message === 'string' ? payload.message.trim() : '';
+            const debuginfo = typeof payload.debuginfo === 'string' ? payload.debuginfo.trim() : '';
+
+            if (message && debuginfo) {
+                return `${message} (${debuginfo})`;
+            }
+            if (message) {
+                return message;
+            }
+
+            const error = typeof payload.error === 'string' ? payload.error.trim() : '';
+            if (error) {
+                return error;
+            }
+        } catch {
+            // Ignore parse errors and try plain-text fallback.
+        }
+    }
+
+    try {
+        const text = (await response.text()).trim();
+        if (text) {
+            return text;
+        }
+    } catch {
+        // No further fallback available.
+    }
+
+    return null;
+}
+
+function extractThrownErrorMessage(error: unknown): string | null {
+    if (error instanceof Error && error.message.trim()) {
+        return error.message.trim();
+    }
+
+    if (typeof error === 'string' && error.trim()) {
+        return error.trim();
+    }
+
+    return null;
+}
 
 function normalizeProgressPollMs(timeoutseconds?: number): number {
     if (!Number.isFinite(timeoutseconds)) {
@@ -240,8 +314,10 @@ function mergeProgressData(payload: SourceManagementResponse, items: SourceProgr
             if (!update) {
                 return row;
             }
+            const allowindex = update.indexstatus === 'failed' ? false : row.allowindex;
             return {
                 ...row,
+                allowindex,
                 indexstatus: update.indexstatus,
                 indexstatuslabel: update.indexstatuslabel,
                 indextaskid: update.indextaskid,
@@ -257,8 +333,10 @@ function mergeProgressData(payload: SourceManagementResponse, items: SourceProgr
             if (!update) {
                 return row;
             }
+            const allowindex = update.indexstatus === 'failed' ? false : row.allowindex;
             return {
                 ...row,
+                allowindex,
                 indexstatus: update.indexstatus,
                 indexstatuslabel: update.indexstatuslabel,
                 indextaskid: update.indextaskid,
@@ -274,8 +352,10 @@ function mergeProgressData(payload: SourceManagementResponse, items: SourceProgr
             if (!update) {
                 return row;
             }
+            const allowindex = update.indexstatus === 'failed' ? false : row.allowindex;
             return {
                 ...row,
+                allowindex,
                 indexstatus: update.indexstatus,
                 indexstatuslabel: update.indexstatuslabel,
                 indextaskid: update.indextaskid,
@@ -289,11 +369,50 @@ function mergeProgressData(payload: SourceManagementResponse, items: SourceProgr
     };
 }
 
+function applyVectorStatusToPayload(
+    payload: SourceManagementResponse,
+    status: SourceVectorStatusResponse,
+): SourceManagementResponse {
+    const updatedocument = (row: DocumentSource): DocumentSource => {
+        if (row.id !== status.sourceId) {
+            return row;
+        }
+
+        return {
+            ...row,
+            allowindex: status.allowIndex,
+            indexstatus: status.indexStatus,
+            indexstatuslabel: status.indexStatusLabel,
+            lastindexed: status.lastIndexedAt,
+        };
+    };
+
+    return {
+        ...payload,
+        modules: payload.modules.map((row) => {
+            if (row.sourceid !== status.sourceId) {
+                return row;
+            }
+
+            return {
+                ...row,
+                allowindex: status.allowIndex,
+                indexstatus: status.indexStatus,
+                indexstatuslabel: status.indexStatusLabel,
+                lastindexed: status.lastIndexedAt,
+            };
+        }),
+        globaldocuments: payload.globaldocuments.map((row) => updatedocument(row)),
+        coursedocuments: payload.coursedocuments.map((row) => updatedocument(row)),
+    };
+}
+
 export default function SourceManager({contextid}: Props) {
     const [payload, setPayload] = useState<SourceManagementResponse | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const [saving, setSaving] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
+    const [vectorCheckState, setVectorCheckState] = useState<Record<number, SourceVectorCheckState>>({});
 
     const [editingDocument, setEditingDocument] = useState<EditableDocument | null>(null);
     const [deleteCandidate, setDeleteCandidate] = useState<DocumentTableRow | null>(null);
@@ -301,8 +420,9 @@ export default function SourceManager({contextid}: Props) {
     const [newDocument, setNewDocument] = useState<EditableDocument>({id: 0, name: '', description: '', content: ''});
     const [progressPollMs, setProgressPollMs] = useState<number>(DEFAULT_PROGRESS_POLL_MS);
 
-    const plusIcon = <i className="icon fa fa-plus" aria-hidden="true" />;
+    const plusIcon = <i className="icon fa fa-plus" aria-hidden="true"/>;
     const refreshInFlightRef = useRef<boolean>(false);
+    const vectorCheckRunRef = useRef<number>(0);
 
     const documentRows = useMemo<DocumentTableRow[]>(() => {
         if (!payload) {
@@ -317,15 +437,10 @@ export default function SourceManager({contextid}: Props) {
         if (!payload) {
             return false;
         }
-        const modulesActive = payload.modules.some((row) =>
-            shouldRenderProgress(row.indexstatus, row.progressrecordid, row.indextaskid)
-        );
-        const globalActive = payload.globaldocuments.some((row) =>
-            shouldRenderProgress(row.indexstatus, row.progressrecordid, row.indextaskid)
-        );
-        const courseActive = payload.coursedocuments.some((row) =>
-            shouldRenderProgress(row.indexstatus, row.progressrecordid, row.indextaskid)
-        );
+        // Poll only while indexing is actively queued/running.
+        const modulesActive = payload.modules.some((row) => isActiveStatus(row.indexstatus));
+        const globalActive = payload.globaldocuments.some((row) => isActiveStatus(row.indexstatus));
+        const courseActive = payload.coursedocuments.some((row) => isActiveStatus(row.indexstatus));
         return modulesActive || globalActive || courseActive;
     }, [payload]);
 
@@ -342,7 +457,9 @@ export default function SourceManager({contextid}: Props) {
         try {
             const res = await Fetch.performGet('local_ai_content', `contexts/${contextid}/sources`);
             const data = await res.json() as SourceManagementApiResponse;
-            setPayload(normalizeManagementResponse(data));
+            const normalized = normalizeManagementResponse(data);
+            setPayload(normalized);
+            startVectorStatusChecks(normalized);
         } catch {
             setError('Die Quellen konnten nicht geladen werden.');
         } finally {
@@ -374,22 +491,134 @@ export default function SourceManager({contextid}: Props) {
         setSaving(true);
         setError(null);
         try {
-            const res = await Fetch.request('local_ai_content', path, {
+            const res = await fetch(buildApiUrl(path), {
                 method,
-                body,
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    pageparent: Config.traceId || '',
+                },
+                body: body ? JSON.stringify(body) : undefined,
+                credentials: 'same-origin',
             });
             if (!res.ok) {
-                setError(`Speichern fehlgeschlagen (HTTP ${res.status}).`);
+                const detail = await extractApiErrorMessage(res);
+                const fallback = res.statusText ? `HTTP ${res.status} (${res.statusText})` : `HTTP ${res.status}`;
+                setError(detail ? `Die Aktion konnte nicht ausgeführt werden: ${detail}` : `Die Aktion konnte nicht ausgeführt werden (${fallback}).`);
                 return false;
             }
             await loadPayload(true);
             return true;
-        } catch {
-            setError('Die Aktion konnte nicht ausgeführt werden.');
+        } catch (error) {
+            const detail = extractThrownErrorMessage(error);
+            setError(detail ? `Die Aktion konnte nicht ausgeführt werden: ${detail}` : 'Die Aktion konnte nicht ausgeführt werden.');
             return false;
         } finally {
             setSaving(false);
         }
+    };
+
+    const checkSingleSourceVectorStatus = async(sourceid: number, runid: number) => {
+        try {
+            const res = await fetch(buildApiUrl(`sources/${sourceid}/vector-status`), {
+                method: 'GET',
+                headers: {
+                    Accept: 'application/json',
+                    pageparent: Config.traceId || '',
+                },
+                credentials: 'same-origin',
+            });
+
+            if (vectorCheckRunRef.current !== runid) {
+                return;
+            }
+
+            if (!res.ok) {
+                const detail = await extractApiErrorMessage(res);
+                setVectorCheckState((current) => ({
+                    ...current,
+                    [sourceid]: {
+                        checking: false,
+                        error: detail ? `Vektor-DB-Pruefung fehlgeschlagen: ${detail}` : 'Vektor-DB-Pruefung fehlgeschlagen.',
+                    },
+                }));
+                return;
+            }
+
+            const status = await res.json() as SourceVectorStatusResponse;
+            if (vectorCheckRunRef.current !== runid) {
+                return;
+            }
+
+            if (!status.connected) {
+                setVectorCheckState((current) => ({
+                    ...current,
+                    [sourceid]: {
+                        checking: false,
+                        error: status.message || 'Keine Verbindung zur Vektor-DB.',
+                    },
+                }));
+                return;
+            }
+
+            setPayload((current) => {
+                if (!current) {
+                    return current;
+                }
+                return applyVectorStatusToPayload(current, status);
+            });
+            setVectorCheckState((current) => ({
+                ...current,
+                [sourceid]: {
+                    checking: false,
+                    error: null,
+                },
+            }));
+        } catch (caughtError) {
+            if (vectorCheckRunRef.current !== runid) {
+                return;
+            }
+
+            const detail = extractThrownErrorMessage(caughtError);
+            setVectorCheckState((current) => ({
+                ...current,
+                [sourceid]: {
+                    checking: false,
+                    error: detail ? `Keine Verbindung zur Vektor-DB: ${detail}` : 'Keine Verbindung zur Vektor-DB.',
+                },
+            }));
+        }
+    };
+
+    const startVectorStatusChecks = (currentpayload: SourceManagementResponse) => {
+        const sourceids = [
+            ...currentpayload.modules.map((row) => row.sourceid),
+            ...currentpayload.globaldocuments.map((row) => row.id),
+            ...currentpayload.coursedocuments.map((row) => row.id),
+        ].filter((sourceid, index, all) => sourceid > 0 && all.indexOf(sourceid) === index);
+
+        if (sourceids.length === 0) {
+            setVectorCheckState({});
+            return;
+        }
+
+        const runid = vectorCheckRunRef.current + 1;
+        vectorCheckRunRef.current = runid;
+
+        setVectorCheckState((current) => {
+            const next: Record<number, SourceVectorCheckState> = {...current};
+            sourceids.forEach((sourceid) => {
+                next[sourceid] = {
+                    checking: true,
+                    error: null,
+                };
+            });
+            return next;
+        });
+
+        sourceids.forEach((sourceid) => {
+            void checkSingleSourceVectorStatus(sourceid, runid);
+        });
     };
 
     useEffect(() => {
@@ -494,107 +723,119 @@ export default function SourceManager({contextid}: Props) {
             </div>
             <table className="table table-sm table-striped">
                 <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Beschreibung</th>
-                        <th>Geltungsbereich</th>
-                        <th>Für KI-Zugriff aktiv</th>
-                        <th>In Vektorstore indizieren</th>
-                        <th>Status</th>
-                        <th>Last indexed</th>
-                        <th>Aktionen</th>
-                    </tr>
+                <tr>
+                    <th>Name</th>
+                    <th>Beschreibung</th>
+                    <th>Geltungsbereich</th>
+                    <th>Für KI-Zugriff aktiv</th>
+                    <th>In Vektorstore indizieren</th>
+                    <th>Status</th>
+                    <th>Last indexed</th>
+                    <th>Aktionen</th>
+                </tr>
                 </thead>
                 <tbody>
-                    {rows.map((row) => (
-                        <tr key={row.id}>
-                            <td>{row.name}</td>
-                            <td>{row.description || '-'}</td>
-                            <td>
-                                {row.scope === 'global' ? (
-                                    <i className="icon fa fa-globe" aria-label="Globale Quelle" title="Globale Quelle" />
-                                ) : (
-                                    <i className="icon fa fa-graduation-cap" aria-label="Kursquelle" title="Kursquelle" />
-                                )}
-                            </td>
-                            <td>
-                                <div className="form-check form-switch m-0">
-                                    <input
-                                        id={`document-enabled-${row.id}`}
-                                        className="form-check-input"
-                                        type="checkbox"
-                                        role="switch"
-                                        checked={row.enabled}
-                                        disabled={saving || !row.canedit}
-                                        onChange={() => handleDocumentEnabledToggle(row, !row.enabled)}
-                                        aria-label={`Dokument ${row.name} für KI-Zugriff aktivieren`}
-                                    />
+                {rows.map((row) => (
+                    <tr key={row.id}>
+                        <td>{row.name}</td>
+                        <td>{row.description || '-'}</td>
+                        <td>
+                            {row.scope === 'global' ? (
+                                <i className="icon fa fa-globe" aria-label="Globale Quelle" title="Globale Quelle"/>
+                            ) : (
+                                <i className="icon fa fa-graduation-cap" aria-label="Kursquelle" title="Kursquelle"/>
+                            )}
+                        </td>
+                        <td>
+                            <div className="form-check form-switch m-0">
+                                <input
+                                    id={`document-enabled-${row.id}`}
+                                    className="form-check-input"
+                                    type="checkbox"
+                                    role="switch"
+                                    checked={row.enabled}
+                                    disabled={saving || !row.canedit}
+                                    onChange={() => handleDocumentEnabledToggle(row, !row.enabled)}
+                                    aria-label={`Dokument ${row.name} für KI-Zugriff aktivieren`}
+                                />
+                            </div>
+                        </td>
+                        <td>
+                            {(() => {
+                                const vectorcheck = vectorCheckState[row.id];
+                                const blocktoggle = Boolean(vectorcheck?.checking || vectorcheck?.error);
+                                return (
+                            <div className="form-check form-switch m-0">
+                                <input
+                                    id={`document-index-${row.id}`}
+                                    className="form-check-input"
+                                    type="checkbox"
+                                    role="switch"
+                                    checked={row.allowindex}
+                                            disabled={saving || !row.enabled || !row.canedit || blocktoggle}
+                                    onChange={() => handleDocumentAllowIndexToggle(row, !row.allowindex)}
+                                    aria-label={`Dokument ${row.name} in Vektorstore indizieren`}
+                                />
+                            </div>
+                                );
+                            })()}
+                            {vectorCheckState[row.id]?.checking && (
+                                <div className="small text-muted mt-1">Pruefe Vektor-DB...</div>
+                            )}
+                            {vectorCheckState[row.id]?.error && (
+                                <div className="small text-danger mt-1">{vectorCheckState[row.id]?.error}</div>
+                            )}
+                        </td>
+                        <td>
+                            <span className="badge badge-light">{row.indexstatuslabel}</span>
+                            {shouldRenderProgress(row.indexstatus, row.progressrecordid, row.indextaskid) && (
+                                <StoredProgress
+                                    percent={row.progresspercent}
+                                    message={row.progressmessage || row.indexstatuslabel}
+                                    error={row.progresserror}
+                                    active={isActiveStatus(row.indexstatus)}
+                                />
+                            )}
+                        </td>
+                        <td>{formatTimestamp(row.lastindexed)}</td>
+                        <td>
+                            {row.canedit && (
+                                <div className="d-flex gap-1">
+                                    <button
+                                        type="button"
+                                        className="btn btn-link p-0"
+                                        disabled={saving}
+                                        onClick={() => setEditingDocument({
+                                            id: row.id,
+                                            name: row.name,
+                                            description: row.description,
+                                            content: row.content,
+                                        })}
+                                        aria-label={`Dokument ${row.name} bearbeiten`}
+                                        title="Bearbeiten"
+                                    >
+                                        <i className="icon fa fa-pencil" aria-hidden="true"/>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="btn btn-link text-danger p-0"
+                                        disabled={saving}
+                                        onClick={() => setDeleteCandidate(row)}
+                                        aria-label={`Dokument ${row.name} löschen`}
+                                        title="Löschen"
+                                    >
+                                        <i className="icon fa fa-trash" aria-hidden="true"/>
+                                    </button>
                                 </div>
-                            </td>
-                            <td>
-                                <div className="form-check form-switch m-0">
-                                    <input
-                                        id={`document-index-${row.id}`}
-                                        className="form-check-input"
-                                        type="checkbox"
-                                        role="switch"
-                                        checked={row.allowindex}
-                                        disabled={saving || !row.enabled || !row.canedit}
-                                        onChange={() => handleDocumentAllowIndexToggle(row, !row.allowindex)}
-                                        aria-label={`Dokument ${row.name} in Vektorstore indizieren`}
-                                    />
-                                </div>
-                            </td>
-                            <td>
-                                <span className="badge badge-light">{row.indexstatuslabel}</span>
-                                {shouldRenderProgress(row.indexstatus, row.progressrecordid, row.indextaskid) && (
-                                    <StoredProgress
-                                        percent={row.progresspercent}
-                                        message={row.progressmessage || row.indexstatuslabel}
-                                        error={row.progresserror}
-                                        active={isActiveStatus(row.indexstatus)}
-                                    />
-                                )}
-                            </td>
-                            <td>{formatTimestamp(row.lastindexed)}</td>
-                            <td>
-                                {row.canedit && (
-                                    <div className="d-flex gap-1">
-                                        <button
-                                            type="button"
-                                            className="btn btn-link p-0"
-                                            disabled={saving}
-                                            onClick={() => setEditingDocument({
-                                                id: row.id,
-                                                name: row.name,
-                                                description: row.description,
-                                                content: row.content,
-                                            })}
-                                            aria-label={`Dokument ${row.name} bearbeiten`}
-                                            title="Bearbeiten"
-                                        >
-                                            <i className="icon fa fa-pencil" aria-hidden="true" />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="btn btn-link text-danger p-0"
-                                            disabled={saving}
-                                            onClick={() => setDeleteCandidate(row)}
-                                            aria-label={`Dokument ${row.name} löschen`}
-                                            title="Löschen"
-                                        >
-                                            <i className="icon fa fa-trash" aria-hidden="true" />
-                                        </button>
-                                    </div>
-                                )}
-                            </td>
-                        </tr>
-                    ))}
-                    {rows.length === 0 && (
-                        <tr>
-                            <td colSpan={8} className="text-muted">Keine Dokumente vorhanden.</td>
-                        </tr>
-                    )}
+                            )}
+                        </td>
+                    </tr>
+                ))}
+                {rows.length === 0 && (
+                    <tr>
+                        <td colSpan={8} className="text-muted">Keine Dokumente vorhanden.</td>
+                    </tr>
+                )}
                 </tbody>
             </table>
         </section>
@@ -616,67 +857,79 @@ export default function SourceManager({contextid}: Props) {
                 <h5>Aktivitäten dieses Kurses</h5>
                 <table className="table table-sm table-hover">
                     <thead>
-                        <tr>
-                            <th>Aktivität</th>
-                            <th>Typ</th>
-                            <th>Für KI-Zugriff aktiv</th>
-                            <th>In Vektorstore indizieren</th>
-                            <th>Status</th>
-                            <th>Last indexed</th>
-                        </tr>
+                    <tr>
+                        <th>Aktivität</th>
+                        <th>Typ</th>
+                        <th>Für KI-Zugriff aktiv</th>
+                        <th>In Vektorstore indizieren</th>
+                        <th>Status</th>
+                        <th>Last indexed</th>
+                    </tr>
                     </thead>
                     <tbody>
-                        {payload.modules.map((row) => (
-                            <tr key={row.cmid}>
-                                <td>{row.name}</td>
-                                <td>{row.moddisplayname || row.modname}</td>
-                                <td>
-                                    <div className="form-check form-switch m-0">
-                                        <input
-                                            id={`module-enabled-${row.cmid}`}
-                                            className="form-check-input"
-                                            type="checkbox"
-                                            role="switch"
-                                            checked={row.enabled}
-                                            disabled={saving}
-                                            onChange={() => handleModuleEnabledToggle(row, !row.enabled)}
-                                            aria-label={`Aktivität ${row.name} für KI-Zugriff aktivieren`}
-                                        />
-                                    </div>
-                                </td>
-                                <td>
-                                    <div className="form-check form-switch m-0">
-                                        <input
-                                            id={`module-index-${row.cmid}`}
-                                            className="form-check-input"
-                                            type="checkbox"
-                                            role="switch"
-                                            checked={row.allowindex}
-                                            disabled={saving || !row.enabled}
-                                            onChange={() => handleModuleAllowIndexToggle(row, !row.allowindex)}
-                                            aria-label={`Aktivität ${row.name} in Vektorstore indizieren`}
-                                        />
-                                    </div>
-                                </td>
-                                <td>
-                                    <span className="badge badge-light">{row.indexstatuslabel}</span>
-                                    {shouldRenderProgress(row.indexstatus, row.progressrecordid, row.indextaskid) && (
-                                        <StoredProgress
-                                            percent={row.progresspercent}
-                                            message={row.progressmessage || row.indexstatuslabel}
-                                            error={row.progresserror}
-                                            active={isActiveStatus(row.indexstatus)}
-                                        />
-                                    )}
-                                </td>
-                                <td>{formatTimestamp(row.lastindexed)}</td>
-                            </tr>
-                        ))}
-                        {payload.modules.length === 0 && (
-                            <tr>
-                                <td colSpan={6} className="text-muted">Keine unterstützten Aktivitäten gefunden.</td>
-                            </tr>
-                        )}
+                    {payload.modules.map((row) => (
+                        <tr key={row.cmid}>
+                            <td>{row.name}</td>
+                            <td>{row.moddisplayname || row.modname}</td>
+                            <td>
+                                <div className="form-check form-switch m-0">
+                                    <input
+                                        id={`module-enabled-${row.cmid}`}
+                                        className="form-check-input"
+                                        type="checkbox"
+                                        role="switch"
+                                        checked={row.enabled}
+                                        disabled={saving}
+                                        onChange={() => handleModuleEnabledToggle(row, !row.enabled)}
+                                        aria-label={`Aktivität ${row.name} für KI-Zugriff aktivieren`}
+                                    />
+                                </div>
+                            </td>
+                            <td>
+                                {(() => {
+                                    const vectorcheck = row.sourceid > 0 ? vectorCheckState[row.sourceid] : null;
+                                    const blocktoggle = Boolean(vectorcheck?.checking || vectorcheck?.error);
+                                    return (
+                                <div className="form-check form-switch m-0">
+                                    <input
+                                        id={`module-index-${row.cmid}`}
+                                        className="form-check-input"
+                                        type="checkbox"
+                                        role="switch"
+                                        checked={row.allowindex}
+                                                disabled={saving || !row.enabled || blocktoggle}
+                                        onChange={() => handleModuleAllowIndexToggle(row, !row.allowindex)}
+                                        aria-label={`Aktivität ${row.name} in Vektorstore indizieren`}
+                                    />
+                                </div>
+                                    );
+                                })()}
+                                {row.sourceid > 0 && vectorCheckState[row.sourceid]?.checking && (
+                                    <div className="small text-muted mt-1">Pruefe Vektor-DB...</div>
+                                )}
+                                {row.sourceid > 0 && vectorCheckState[row.sourceid]?.error && (
+                                    <div className="small text-danger mt-1">{vectorCheckState[row.sourceid]?.error}</div>
+                                )}
+                            </td>
+                            <td>
+                                <span className="badge badge-light">{row.indexstatuslabel}</span>
+                                {shouldRenderProgress(row.indexstatus, row.progressrecordid, row.indextaskid) && (
+                                    <StoredProgress
+                                        percent={row.progresspercent}
+                                        message={row.progressmessage || row.indexstatuslabel}
+                                        error={row.progresserror}
+                                        active={isActiveStatus(row.indexstatus)}
+                                    />
+                                )}
+                            </td>
+                            <td>{formatTimestamp(row.lastindexed)}</td>
+                        </tr>
+                    ))}
+                    {payload.modules.length === 0 && (
+                        <tr>
+                            <td colSpan={6} className="text-muted">Keine unterstützten Aktivitäten gefunden.</td>
+                        </tr>
+                    )}
                     </tbody>
                 </table>
                 <div className="small text-muted">
@@ -766,7 +1019,7 @@ export default function SourceManager({contextid}: Props) {
                             </div>
                         </div>
                     </div>
-                    <div className="modal-backdrop fade show" onClick={closeCreateModal} />
+                    <div className="modal-backdrop fade show" onClick={closeCreateModal}/>
                 </>
             )}
 
@@ -838,7 +1091,7 @@ export default function SourceManager({contextid}: Props) {
                             </div>
                         </div>
                     </div>
-                    <div className="modal-backdrop fade show" onClick={() => setEditingDocument(null)} />
+                    <div className="modal-backdrop fade show" onClick={() => setEditingDocument(null)}/>
                 </>
             )}
 
@@ -886,7 +1139,7 @@ export default function SourceManager({contextid}: Props) {
                             </div>
                         </div>
                     </div>
-                    <div className="modal-backdrop fade show" onClick={() => setDeleteCandidate(null)} />
+                    <div className="modal-backdrop fade show" onClick={() => setDeleteCandidate(null)}/>
                 </>
             )}
 

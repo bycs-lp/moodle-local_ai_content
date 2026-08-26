@@ -59,5 +59,3 @@ class cm_content_resource extends cm_content_extractor {
         return $this->format_extracted_cm_content($content);
     }
 }
-
-
