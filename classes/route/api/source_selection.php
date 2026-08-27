@@ -33,7 +33,7 @@ use Psr\Http\Message\ServerRequestInterface;
  * GET  /api/rest/v2/local_ai_content/contexts/{contextId}/source-selections
  *     Returns selectable sources for the context and the currently saved source selection.
  *
- * PATCH /api/rest/v2/local_ai_content/contexts/{contextId}/source-selections
+ * PUT /api/rest/v2/local_ai_content/contexts/{contextId}/source-selections
  *     Saves the selected source IDs for the given context.
  *
  * @package    local_ai_content
@@ -225,7 +225,7 @@ class source_selection {
      */
     #[route(
         path: '/contexts/{contextId}/source-selections',
-        method: ['PATCH'],
+        method: ['PUT'],
         title: 'Save selected source IDs for a context',
         description: 'Persists the comma-separated list of source IDs selected for this context.',
         pathtypes: [
