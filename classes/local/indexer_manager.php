@@ -158,6 +158,7 @@ class indexer_manager {
      *
      * @param source $source The source to index.
      * @param string[] $chunks The content chunks to embed and store.
+     * @throws \moodle_exception If an embedding request fails.
      */
     protected function index_source(source $source, array $chunks): void {
         $chunks = array_values(array_filter(array_map('trim', $chunks), static fn(string $c): bool => $c !== ''));
@@ -172,6 +173,15 @@ class indexer_manager {
         $chunkcount = 1;
         foreach ($chunks as $chunk) {
             $vectorrequest = $this->ai_manager->perform_request($chunk, 'local_ai_content', $this->context->id);
+            if ($vectorrequest->get_code() !== 200) {
+                throw new \moodle_exception(
+                    'indexingerror_embeddingrequestfailed',
+                    'local_ai_content',
+                    '',
+                    $vectorrequest->get_errormessage(),
+                    $vectorrequest->get_debuginfo()
+                );
+            }
             if ($embeddingmodel === '') {
                 $embeddingmodel = $vectorrequest->get_modelinfo();
             }
