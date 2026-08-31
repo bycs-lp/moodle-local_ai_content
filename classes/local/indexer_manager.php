@@ -32,6 +32,9 @@ use local_ai_manager\local\connector_factory;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class indexer_manager {
+    /** @var int Smallest chunk length that may still be retried with a split. */
+    protected const MIN_RETRYABLE_CHUNK_LENGTH = 200;
+
     /** @var \context Context the indexing is triggered for. */
     protected \context $context;
 
@@ -167,27 +170,65 @@ class indexer_manager {
         }
 
         $sourceid = $source->get_id();
-        $maxchunks = count($chunks);
         $embeddingmodel = '';
-        $enrichedvectors = [];
-        $chunkcount = 1;
-        foreach ($chunks as $chunk) {
+        $embeddedchunks = [];
+        $processedchunks = [];
+        $pendingchunks = array_values($chunks);
+
+        while (!empty($pendingchunks)) {
+            $chunk = array_shift($pendingchunks);
+            if (!is_string($chunk)) {
+                continue;
+            }
+            $chunk = trim($chunk);
+            if ($chunk === '') {
+                continue;
+            }
+
             $vectorrequest = $this->ai_manager->perform_request($chunk, 'local_ai_content', $this->context->id);
             if ($vectorrequest->get_code() !== 200) {
-                throw new \moodle_exception(
+                if (self::should_retry_with_smaller_chunk($vectorrequest, $chunk)) {
+                    [$leftchunk, $rightchunk] = self::split_chunk_in_half($chunk);
+                    // Process the split chunks immediately to preserve source order in stored vectors.
+                    array_unshift($pendingchunks, $rightchunk, $leftchunk);
+                    continue;
+                }
+
+                $errormessage = trim((string)$vectorrequest->get_errormessage());
+                if ($errormessage === '') {
+                    $errormessage = 'Embedding request failed with code ' . $vectorrequest->get_code() . '.';
+                }
+
+                $exception = new \moodle_exception(
                     'indexingerror_embeddingrequestfailed',
                     'local_ai_content',
                     '',
-                    $vectorrequest->get_errormessage(),
-                    $vectorrequest->get_debuginfo()
+                    $errormessage
                 );
+                // Assigned after construction on purpose: passing it to the constructor would inline the
+                // debug info into the exception message, which is shown to source managers.
+                $exception->debuginfo = trim((string)$vectorrequest->get_debuginfo());
+                throw $exception;
             }
+
             if ($embeddingmodel === '') {
                 $embeddingmodel = $vectorrequest->get_modelinfo();
             }
+
+            $processedchunks[] = $chunk;
+            $embeddedchunks[] = [
+                'vector' => $vectorrequest->get_content(),
+                'chunk' => $chunk,
+            ];
+        }
+
+        $maxchunks = count($embeddedchunks);
+        $enrichedvectors = [];
+        $chunkcount = 1;
+        foreach ($embeddedchunks as $embeddedchunk) {
             $enrichedvectors[] = enriched_vector::create(
-                $vectorrequest->get_content(),
-                $chunk,
+                $embeddedchunk['vector'],
+                $embeddedchunk['chunk'],
                 $sourceid,
                 $chunkcount,
                 $maxchunks
@@ -204,9 +245,57 @@ class indexer_manager {
         // Persist indexing metadata on the source record.
         $clock = \core\di::get(\core\clock::class);
         $source->set_embeddingmodel($embeddingmodel);
-        $source->set_contenthash(hash('sha256', implode("\n", $chunks)));
+        $source->set_contenthash(hash('sha256', implode("\n", $processedchunks)));
         $source->set_lastindexed($clock->time());
         $source->store();
+    }
+
+    /**
+     * Check whether an embedding failure should be retried with smaller chunks.
+     *
+     * @param \local_ai_manager\local\prompt_response $vectorrequest Failed prompt response.
+     * @param string $chunk Submitted chunk.
+     * @return bool
+     */
+    protected static function should_retry_with_smaller_chunk(\local_ai_manager\local\prompt_response $vectorrequest,
+            string $chunk): bool {
+        if ($vectorrequest->get_code() !== 400) {
+            return false;
+        }
+
+        if (\core_text::strlen($chunk) <= self::MIN_RETRYABLE_CHUNK_LENGTH) {
+            return false;
+        }
+
+        $errorcontext = \core_text::strtolower(trim((string)$vectorrequest->get_errormessage()) . ' ' .
+            trim((string)$vectorrequest->get_debuginfo()));
+        if ($errorcontext === '') {
+            return false;
+        }
+
+        return str_contains($errorcontext, 'maximum context length')
+            || str_contains($errorcontext, 'too many tokens')
+            || str_contains($errorcontext, 'context_length_exceeded')
+            || str_contains($errorcontext, 'max_tokens_per_request');
+    }
+
+    /**
+     * Split a chunk into two non-empty chunks at a character midpoint.
+     *
+     * @param string $chunk Chunk to split.
+     * @return string[]
+     */
+    protected static function split_chunk_in_half(string $chunk): array {
+        $length = \core_text::strlen($chunk);
+        $half = (int)max(1, floor($length / 2));
+        $left = trim(\core_text::substr($chunk, 0, $half));
+        $right = trim(\core_text::substr($chunk, $half));
+
+        if ($left === '' || $right === '') {
+            return [trim($chunk), ''];
+        }
+
+        return [$left, $right];
     }
 
     /**

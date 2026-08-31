@@ -40,6 +40,8 @@
               <FIELD NAME="lastindexed" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="The timestamp of the last indexing operation for this source"/>
               <FIELD NAME="indexstatus" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="idle" SEQUENCE="false" COMMENT="Current indexing status (idle, queued, running, indexed, failed)"/>
               <FIELD NAME="indextaskid" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Last queued adhoc task ID used to index this source"/>
+              <FIELD NAME="indexerror" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Error message of the last failed indexing run"/>
+              <FIELD NAME="indexdebuginfo" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Technical details of the last failed indexing run, only filled while developer debugging is enabled"/>
               <FIELD NAME="usermodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
               <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
               <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>

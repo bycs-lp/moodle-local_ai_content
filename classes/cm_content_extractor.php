@@ -28,6 +28,12 @@ abstract class cm_content_extractor {
     /** @var string[] Text mimetypes that can be read directly from file contents. */
     protected const TEXT_MIMETYPES = ['text/plain', 'text/html', 'text/csv'];
 
+    /** @var int Number of characters per embedding chunk. */
+    protected const CHUNK_SIZE = 1000;
+
+    /** @var int Number of characters each chunk repeats from its predecessor to preserve context. */
+    protected const CHUNK_OVERLAP = 100;
+
     /**
      * Check whether this extractor supports the given course module.
      *
@@ -45,7 +51,10 @@ abstract class cm_content_extractor {
     abstract public function extract(\core_course\cm_info $cm): string;
 
     /**
-     * Split extracted content into chunks for embedding.
+     * Split extracted content into overlapping chunks for embedding.
+     *
+     * Splitting is done on characters, not on bytes. Byte-based splitting would cut multi-byte UTF-8
+     * sequences in half, which produces strings that cannot be JSON encoded for the embedding request.
      *
      * @param \core_course\cm_info $cm The course module info object.
      * @return string[]
@@ -53,18 +62,14 @@ abstract class cm_content_extractor {
     public function extract_as_chunks(\core_course\cm_info $cm): array {
         $content = $this->extract($cm);
 
-        // Split into 80k character chunks, with 100 character overlap.
-        $chunksize = 80000;
-        $overlap = 100;
         $chunks = [];
         $start = 0;
-        $contentlength = strlen($content);
+        $contentlength = \core_text::strlen($content);
         while ($start < $contentlength) {
-            $end = min($start + $chunksize, $contentlength);
-            $chunk = substr($content, $start, $end - $start);
-            $chunks[] = $chunk;
-            $start += $chunksize - $overlap;
+            $chunks[] = \core_text::substr($content, $start, self::CHUNK_SIZE);
+            $start += self::CHUNK_SIZE - self::CHUNK_OVERLAP;
         }
+
         return $chunks;
     }
 

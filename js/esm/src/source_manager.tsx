@@ -22,9 +22,21 @@
  */
 
 import {useEffect, useMemo, useRef, useState} from 'react';
-import Fetch from '@moodle/lms/core/fetch';
 import Config from '@moodle/lms/core/config';
+import Log from '@moodle/lms/core/log';
 import {Button, ProgressBar} from '@moodlehq/design-system';
+
+/** The complete indexing state of one source as delivered by the backend. */
+type IndexState = {
+    sourceId: number;
+    status: 'idle' | 'queued' | 'running' | 'indexed' | 'failed';
+    statusLabel: string;
+    allowIndex: boolean;
+    percent: number;
+    message: string;
+    debugInfo: string;
+    lastIndexedAt: string | null;
+};
 
 type ModuleSource = {
     cmid: number;
@@ -33,15 +45,7 @@ type ModuleSource = {
     name: string;
     sourceid: number;
     enabled: boolean;
-    allowindex: boolean;
-    indexstatus: string;
-    indexstatuslabel: string;
-    lastindexed: string | null;
-    indextaskid: number;
-    progressrecordid: number;
-    progresspercent: number;
-    progressmessage: string;
-    progresserror: boolean;
+    indexState: IndexState;
 };
 
 type DocumentSource = {
@@ -50,73 +54,23 @@ type DocumentSource = {
     description: string;
     content: string;
     enabled: boolean;
-    allowindex: boolean;
-    indexstatus: string;
-    indexstatuslabel: string;
-    lastindexed: string | null;
-    indextaskid: number;
-    progressrecordid: number;
-    progresspercent: number;
-    progressmessage: string;
-    progresserror: boolean;
     canedit: boolean;
-};
-
-type SourceManagementApiResponse = {
-    coursecontextid: number;
-    canmanagesystemsources: boolean;
-    items?: {
-        modules?: Array<Record<string, unknown>>;
-        globaldocuments?: Array<Record<string, unknown>>;
-        coursedocuments?: Array<Record<string, unknown>>;
-    };
-    modules?: Array<Record<string, unknown>>;
-    globaldocuments?: Array<Record<string, unknown>>;
-    coursedocuments?: Array<Record<string, unknown>>;
+    indexState: IndexState;
 };
 
 type SourceManagementResponse = {
     coursecontextid: number;
     canmanagesystemsources: boolean;
-    modules: ModuleSource[];
-    globaldocuments: DocumentSource[];
-    coursedocuments: DocumentSource[];
+    items: {
+        modules: ModuleSource[];
+        globaldocuments: DocumentSource[];
+        coursedocuments: DocumentSource[];
+    };
 };
 
-type SourceProgressItem = {
-    sourceid: number;
-    sourcetype: string;
-    cmid: number;
-    indexstatus: string;
-    indexstatuslabel: string;
-    indextaskid: number;
-    lastIndexedAt: string | null;
-    progressrecordid: number;
-    progresspercent: number;
-    progressmessage: string;
-    progresserror: boolean;
-};
-
-type SourceProgressResponse = {
-    items: SourceProgressItem[];
-    pollIntervalSeconds?: number;
-};
-
-type SourceVectorStatusResponse = {
-    sourceId: number;
-    connected: boolean;
-    hasEntries: boolean;
-    status: string;
-    message: string;
-    allowIndex: boolean;
-    indexStatus: string;
-    indexStatusLabel: string;
-    lastIndexedAt: string | null;
-};
-
-type SourceVectorCheckState = {
-    checking: boolean;
-    error: string | null;
+type IndexStatesResponse = {
+    items: IndexState[];
+    pollIntervalSeconds: number;
 };
 
 type DocumentTableRow = DocumentSource & {
@@ -134,277 +88,77 @@ type Props = {
     contextid: number;
 };
 
-const DEFAULT_PROGRESS_POLL_MS = 5000;
-
 function buildApiUrl(path: string): string {
-    const normalizedpath = path.replace(/^\/+/, '');
     const url = new URL(Config.apibase);
     const basepathname = url.pathname.replace(/\/+$/, '');
 
-    url.pathname = `${basepathname}/rest/v2/local_ai_content/${normalizedpath}`.replace(/\/{2,}/g, '/');
+    url.pathname = `${basepathname}/rest/v2/local_ai_content/${path.replace(/^\/+/, '')}`.replace(/\/{2,}/g, '/');
     return url.toString();
 }
 
-async function extractApiErrorMessage(response: Response): Promise<string | null> {
-    const contenttype = response.headers.get('content-type') ?? '';
-    if (contenttype.includes('application/json')) {
-        try {
-            const payload = await response.json() as Record<string, unknown>;
-            const message = typeof payload.message === 'string' ? payload.message.trim() : '';
-            const debuginfo = typeof payload.debuginfo === 'string' ? payload.debuginfo.trim() : '';
+/**
+ * Perform one REST request against the plugin API.
+ *
+ * Rejects with a human readable message so callers only ever have to handle a single error shape.
+ */
+async function apiRequest<T>(method: string, path: string, body?: Record<string, unknown>): Promise<T> {
+    const response = await fetch(buildApiUrl(path), {
+        method,
+        headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'pageparent': Config.traceId || '',
+        },
+        body: body ? JSON.stringify(body) : undefined,
+        credentials: 'same-origin',
+    });
 
-            if (message && debuginfo) {
-                return `${message} (${debuginfo})`;
-            }
-            if (message) {
-                return message;
-            }
-
-            const error = typeof payload.error === 'string' ? payload.error.trim() : '';
-            if (error) {
-                return error;
-            }
-        } catch {
-            // Ignore parse errors and try plain-text fallback.
-        }
+    const payload = await response.json();
+    if (!response.ok) {
+        throw new Error(payload.message ?? `HTTP ${response.status}`);
     }
 
-    try {
-        const text = (await response.text()).trim();
-        if (text) {
-            return text;
-        }
-    } catch {
-        // No further fallback available.
-    }
-
-    return null;
+    return payload as T;
 }
 
-function extractThrownErrorMessage(error: unknown): string | null {
-    if (error instanceof Error && error.message.trim()) {
-        return error.message.trim();
-    }
-
-    if (typeof error === 'string' && error.trim()) {
-        return error.trim();
-    }
-
-    return null;
+function isActive(state: IndexState): boolean {
+    return state.status === 'queued' || state.status === 'running';
 }
 
-function normalizeProgressPollMs(timeoutseconds?: number): number {
-    if (!Number.isFinite(timeoutseconds)) {
-        return DEFAULT_PROGRESS_POLL_MS;
-    }
-
-    // Keep polling within reasonable bounds even if backend config is misconfigured.
-    const secondssafe = Math.max(1, Math.min(60, Math.round(timeoutseconds ?? 5)));
-    return secondssafe * 1000;
-}
-
-function formatTimestamp(timestamp?: string | null): string {
+function formatTimestamp(timestamp: string | null): string {
     if (!timestamp) {
         return '-';
     }
-
-    const parsed = new Date(timestamp);
-    if (isNaN(parsed.getTime())) {
-        return '-';
-    }
-
-    return parsed.toLocaleString();
+    return new Date(timestamp).toLocaleString();
 }
 
-function normalizeManagementResponse(data: SourceManagementApiResponse): SourceManagementResponse {
-    const sourceitems = data.items ?? {};
-    const normalizemodule = (raw: Record<string, unknown>): ModuleSource => ({
-        cmid: Number(raw.cmid ?? 0),
-        modname: String(raw.modname ?? ''),
-        moddisplayname: String(raw.moddisplayname ?? ''),
-        name: String(raw.name ?? ''),
-        sourceid: Number(raw.sourceid ?? 0),
-        enabled: Boolean(raw.enabled ?? false),
-        allowindex: Boolean(raw.allowindex ?? false),
-        indexstatus: String(raw.indexstatus ?? ''),
-        indexstatuslabel: String(raw.indexstatuslabel ?? ''),
-        lastindexed: (raw.lastindexed as string | null | undefined) ?? (raw.lastIndexedAt as string | null | undefined) ?? null,
-        indextaskid: Number(raw.indextaskid ?? 0),
-        progressrecordid: Number(raw.progressrecordid ?? 0),
-        progresspercent: Number(raw.progresspercent ?? 0),
-        progressmessage: String(raw.progressmessage ?? ''),
-        progresserror: Boolean(raw.progresserror ?? false),
-    });
-    const normalizedocument = (raw: Record<string, unknown>): DocumentSource => ({
-        id: Number(raw.id ?? 0),
-        name: String(raw.name ?? ''),
-        description: String(raw.description ?? ''),
-        content: String(raw.content ?? ''),
-        enabled: Boolean(raw.enabled ?? false),
-        allowindex: Boolean(raw.allowindex ?? false),
-        indexstatus: String(raw.indexstatus ?? ''),
-        indexstatuslabel: String(raw.indexstatuslabel ?? ''),
-        lastindexed: (raw.lastindexed as string | null | undefined) ?? (raw.lastIndexedAt as string | null | undefined) ?? null,
-        indextaskid: Number(raw.indextaskid ?? 0),
-        progressrecordid: Number(raw.progressrecordid ?? 0),
-        progresspercent: Number(raw.progresspercent ?? 0),
-        progressmessage: String(raw.progressmessage ?? ''),
-        progresserror: Boolean(raw.progresserror ?? false),
-        canedit: Boolean(raw.canedit ?? false),
-    });
-
-    const modules = (sourceitems.modules ?? data.modules ?? []).map((item) => normalizemodule(item));
-    const globaldocuments = (sourceitems.globaldocuments ?? data.globaldocuments ?? []).map((item) => normalizedocument(item));
-    const coursedocuments = (sourceitems.coursedocuments ?? data.coursedocuments ?? []).map((item) => normalizedocument(item));
-
-    return {
-        coursecontextid: data.coursecontextid,
-        canmanagesystemsources: data.canmanagesystemsources,
-        modules,
-        globaldocuments,
-        coursedocuments,
-    };
-}
-
-function isActiveStatus(status: string): boolean {
-    return status === 'queued' || status === 'running';
-}
-
-function shouldRenderProgress(status: string, progressrecordid: number, indextaskid: number): boolean {
-    return isActiveStatus(status) || progressrecordid > 0 || indextaskid > 0;
-}
-
-function StoredProgress({percent, message, error, active}: {
-    percent: number;
-    message: string;
-    error: boolean;
-    active: boolean;
-}) {
-    const normalized = Math.max(0, Math.min(100, Number.isFinite(percent) ? percent : 0));
-    const visiblepercent = active && normalized === 0 ? 2 : normalized;
-    const status = error ? 'error' : active ? 'loading' : 'in-progress';
+/** Renders the status badge, the progress bar and the error message of one source. */
+function IndexStatusCell({state}: {state: IndexState}) {
+    const active = isActive(state);
+    const failed = state.status === 'failed';
 
     return (
-        <div className="mt-1">
-            <ProgressBar
-                value={visiblepercent}
-                min={0}
-                max={100}
-                status={status}
-                labelVariant="none"
-                title={message || 'Indexing progress'}
-                count={`${Math.round(normalized)}%`}
-                animated={active}
-            />
-            {(message || error) && (
-                <div className={`small ${error ? 'text-danger' : 'text-muted'} mt-1`}>{message}</div>
+        <>
+            <span className={`badge ${failed ? 'badge-danger' : 'badge-light'}`}>{state.statusLabel}</span>
+            {active && (
+                <div className="mt-1">
+                    <ProgressBar
+                        value={Math.max(2, state.percent)}
+                        min={0}
+                        max={100}
+                        status="loading"
+                        labelVariant="none"
+                        title={state.message || state.statusLabel}
+                        count={`${Math.round(state.percent)}%`}
+                        animated
+                    />
+                </div>
             )}
-        </div>
+            {failed && state.message && (
+                <div className="small text-danger mt-1">{state.message}</div>
+            )}
+        </>
     );
-}
-
-function mergeProgressData(payload: SourceManagementResponse, items: SourceProgressItem[]): SourceManagementResponse {
-    const updates = new Map<number, SourceProgressItem>();
-    items.forEach((item) => updates.set(item.sourceid, item));
-
-    return {
-        ...payload,
-        modules: payload.modules.map((row) => {
-            const update = updates.get(row.sourceid);
-            if (!update) {
-                return row;
-            }
-            const allowindex = update.indexstatus === 'failed' ? false : row.allowindex;
-            return {
-                ...row,
-                allowindex,
-                indexstatus: update.indexstatus,
-                indexstatuslabel: update.indexstatuslabel,
-                indextaskid: update.indextaskid,
-                lastindexed: update.lastIndexedAt,
-                progressrecordid: update.progressrecordid,
-                progresspercent: update.progresspercent,
-                progressmessage: update.progressmessage,
-                progresserror: update.progresserror,
-            };
-        }),
-        globaldocuments: payload.globaldocuments.map((row) => {
-            const update = updates.get(row.id);
-            if (!update) {
-                return row;
-            }
-            const allowindex = update.indexstatus === 'failed' ? false : row.allowindex;
-            return {
-                ...row,
-                allowindex,
-                indexstatus: update.indexstatus,
-                indexstatuslabel: update.indexstatuslabel,
-                indextaskid: update.indextaskid,
-                lastindexed: update.lastIndexedAt,
-                progressrecordid: update.progressrecordid,
-                progresspercent: update.progresspercent,
-                progressmessage: update.progressmessage,
-                progresserror: update.progresserror,
-            };
-        }),
-        coursedocuments: payload.coursedocuments.map((row) => {
-            const update = updates.get(row.id);
-            if (!update) {
-                return row;
-            }
-            const allowindex = update.indexstatus === 'failed' ? false : row.allowindex;
-            return {
-                ...row,
-                allowindex,
-                indexstatus: update.indexstatus,
-                indexstatuslabel: update.indexstatuslabel,
-                indextaskid: update.indextaskid,
-                lastindexed: update.lastIndexedAt,
-                progressrecordid: update.progressrecordid,
-                progresspercent: update.progresspercent,
-                progressmessage: update.progressmessage,
-                progresserror: update.progresserror,
-            };
-        }),
-    };
-}
-
-function applyVectorStatusToPayload(
-    payload: SourceManagementResponse,
-    status: SourceVectorStatusResponse,
-): SourceManagementResponse {
-    const updatedocument = (row: DocumentSource): DocumentSource => {
-        if (row.id !== status.sourceId) {
-            return row;
-        }
-
-        return {
-            ...row,
-            allowindex: status.allowIndex,
-            indexstatus: status.indexStatus,
-            indexstatuslabel: status.indexStatusLabel,
-            lastindexed: status.lastIndexedAt,
-        };
-    };
-
-    return {
-        ...payload,
-        modules: payload.modules.map((row) => {
-            if (row.sourceid !== status.sourceId) {
-                return row;
-            }
-
-            return {
-                ...row,
-                allowindex: status.allowIndex,
-                indexstatus: status.indexStatus,
-                indexstatuslabel: status.indexStatusLabel,
-                lastindexed: status.lastIndexedAt,
-            };
-        }),
-        globaldocuments: payload.globaldocuments.map((row) => updatedocument(row)),
-        coursedocuments: payload.coursedocuments.map((row) => updatedocument(row)),
-    };
 }
 
 export default function SourceManager({contextid}: Props) {
@@ -412,248 +166,144 @@ export default function SourceManager({contextid}: Props) {
     const [loading, setLoading] = useState<boolean>(true);
     const [saving, setSaving] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
-    const [vectorCheckState, setVectorCheckState] = useState<Record<number, SourceVectorCheckState>>({});
+    const [pollIntervalMs, setPollIntervalMs] = useState<number>(5000);
 
     const [editingDocument, setEditingDocument] = useState<EditableDocument | null>(null);
     const [deleteCandidate, setDeleteCandidate] = useState<DocumentTableRow | null>(null);
     const [createScope, setCreateScope] = useState<'global' | 'course' | null>(null);
     const [newDocument, setNewDocument] = useState<EditableDocument>({id: 0, name: '', description: '', content: ''});
-    const [progressPollMs, setProgressPollMs] = useState<number>(DEFAULT_PROGRESS_POLL_MS);
 
     const plusIcon = <i className="icon fa fa-plus" aria-hidden="true"/>;
-    const refreshInFlightRef = useRef<boolean>(false);
-    const vectorCheckRunRef = useRef<number>(0);
+    const loggedDebugInfoRef = useRef<Record<number, string>>({});
 
     const documentRows = useMemo<DocumentTableRow[]>(() => {
         if (!payload) {
             return [];
         }
-        const globalrows = payload.globaldocuments.map((row) => ({...row, scope: 'global' as const}));
-        const courserows = payload.coursedocuments.map((row) => ({...row, scope: 'course' as const}));
-        return [...globalrows, ...courserows].sort((a, b) => a.name.localeCompare(b.name));
+        return [
+            ...payload.items.globaldocuments.map((row) => ({...row, scope: 'global' as const})),
+            ...payload.items.coursedocuments.map((row) => ({...row, scope: 'course' as const})),
+        ].sort((a, b) => a.name.localeCompare(b.name));
     }, [payload]);
 
     const hasActiveTasks = useMemo(() => {
         if (!payload) {
             return false;
         }
-        // Poll only while indexing is actively queued/running.
-        const modulesActive = payload.modules.some((row) => isActiveStatus(row.indexstatus));
-        const globalActive = payload.globaldocuments.some((row) => isActiveStatus(row.indexstatus));
-        const courseActive = payload.coursedocuments.some((row) => isActiveStatus(row.indexstatus));
-        return modulesActive || globalActive || courseActive;
+        return [
+            ...payload.items.modules,
+            ...payload.items.globaldocuments,
+            ...payload.items.coursedocuments,
+        ].some((row) => isActive(row.indexState));
     }, [payload]);
 
-    const loadPayload = async(background = false) => {
-        if (background && refreshInFlightRef.current) {
-            return;
-        }
-        if (!background) {
-            setLoading(true);
-        } else {
-            refreshInFlightRef.current = true;
-        }
+    /**
+     * Send the technical failure details of the given states to the browser console.
+     *
+     * The backend only fills them while developer debugging is enabled.
+     */
+    const logDebugInfo = (states: IndexState[]) => {
+        states.forEach((state) => {
+            if (state.debugInfo && loggedDebugInfoRef.current[state.sourceId] !== state.debugInfo) {
+                loggedDebugInfoRef.current[state.sourceId] = state.debugInfo;
+                Log.debug(`Indexing failed for source ${state.sourceId}:\n${state.debugInfo}`, 'local_ai_content');
+            }
+        });
+    };
+
+    /** Replace the whole source list. */
+    const applyPayload = (data: SourceManagementResponse) => {
+        logDebugInfo([
+            ...data.items.modules,
+            ...data.items.globaldocuments,
+            ...data.items.coursedocuments,
+        ].map((row) => row.indexState));
+        setPayload(data);
+    };
+
+    /**
+     * The single place translating incoming index states into the rendered UI state.
+     */
+    const applyIndexStates = (states: IndexState[]) => {
+        logDebugInfo(states);
+
+        const byid = new Map(states.map((state) => [state.sourceId, state]));
+        setPayload((current) => {
+            if (!current) {
+                return current;
+            }
+            const merge = <T extends {indexState: IndexState}>(row: T, sourceid: number): T => {
+                const state = byid.get(sourceid);
+                return state ? {...row, indexState: state} : row;
+            };
+            return {
+                ...current,
+                items: {
+                    modules: current.items.modules.map((row) => merge(row, row.sourceid)),
+                    globaldocuments: current.items.globaldocuments.map((row) => merge(row, row.id)),
+                    coursedocuments: current.items.coursedocuments.map((row) => merge(row, row.id)),
+                },
+            };
+        });
+    };
+
+    const loadPayload = async() => {
+        setLoading(true);
         setError(null);
         try {
-            const res = await Fetch.performGet('local_ai_content', `contexts/${contextid}/sources`);
-            const data = await res.json() as SourceManagementApiResponse;
-            const normalized = normalizeManagementResponse(data);
-            setPayload(normalized);
-            startVectorStatusChecks(normalized);
-        } catch {
-            setError('Die Quellen konnten nicht geladen werden.');
+            applyPayload(await apiRequest<SourceManagementResponse>('GET', `contexts/${contextid}/sources`));
+        } catch (caught) {
+            setError(`Die Quellen konnten nicht geladen werden: ${(caught as Error).message}`);
         } finally {
-            if (!background) {
-                setLoading(false);
-            } else {
-                refreshInFlightRef.current = false;
-            }
+            setLoading(false);
         }
     };
 
-    const loadProgress = async() => {
-        try {
-            const res = await Fetch.performGet('local_ai_content', `contexts/${contextid}/source-progresses`);
-            const data = await res.json() as SourceProgressResponse;
-            setProgressPollMs(normalizeProgressPollMs(data.pollIntervalSeconds));
-            setPayload((current) => {
-                if (!current) {
-                    return current;
-                }
-                return mergeProgressData(current, data.items ?? []);
-            });
-        } catch {
-            // Keep last known progress state and let regular interactions surface blocking errors.
-        }
-    };
-
-    const performWrite = async(method: string, path: string, body?: Record<string, unknown>) => {
+    /** Perform a write request and reload the full source list afterwards. */
+    const performWrite = async(method: string, path: string, body?: Record<string, unknown>): Promise<boolean> => {
         setSaving(true);
         setError(null);
         try {
-            const res = await fetch(buildApiUrl(path), {
-                method,
-                headers: {
-                    Accept: 'application/json',
-                    'Content-Type': 'application/json',
-                    pageparent: Config.traceId || '',
-                },
-                body: body ? JSON.stringify(body) : undefined,
-                credentials: 'same-origin',
-            });
-            if (!res.ok) {
-                const detail = await extractApiErrorMessage(res);
-                const fallback = res.statusText ? `HTTP ${res.status} (${res.statusText})` : `HTTP ${res.status}`;
-                setError(detail ? `Die Aktion konnte nicht ausgeführt werden: ${detail}` : `Die Aktion konnte nicht ausgeführt werden (${fallback}).`);
-                return false;
-            }
-            await loadPayload(true);
+            await apiRequest(method, path, body);
+            applyPayload(await apiRequest<SourceManagementResponse>('GET', `contexts/${contextid}/sources`));
             return true;
-        } catch (error) {
-            const detail = extractThrownErrorMessage(error);
-            setError(detail ? `Die Aktion konnte nicht ausgeführt werden: ${detail}` : 'Die Aktion konnte nicht ausgeführt werden.');
+        } catch (caught) {
+            setError(`Die Aktion konnte nicht ausgeführt werden: ${(caught as Error).message}`);
             return false;
         } finally {
             setSaving(false);
         }
     };
 
-    const checkSingleSourceVectorStatus = async(sourceid: number, runid: number) => {
+    /** Start or stop indexing; the response is the new index state of that source. */
+    const handleAllowIndexToggle = async(sourceid: number, allowIndex: boolean) => {
+        setSaving(true);
+        setError(null);
         try {
-            const res = await fetch(buildApiUrl(`sources/${sourceid}/vector-status`), {
-                method: 'GET',
-                headers: {
-                    Accept: 'application/json',
-                    pageparent: Config.traceId || '',
-                },
-                credentials: 'same-origin',
-            });
-
-            if (vectorCheckRunRef.current !== runid) {
-                return;
-            }
-
-            if (!res.ok) {
-                const detail = await extractApiErrorMessage(res);
-                setVectorCheckState((current) => ({
-                    ...current,
-                    [sourceid]: {
-                        checking: false,
-                        error: detail ? `Vektor-DB-Pruefung fehlgeschlagen: ${detail}` : 'Vektor-DB-Pruefung fehlgeschlagen.',
-                    },
-                }));
-                return;
-            }
-
-            const status = await res.json() as SourceVectorStatusResponse;
-            if (vectorCheckRunRef.current !== runid) {
-                return;
-            }
-
-            if (!status.connected) {
-                setVectorCheckState((current) => ({
-                    ...current,
-                    [sourceid]: {
-                        checking: false,
-                        error: status.message || 'Keine Verbindung zur Vektor-DB.',
-                    },
-                }));
-                return;
-            }
-
-            setPayload((current) => {
-                if (!current) {
-                    return current;
-                }
-                return applyVectorStatusToPayload(current, status);
-            });
-            setVectorCheckState((current) => ({
-                ...current,
-                [sourceid]: {
-                    checking: false,
-                    error: null,
-                },
-            }));
-        } catch (caughtError) {
-            if (vectorCheckRunRef.current !== runid) {
-                return;
-            }
-
-            const detail = extractThrownErrorMessage(caughtError);
-            setVectorCheckState((current) => ({
-                ...current,
-                [sourceid]: {
-                    checking: false,
-                    error: detail ? `Keine Verbindung zur Vektor-DB: ${detail}` : 'Keine Verbindung zur Vektor-DB.',
-                },
-            }));
+            applyIndexStates([await apiRequest<IndexState>('PUT', `sources/${sourceid}/index-state`, {allowIndex})]);
+        } catch (caught) {
+            setError(`Der Indizierungsstatus konnte nicht geändert werden: ${(caught as Error).message}`);
+        } finally {
+            setSaving(false);
         }
-    };
-
-    const startVectorStatusChecks = (currentpayload: SourceManagementResponse) => {
-        const sourceids = [
-            ...currentpayload.modules.map((row) => row.sourceid),
-            ...currentpayload.globaldocuments.map((row) => row.id),
-            ...currentpayload.coursedocuments.map((row) => row.id),
-        ].filter((sourceid, index, all) => sourceid > 0 && all.indexOf(sourceid) === index);
-
-        if (sourceids.length === 0) {
-            setVectorCheckState({});
-            return;
-        }
-
-        const runid = vectorCheckRunRef.current + 1;
-        vectorCheckRunRef.current = runid;
-
-        setVectorCheckState((current) => {
-            const next: Record<number, SourceVectorCheckState> = {...current};
-            sourceids.forEach((sourceid) => {
-                next[sourceid] = {
-                    checking: true,
-                    error: null,
-                };
-            });
-            return next;
-        });
-
-        sourceids.forEach((sourceid) => {
-            void checkSingleSourceVectorStatus(sourceid, runid);
-        });
     };
 
     useEffect(() => {
-        loadPayload();
+        void loadPayload();
     }, [contextid]);
 
     useEffect(() => {
-        let timer: number | null = null;
-        if (hasActiveTasks) {
-            timer = window.setInterval(() => {
-                void loadProgress();
-            }, progressPollMs);
+        if (!hasActiveTasks) {
+            return undefined;
         }
-        return () => {
-            if (timer !== null) {
-                window.clearInterval(timer);
-            }
-        };
-    }, [hasActiveTasks, contextid, progressPollMs]);
+        const timer = window.setInterval(async() => {
+            const data = await apiRequest<IndexStatesResponse>('GET', `contexts/${contextid}/index-states`);
+            setPollIntervalMs(data.pollIntervalSeconds * 1000);
+            applyIndexStates(data.items);
+        }, pollIntervalMs);
 
-    const handleModuleEnabledToggle = async(row: ModuleSource, enabled: boolean) => {
-        await performWrite('PATCH', `contexts/${contextid}/module-sources/${row.cmid}`, {enabled});
-    };
-
-    const handleModuleAllowIndexToggle = async(row: ModuleSource, allowindex: boolean) => {
-        await performWrite('PATCH', `contexts/${contextid}/module-sources/${row.cmid}`, {allowIndex: allowindex});
-    };
-
-    const handleDocumentEnabledToggle = async(row: DocumentTableRow, enabled: boolean) => {
-        await performWrite('PATCH', `contexts/${contextid}/document-sources/${row.id}`, {enabled});
-    };
-
-    const handleDocumentAllowIndexToggle = async(row: DocumentTableRow, allowindex: boolean) => {
-        await performWrite('PATCH', `contexts/${contextid}/document-sources/${row.id}`, {allowIndex: allowindex});
-    };
+        return () => window.clearInterval(timer);
+    }, [hasActiveTasks, contextid, pollIntervalMs]);
 
     const openCreateModal = () => {
         setError(null);
@@ -708,150 +358,128 @@ export default function SourceManager({contextid}: Props) {
         }
     };
 
-    const renderDocumentTable = (rows: DocumentTableRow[]) => (
-        <section className="mb-4">
-            <div className="d-flex justify-content-between align-items-center mb-2">
-                <h5 className="mb-0">Dokumente</h5>
-                <Button
-                    type="button"
-                    variant="primary"
-                    disabled={saving}
-                    onClick={openCreateModal}
-                    startIcon={plusIcon}
-                    label="Dokument anlegen"
-                />
-            </div>
-            <table className="table table-sm table-striped">
-                <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Beschreibung</th>
-                    <th>Geltungsbereich</th>
-                    <th>Für KI-Zugriff aktiv</th>
-                    <th>In Vektorstore indizieren</th>
-                    <th>Status</th>
-                    <th>Last indexed</th>
-                    <th>Aktionen</th>
-                </tr>
-                </thead>
-                <tbody>
-                {rows.map((row) => (
-                    <tr key={row.id}>
-                        <td>{row.name}</td>
-                        <td>{row.description || '-'}</td>
-                        <td>
-                            {row.scope === 'global' ? (
-                                <i className="icon fa fa-globe" aria-label="Globale Quelle" title="Globale Quelle"/>
-                            ) : (
-                                <i className="icon fa fa-graduation-cap" aria-label="Kursquelle" title="Kursquelle"/>
-                            )}
-                        </td>
-                        <td>
-                            <div className="form-check form-switch m-0">
-                                <input
-                                    id={`document-enabled-${row.id}`}
-                                    className="form-check-input"
-                                    type="checkbox"
-                                    role="switch"
-                                    checked={row.enabled}
-                                    disabled={saving || !row.canedit}
-                                    onChange={() => handleDocumentEnabledToggle(row, !row.enabled)}
-                                    aria-label={`Dokument ${row.name} für KI-Zugriff aktivieren`}
-                                />
-                            </div>
-                        </td>
-                        <td>
-                            {(() => {
-                                const vectorcheck = vectorCheckState[row.id];
-                                const blocktoggle = Boolean(vectorcheck?.checking || vectorcheck?.error);
-                                return (
-                            <div className="form-check form-switch m-0">
-                                <input
-                                    id={`document-index-${row.id}`}
-                                    className="form-check-input"
-                                    type="checkbox"
-                                    role="switch"
-                                    checked={row.allowindex}
-                                            disabled={saving || !row.enabled || !row.canedit || blocktoggle}
-                                    onChange={() => handleDocumentAllowIndexToggle(row, !row.allowindex)}
-                                    aria-label={`Dokument ${row.name} in Vektorstore indizieren`}
-                                />
-                            </div>
-                                );
-                            })()}
-                            {vectorCheckState[row.id]?.checking && (
-                                <div className="small text-muted mt-1">Pruefe Vektor-DB...</div>
-                            )}
-                            {vectorCheckState[row.id]?.error && (
-                                <div className="small text-danger mt-1">{vectorCheckState[row.id]?.error}</div>
-                            )}
-                        </td>
-                        <td>
-                            <span className="badge badge-light">{row.indexstatuslabel}</span>
-                            {shouldRenderProgress(row.indexstatus, row.progressrecordid, row.indextaskid) && (
-                                <StoredProgress
-                                    percent={row.progresspercent}
-                                    message={row.progressmessage || row.indexstatuslabel}
-                                    error={row.progresserror}
-                                    active={isActiveStatus(row.indexstatus)}
-                                />
-                            )}
-                        </td>
-                        <td>{formatTimestamp(row.lastindexed)}</td>
-                        <td>
-                            {row.canedit && (
-                                <div className="d-flex gap-1">
-                                    <button
-                                        type="button"
-                                        className="btn btn-link p-0"
-                                        disabled={saving}
-                                        onClick={() => setEditingDocument({
-                                            id: row.id,
-                                            name: row.name,
-                                            description: row.description,
-                                            content: row.content,
-                                        })}
-                                        aria-label={`Dokument ${row.name} bearbeiten`}
-                                        title="Bearbeiten"
-                                    >
-                                        <i className="icon fa fa-pencil" aria-hidden="true"/>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="btn btn-link text-danger p-0"
-                                        disabled={saving}
-                                        onClick={() => setDeleteCandidate(row)}
-                                        aria-label={`Dokument ${row.name} löschen`}
-                                        title="Löschen"
-                                    >
-                                        <i className="icon fa fa-trash" aria-hidden="true"/>
-                                    </button>
-                                </div>
-                            )}
-                        </td>
-                    </tr>
-                ))}
-                {rows.length === 0 && (
-                    <tr>
-                        <td colSpan={8} className="text-muted">Keine Dokumente vorhanden.</td>
-                    </tr>
-                )}
-                </tbody>
-            </table>
-        </section>
-    );
-
     if (loading) {
         return <div className="local-ai-content-source-manager local-ai-content-source-manager--loading">Lade Quellen...</div>;
     }
 
     if (!payload) {
-        return <div className="text-danger">Keine Daten verfügbar.</div>;
+        return <div className="text-danger small mt-2">{error}</div>;
     }
 
     return (
         <div className="local-ai-content-source-manager">
-            {renderDocumentTable(documentRows)}
+            <section className="mb-4">
+                <div className="d-flex justify-content-between align-items-center mb-2">
+                    <h5 className="mb-0">Dokumente</h5>
+                    <Button
+                        type="button"
+                        variant="primary"
+                        disabled={saving}
+                        onClick={openCreateModal}
+                        startIcon={plusIcon}
+                        label="Dokument anlegen"
+                    />
+                </div>
+                <table className="table table-sm table-striped">
+                    <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Beschreibung</th>
+                        <th>Geltungsbereich</th>
+                        <th>Für KI-Zugriff aktiv</th>
+                        <th>In Vektorstore indizieren</th>
+                        <th>Status</th>
+                        <th>Last indexed</th>
+                        <th>Aktionen</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {documentRows.map((row) => (
+                        <tr key={row.id}>
+                            <td>{row.name}</td>
+                            <td>{row.description || '-'}</td>
+                            <td>
+                                {row.scope === 'global' ? (
+                                    <i className="icon fa fa-globe" aria-label="Globale Quelle" title="Globale Quelle"/>
+                                ) : (
+                                    <i className="icon fa fa-graduation-cap" aria-label="Kursquelle" title="Kursquelle"/>
+                                )}
+                            </td>
+                            <td>
+                                <div className="form-check form-switch m-0">
+                                    <input
+                                        id={`document-enabled-${row.id}`}
+                                        className="form-check-input"
+                                        type="checkbox"
+                                        role="switch"
+                                        checked={row.enabled}
+                                        disabled={saving || !row.canedit}
+                                        onChange={() => performWrite(
+                                            'PATCH',
+                                            `contexts/${contextid}/document-sources/${row.id}`,
+                                            {enabled: !row.enabled},
+                                        )}
+                                        aria-label={`Dokument ${row.name} für KI-Zugriff aktivieren`}
+                                    />
+                                </div>
+                            </td>
+                            <td>
+                                <div className="form-check form-switch m-0">
+                                    <input
+                                        id={`document-index-${row.id}`}
+                                        className="form-check-input"
+                                        type="checkbox"
+                                        role="switch"
+                                        checked={row.indexState.allowIndex}
+                                        disabled={saving || !row.enabled || !row.canedit || isActive(row.indexState)}
+                                        onChange={() => handleAllowIndexToggle(row.id, !row.indexState.allowIndex)}
+                                        aria-label={`Dokument ${row.name} in Vektorstore indizieren`}
+                                    />
+                                </div>
+                            </td>
+                            <td><IndexStatusCell state={row.indexState}/></td>
+                            <td>{formatTimestamp(row.indexState.lastIndexedAt)}</td>
+                            <td>
+                                {row.canedit && (
+                                    <div className="d-flex gap-1">
+                                        <button
+                                            type="button"
+                                            className="btn btn-link p-0"
+                                            disabled={saving}
+                                            onClick={() => setEditingDocument({
+                                                id: row.id,
+                                                name: row.name,
+                                                description: row.description,
+                                                content: row.content,
+                                            })}
+                                            aria-label={`Dokument ${row.name} bearbeiten`}
+                                            title="Bearbeiten"
+                                        >
+                                            <i className="icon fa fa-pencil" aria-hidden="true"/>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="btn btn-link text-danger p-0"
+                                            disabled={saving}
+                                            onClick={() => setDeleteCandidate(row)}
+                                            aria-label={`Dokument ${row.name} löschen`}
+                                            title="Löschen"
+                                        >
+                                            <i className="icon fa fa-trash" aria-hidden="true"/>
+                                        </button>
+                                    </div>
+                                )}
+                            </td>
+                        </tr>
+                    ))}
+                    {documentRows.length === 0 && (
+                        <tr>
+                            <td colSpan={8} className="text-muted">Keine Dokumente vorhanden.</td>
+                        </tr>
+                    )}
+                    </tbody>
+                </table>
+            </section>
 
             <section className="mb-4">
                 <h5>Aktivitäten dieses Kurses</h5>
@@ -867,7 +495,7 @@ export default function SourceManager({contextid}: Props) {
                     </tr>
                     </thead>
                     <tbody>
-                    {payload.modules.map((row) => (
+                    {payload.items.modules.map((row) => (
                         <tr key={row.cmid}>
                             <td>{row.name}</td>
                             <td>{row.moddisplayname || row.modname}</td>
@@ -880,52 +508,34 @@ export default function SourceManager({contextid}: Props) {
                                         role="switch"
                                         checked={row.enabled}
                                         disabled={saving}
-                                        onChange={() => handleModuleEnabledToggle(row, !row.enabled)}
+                                        onChange={() => performWrite(
+                                            'PATCH',
+                                            `contexts/${contextid}/module-sources/${row.cmid}`,
+                                            {enabled: !row.enabled},
+                                        )}
                                         aria-label={`Aktivität ${row.name} für KI-Zugriff aktivieren`}
                                     />
                                 </div>
                             </td>
                             <td>
-                                {(() => {
-                                    const vectorcheck = row.sourceid > 0 ? vectorCheckState[row.sourceid] : null;
-                                    const blocktoggle = Boolean(vectorcheck?.checking || vectorcheck?.error);
-                                    return (
                                 <div className="form-check form-switch m-0">
                                     <input
                                         id={`module-index-${row.cmid}`}
                                         className="form-check-input"
                                         type="checkbox"
                                         role="switch"
-                                        checked={row.allowindex}
-                                                disabled={saving || !row.enabled || blocktoggle}
-                                        onChange={() => handleModuleAllowIndexToggle(row, !row.allowindex)}
+                                        checked={row.indexState.allowIndex}
+                                        disabled={saving || !row.enabled || isActive(row.indexState)}
+                                        onChange={() => handleAllowIndexToggle(row.sourceid, !row.indexState.allowIndex)}
                                         aria-label={`Aktivität ${row.name} in Vektorstore indizieren`}
                                     />
                                 </div>
-                                    );
-                                })()}
-                                {row.sourceid > 0 && vectorCheckState[row.sourceid]?.checking && (
-                                    <div className="small text-muted mt-1">Pruefe Vektor-DB...</div>
-                                )}
-                                {row.sourceid > 0 && vectorCheckState[row.sourceid]?.error && (
-                                    <div className="small text-danger mt-1">{vectorCheckState[row.sourceid]?.error}</div>
-                                )}
                             </td>
-                            <td>
-                                <span className="badge badge-light">{row.indexstatuslabel}</span>
-                                {shouldRenderProgress(row.indexstatus, row.progressrecordid, row.indextaskid) && (
-                                    <StoredProgress
-                                        percent={row.progresspercent}
-                                        message={row.progressmessage || row.indexstatuslabel}
-                                        error={row.progresserror}
-                                        active={isActiveStatus(row.indexstatus)}
-                                    />
-                                )}
-                            </td>
-                            <td>{formatTimestamp(row.lastindexed)}</td>
+                            <td><IndexStatusCell state={row.indexState}/></td>
+                            <td>{formatTimestamp(row.indexState.lastIndexedAt)}</td>
                         </tr>
                     ))}
-                    {payload.modules.length === 0 && (
+                    {payload.items.modules.length === 0 && (
                         <tr>
                             <td colSpan={6} className="text-muted">Keine unterstützten Aktivitäten gefunden.</td>
                         </tr>
@@ -1147,4 +757,5 @@ export default function SourceManager({contextid}: Props) {
         </div>
     );
 }
+
 

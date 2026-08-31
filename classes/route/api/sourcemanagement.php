@@ -16,7 +16,6 @@
 
 namespace local_ai_content\route\api;
 
-use core\output\stored_progress_bar;
 use core\param;
 use core\router\route;
 use core\router\schema\parameters\query_parameter;
@@ -25,9 +24,9 @@ use core\router\schema\objects\scalar_type;
 use core\router\schema\objects\schema_object;
 use core\router\schema\response\content\payload_response_type;
 use core\router\schema\response\payload_response;
-use local_ai_content\local\indexer_manager;
+use local_ai_content\local\index_service;
+use local_ai_content\local\index_state;
 use local_ai_content\source;
-use local_ai_content\task\index_source_adhoc;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -76,48 +75,6 @@ class sourcemanagement {
 
         return new payload_response(
             payload: self::build_payload($coursecontext),
-            request: $request,
-            response: $response,
-        );
-    }
-
-    /**
-     * Return indexed progress snapshots for all relevant module/document sources.
-     *
-     * @param ServerRequestInterface $request
-     * @param ResponseInterface $response
-     * @param int $contextid The active context id.
-     * @return payload_response
-     */
-    #[route(
-        path: '/contexts/{contextId}/source-progresses',
-        method: ['GET'],
-        title: 'Get source indexing progress data',
-        description: 'Returns current stored progress snapshots for managed sources in this context.',
-        pathtypes: [
-            new \core\router\schema\parameters\path_parameter(
-                name: 'contextId',
-                type: param::INT,
-                description: 'The Moodle context ID.',
-            ),
-        ],
-        responses: [
-            new \core\router\schema\response\response(
-                statuscode: 200,
-                description: 'OK',
-            ),
-        ],
-    )]
-    public function get_progress_data(
-        ServerRequestInterface $request,
-        ResponseInterface $response,
-        int $contextId,
-    ): payload_response {
-        $context = \context_helper::instance_by_id($contextId, MUST_EXIST);
-        $coursecontext = self::require_manage_access($context);
-
-        return new payload_response(
-            payload: self::build_progress_payload($coursecontext),
             request: $request,
             response: $response,
         );
@@ -212,7 +169,6 @@ class sourcemanagement {
             content: new payload_response_type(
                 schema: new schema_object([
                     'enabled' => new scalar_type(param::BOOL),
-                    'allowIndex' => new scalar_type(param::BOOL),
                 ]),
             ),
         ),
@@ -228,24 +184,13 @@ class sourcemanagement {
         ResponseInterface $response,
         int $contextId,
         int $cmId,
+        index_service $indexservice,
     ): payload_response {
-        global $USER;
-
         $context = \context_helper::instance_by_id($contextId, MUST_EXIST);
         $coursecontext = self::require_manage_access($context);
         $body = self::get_action_payload($request);
 
-        if (array_key_exists('enabled', $body)) {
-            self::toggle_module_enabled($coursecontext, $cmId, self::as_bool($body['enabled']));
-        }
-        if (array_key_exists('allowIndex', $body)) {
-            self::toggle_module_allowindex(
-                $coursecontext,
-                $cmId,
-                self::as_bool($body['allowIndex']),
-                (int)($USER->id ?? 0),
-            );
-        }
+        self::toggle_module_enabled($coursecontext, $cmId, self::as_bool($body['enabled']), $indexservice);
 
         return new payload_response(
             payload: self::build_payload($coursecontext),
@@ -350,7 +295,6 @@ class sourcemanagement {
             content: new payload_response_type(
                 schema: new schema_object([
                     'enabled' => new scalar_type(param::BOOL),
-                    'allowIndex' => new scalar_type(param::BOOL),
                     'name' => new scalar_type(param::RAW),
                     'description' => new scalar_type(param::RAW),
                     'content' => new scalar_type(param::RAW),
@@ -369,23 +313,14 @@ class sourcemanagement {
         ResponseInterface $response,
         int $contextId,
         int $sourceId,
+        index_service $indexservice,
     ): payload_response {
-        global $USER;
-
         $context = \context_helper::instance_by_id($contextId, MUST_EXIST);
         $coursecontext = self::require_manage_access($context);
         $body = self::get_action_payload($request);
 
         if (array_key_exists('enabled', $body)) {
-            self::toggle_document_enabled($coursecontext, $sourceId, self::as_bool($body['enabled']));
-        }
-        if (array_key_exists('allowIndex', $body)) {
-            self::toggle_document_allowindex(
-                $coursecontext,
-                $sourceId,
-                self::as_bool($body['allowIndex']),
-                (int)($USER->id ?? 0),
-            );
+            self::toggle_document_enabled($coursecontext, $sourceId, self::as_bool($body['enabled']), $indexservice);
         }
 
         if (array_key_exists('name', $body) || array_key_exists('description', $body) || array_key_exists('content', $body)) {
@@ -399,14 +334,7 @@ class sourcemanagement {
             $content = array_key_exists('content', $body) ?
                 clean_param((string)$body['content'], PARAM_RAW) : (string)$documentsource->get_content();
 
-            self::update_document(
-                $coursecontext,
-                $sourceId,
-                $name,
-                $description,
-                $content,
-                (int)($USER->id ?? 0),
-            );
+            self::update_document($coursecontext, $sourceId, $name, $description, $content, $indexservice);
         }
 
         return new payload_response(
@@ -454,11 +382,12 @@ class sourcemanagement {
         ResponseInterface $response,
         int $contextId,
         int $sourceId,
+        index_service $indexservice,
     ): payload_response {
         $context = \context_helper::instance_by_id($contextId, MUST_EXIST);
         $coursecontext = self::require_manage_access($context);
 
-        self::delete_source($coursecontext, $sourceId);
+        self::delete_source($coursecontext, $sourceId, $indexservice);
 
         return new payload_response(
             payload: self::build_payload($coursecontext),
@@ -506,9 +435,8 @@ class sourcemanagement {
         ServerRequestInterface $request,
         ResponseInterface $response,
         int $contextId,
+        index_service $indexservice,
     ): payload_response {
-        global $USER;
-
         $context = \context_helper::instance_by_id($contextId, MUST_EXIST);
         $coursecontext = self::require_manage_access($context);
         $body = self::get_action_payload($request);
@@ -517,7 +445,7 @@ class sourcemanagement {
             $coursecontext,
             (int)($body['sourceCourseId'] ?? 0),
             self::normalize_selected_import_keys($body['selectedImportKeys'] ?? []),
-            (int)($USER->id ?? 0),
+            $indexservice,
         );
 
         return new payload_response(
@@ -541,6 +469,24 @@ class sourcemanagement {
         }
         require_capability('local/ai_content:managesources', $coursecontext);
         return $coursecontext;
+    }
+
+    /**
+     * Resolve all context ids whose sources the current user may manage from the given context.
+     *
+     * @param \context $context The active context.
+     * @return int[] Context ids.
+     */
+    public static function resolve_managed_contextids(\context $context): array {
+        $coursecontext = self::require_manage_access($context);
+        $systemcontext = \context_system::instance();
+
+        $contextids = [$coursecontext->id];
+        if (has_capability('local/ai_content:managesources', $systemcontext)) {
+            $contextids[] = $systemcontext->id;
+        }
+
+        return $contextids;
     }
 
     /**
@@ -569,58 +515,6 @@ class sourcemanagement {
                 'page' => 1,
                 'pageSize' => 1,
                 'totalItems' => 1,
-            ],
-        ];
-    }
-
-    /**
-     * Build compact progress snapshots for the polling endpoint.
-     *
-     * @param \context_course $coursecontext
-     * @return array
-     */
-    private static function build_progress_payload(\context_course $coursecontext): array {
-        $systemcontext = \context_system::instance();
-        $canmanagesystemsources = has_capability('local/ai_content:managesources', $systemcontext);
-
-        $contextids = [$coursecontext->id];
-        if ($canmanagesystemsources) {
-            $contextids[] = $systemcontext->id;
-        }
-
-        $sources = source::get_records_by_contextids($contextids);
-        $items = [];
-        foreach ($sources as $record) {
-            if (!in_array($record->get_sourcetype(), [source::TYPE_MODULE, source::TYPE_DOCUMENT], true)) {
-                continue;
-            }
-
-            $statuskey = $record->get_indexstatus();
-            $progress = self::resolve_source_progress_snapshot($record);
-            $items[] = [
-                'sourceid' => (int)$record->get_id(),
-                'sourcetype' => (string)$record->get_sourcetype(),
-                'cmid' => (int)($record->get_cmid() ?? 0),
-                'indexstatus' => $statuskey,
-                'indexstatuslabel' => get_string('indexingstatus_' . $statuskey, 'local_ai_content'),
-                'indextaskid' => (int)($record->get_indextaskid() ?? 0),
-                'lastIndexedAt' => self::format_timestamp((int)$record->get_lastindexed()),
-                'progressrecordid' => $progress['id'] ?? 0,
-                'progresspercent' => $progress['percent'] ?? 0,
-                'progressmessage' => $progress['message'] ?? '',
-                'progresserror' => $progress['error'] ?? false,
-            ];
-        }
-
-        usort($items, static fn(array $a, array $b): int => (int)$a['sourceid'] <=> (int)$b['sourceid']);
-
-        return [
-            'items' => $items,
-            'pollIntervalSeconds' => stored_progress_bar::get_timeout(),
-            'pagination' => [
-                'page' => 1,
-                'pageSize' => count($items),
-                'totalItems' => count($items),
             ],
         ];
     }
@@ -720,13 +614,13 @@ class sourcemanagement {
      * @param \context_course $targetcoursecontext
      * @param int $sourcecourseid
      * @param string[] $selectedkeys
-     * @param int $userid
+     * @param index_service $indexservice
      */
     private static function import_sources_from_course(
         \context_course $targetcoursecontext,
         int $sourcecourseid,
         array $selectedkeys,
-        int $userid,
+        index_service $indexservice,
     ): void {
         if ($sourcecourseid <= 0 || $sourcecourseid === (int)$targetcoursecontext->instanceid) {
             throw new \invalid_parameter_exception('Invalid source course id for import.');
@@ -738,7 +632,7 @@ class sourcemanagement {
         foreach ($selectedkeys as $key) {
             [$type, $id] = self::parse_import_key($key);
             if ($type === 'module') {
-                self::import_module_source($targetcoursecontext, $sourcecoursecontext, $id, $userid);
+                self::import_module_source($targetcoursecontext, $sourcecoursecontext, $id, $indexservice);
                 continue;
             }
             if ($type === 'document') {
@@ -753,13 +647,13 @@ class sourcemanagement {
      * @param \context_course $targetcoursecontext
      * @param \context_course $sourcecoursecontext
      * @param int $cmid
-     * @param int $userid
+     * @param index_service $indexservice
      */
     private static function import_module_source(
         \context_course $targetcoursecontext,
         \context_course $sourcecoursecontext,
         int $cmid,
-        int $userid,
+        index_service $indexservice,
     ): void {
         $cm = get_coursemodule_from_id('', $cmid, $sourcecoursecontext->instanceid, false, MUST_EXIST);
         $modinfo = get_fast_modinfo($sourcecoursecontext->instanceid);
@@ -787,26 +681,9 @@ class sourcemanagement {
 
         $modulesource->set_name((string)$cm->name);
         $modulesource->set_enabled(true);
-        $modulesource->set_allowindex(true);
-        $modulesource->set_indexstatus(source::INDEXSTATUS_QUEUED);
         $modulesource->store();
 
-        $task = new index_source_adhoc();
-        $task->set_custom_data(['sourceid' => $modulesource->get_id()]);
-        $task->set_userid($userid);
-
-        $taskid = \core\task\manager::queue_adhoc_task($task, true);
-        if ($taskid) {
-            $task->set_id($taskid);
-            $task->initialise_stored_progress();
-            $modulesource->set_indextaskid($taskid);
-            $modulesource->set_indexstatus(source::INDEXSTATUS_QUEUED);
-            $modulesource->store();
-            return;
-        }
-
-        $modulesource->set_indexstatus(source::INDEXSTATUS_FAILED);
-        $modulesource->store();
+        $indexservice->start($modulesource);
     }
 
     /**
@@ -919,8 +796,6 @@ class sourcemanagement {
                 continue;
             }
             $modulesource = $sourcebycmid[(int)$cm->id] ?? null;
-            $statuskey = $modulesource ? $modulesource->get_indexstatus() : source::INDEXSTATUS_IDLE;
-            $progress = $modulesource ? self::resolve_source_progress_snapshot($modulesource) : null;
             $rows[] = [
                 'cmid' => (int)$cm->id,
                 'modname' => (string)$cm->modname,
@@ -928,15 +803,9 @@ class sourcemanagement {
                 'name' => format_string($cm->name, true, ['context' => $cm->context]),
                 'sourceid' => $modulesource ? $modulesource->get_id() : 0,
                 'enabled' => $modulesource ? $modulesource->get_enabled() : false,
-                'allowindex' => $modulesource ? $modulesource->get_allowindex() : false,
-                'indexstatus' => $statuskey,
-                'indexstatuslabel' => get_string('indexingstatus_' . $statuskey, 'local_ai_content'),
-                'lastIndexedAt' => $modulesource ? self::format_timestamp((int)$modulesource->get_lastindexed()) : null,
-                'indextaskid' => $modulesource ? ($modulesource->get_indextaskid() ?? 0) : 0,
-                'progressrecordid' => $progress['id'] ?? 0,
-                'progresspercent' => $progress['percent'] ?? 0,
-                'progressmessage' => $progress['message'] ?? '',
-                'progresserror' => $progress['error'] ?? false,
+                'indexState' => $modulesource
+                    ? index_state::from_source($modulesource)->to_array()
+                    : index_state::unmanaged()->to_array(),
             ];
         }
 
@@ -958,23 +827,13 @@ class sourcemanagement {
             if ($documentsource->get_sourcetype() !== source::TYPE_DOCUMENT) {
                 continue;
             }
-            $statuskey = $documentsource->get_indexstatus();
-            $progress = self::resolve_source_progress_snapshot($documentsource);
             $rows[] = [
                 'id' => $documentsource->get_id(),
                 'name' => (string)$documentsource->get_name(),
                 'description' => (string)$documentsource->get_description(),
                 'content' => (string)$documentsource->get_content(),
                 'enabled' => $documentsource->get_enabled(),
-                'allowindex' => $documentsource->get_allowindex(),
-                'indexstatus' => $statuskey,
-                'indexstatuslabel' => get_string('indexingstatus_' . $statuskey, 'local_ai_content'),
-                'lastIndexedAt' => self::format_timestamp((int)$documentsource->get_lastindexed()),
-                'indextaskid' => $documentsource->get_indextaskid() ?? 0,
-                'progressrecordid' => $progress['id'] ?? 0,
-                'progresspercent' => $progress['percent'] ?? 0,
-                'progressmessage' => $progress['message'] ?? '',
-                'progresserror' => $progress['error'] ?? false,
+                'indexState' => index_state::from_source($documentsource)->to_array(),
                 'canedit' => $canedit,
             ];
         }
@@ -984,110 +843,26 @@ class sourcemanagement {
     }
 
     /**
-     * Resolve stored progress for one source task.
-     *
-     * @param source $source
-     * @return ?array
-     */
-    private static function resolve_source_progress_snapshot(source $source): ?array {
-        $taskid = $source->get_indextaskid();
-        if (empty($taskid)) {
-            return null;
-        }
-
-        $idnumber = stored_progress_bar::convert_to_idnumber(index_source_adhoc::class . '_' . $taskid);
-        $progressbar = stored_progress_bar::get_by_idnumber($idnumber);
-        if ($progressbar === null) {
-            return null;
-        }
-
-        return [
-            // Stored-progress IDs are not publicly exposed by the API object.
-            'id' => 0,
-            'percent' => (float)$progressbar->get_percent(),
-            'message' => (string)$progressbar->get_message(),
-            'error' => (bool)$progressbar->get_haserrored(),
-        ];
-    }
-
-    /**
      * Toggle module source enabled flag.
      *
      * @param \context_course $coursecontext
      * @param int $cmid
      * @param bool $enabled
+     * @param index_service $indexservice
      */
-    private static function toggle_module_enabled(\context_course $coursecontext, int $cmid, bool $enabled): void {
+    private static function toggle_module_enabled(
+        \context_course $coursecontext,
+        int $cmid,
+        bool $enabled,
+        index_service $indexservice,
+    ): void {
         $modulesource = self::get_or_create_module_source($coursecontext, $cmid);
 
-        if (!$enabled && $modulesource->get_allowindex()) {
-            $manager = new \local_ai_manager\manager('embedding');
-            $indexer = new indexer_manager($coursecontext->id, $manager);
-            $indexer->delete_source_embeddings($modulesource);
+        if (!$enabled) {
+            $indexservice->stop($modulesource);
         }
 
         $modulesource->set_enabled($enabled);
-        if (!$enabled) {
-            $modulesource->set_allowindex(false);
-            $modulesource->set_indexstatus(source::INDEXSTATUS_IDLE);
-            $modulesource->set_indextaskid(null);
-        }
-        $modulesource->store();
-    }
-
-    /**
-     * Toggle module indexing and queue/delete vectors accordingly.
-     *
-     * @param \context_course $coursecontext
-     * @param int $cmid
-     * @param bool $allowindex
-     * @param int $userid
-     */
-    private static function toggle_module_allowindex(
-        \context_course $coursecontext,
-        int $cmid,
-        bool $allowindex,
-        int $userid,
-    ): void {
-        $modulesource = self::get_or_create_module_source($coursecontext, $cmid);
-        if (!$modulesource->get_enabled() && $allowindex) {
-            throw new \invalid_parameter_exception('Module source must be enabled before indexing can be allowed.');
-        }
-
-        if (!$allowindex) {
-            if ($modulesource->get_allowindex()) {
-                $manager = new \local_ai_manager\manager('embedding');
-                $indexer = new indexer_manager($coursecontext->id, $manager);
-                $indexer->delete_source_embeddings($modulesource);
-            }
-            $modulesource->set_allowindex(false);
-            $modulesource->set_indexstatus(source::INDEXSTATUS_IDLE);
-            $modulesource->set_indextaskid(null);
-            $modulesource->set_lastindexed(0);
-            $modulesource->store();
-            return;
-        }
-
-        $modulesource->set_allowindex(true);
-        $modulesource->set_indexstatus(source::INDEXSTATUS_QUEUED);
-        $modulesource->store();
-
-        $task = new index_source_adhoc();
-        $task->set_custom_data(['sourceid' => $modulesource->get_id()]);
-        $task->set_userid($userid);
-
-        $taskid = \core\task\manager::queue_adhoc_task($task, true);
-        if (!$taskid) {
-            $modulesource->set_indexstatus(source::INDEXSTATUS_FAILED);
-            $modulesource->store();
-            return;
-        }
-
-        $task->set_id($taskid);
-        $task->initialise_stored_progress();
-
-        $modulesource->set_indextaskid($taskid);
-        $modulesource->set_indexstatus(source::INDEXSTATUS_QUEUED);
         $modulesource->store();
     }
 
@@ -1097,81 +872,22 @@ class sourcemanagement {
      * @param \context_course $coursecontext
      * @param int $sourceid
      * @param bool $enabled
+     * @param index_service $indexservice
      */
-    private static function toggle_document_enabled(\context_course $coursecontext, int $sourceid, bool $enabled): void {
-        $documentsource = self::load_document_source($sourceid);
-        self::require_document_manage_access($coursecontext, $documentsource);
-
-        if (!$enabled && $documentsource->get_allowindex()) {
-            $manager = new \local_ai_manager\manager('embedding');
-            $indexer = new indexer_manager($documentsource->get_contextid(), $manager);
-            $indexer->delete_source_embeddings($documentsource);
-        }
-
-        $documentsource->set_enabled($enabled);
-        if (!$enabled) {
-            $documentsource->set_allowindex(false);
-            $documentsource->set_indexstatus(source::INDEXSTATUS_IDLE);
-            $documentsource->set_indextaskid(null);
-        }
-        $documentsource->store();
-    }
-
-    /**
-     * Toggle document indexing and queue/delete vectors accordingly.
-     *
-     * @param \context_course $coursecontext
-     * @param int $sourceid
-     * @param bool $allowindex
-     * @param int $userid
-     */
-    private static function toggle_document_allowindex(
+    private static function toggle_document_enabled(
         \context_course $coursecontext,
         int $sourceid,
-        bool $allowindex,
-        int $userid,
+        bool $enabled,
+        index_service $indexservice,
     ): void {
         $documentsource = self::load_document_source($sourceid);
         self::require_document_manage_access($coursecontext, $documentsource);
 
-        if (!$documentsource->get_enabled() && $allowindex) {
-            throw new \invalid_parameter_exception('Document source must be enabled before indexing can be allowed.');
+        if (!$enabled) {
+            $indexservice->stop($documentsource);
         }
 
-        if (!$allowindex) {
-            if ($documentsource->get_allowindex()) {
-                $manager = new \local_ai_manager\manager('embedding');
-                $indexer = new indexer_manager($documentsource->get_contextid(), $manager);
-                $indexer->delete_source_embeddings($documentsource);
-            }
-            $documentsource->set_allowindex(false);
-            $documentsource->set_indexstatus(source::INDEXSTATUS_IDLE);
-            $documentsource->set_indextaskid(null);
-            $documentsource->set_lastindexed(0);
-            $documentsource->store();
-            return;
-        }
-
-        $documentsource->set_allowindex(true);
-        $documentsource->set_indexstatus(source::INDEXSTATUS_QUEUED);
-        $documentsource->store();
-
-        $task = new index_source_adhoc();
-        $task->set_custom_data(['sourceid' => $documentsource->get_id()]);
-        $task->set_userid($userid);
-
-        $taskid = \core\task\manager::queue_adhoc_task($task, true);
-        if (!$taskid) {
-            $documentsource->set_indexstatus(source::INDEXSTATUS_FAILED);
-            $documentsource->store();
-            return;
-        }
-
-        $task->set_id($taskid);
-        $task->initialise_stored_progress();
-
-        $documentsource->set_indextaskid($taskid);
-        $documentsource->set_indexstatus(source::INDEXSTATUS_QUEUED);
+        $documentsource->set_enabled($enabled);
         $documentsource->store();
     }
 
@@ -1208,14 +924,14 @@ class sourcemanagement {
     }
 
     /**
-     * Update a document source.
+     * Update a document source and re-index it when its content changed.
      *
      * @param \context_course $coursecontext
      * @param int $sourceid
      * @param string $name
      * @param string $description
      * @param string $content
-     * @param int $userid
+     * @param index_service $indexservice
      */
     private static function update_document(
         \context_course $coursecontext,
@@ -1223,7 +939,7 @@ class sourcemanagement {
         string $name,
         string $description,
         string $content,
-        int $userid,
+        index_service $indexservice,
     ): void {
         $documentsource = self::load_document_source($sourceid);
         self::require_document_manage_access($coursecontext, $documentsource);
@@ -1235,30 +951,9 @@ class sourcemanagement {
         $documentsource->set_content($content);
         $documentsource->store();
 
-        if (!$contentchanged || !$documentsource->get_enabled() || !$documentsource->get_allowindex()) {
-            return;
+        if ($contentchanged && $documentsource->get_allowindex()) {
+            $indexservice->start($documentsource);
         }
-
-        $documentsource->set_indexstatus(source::INDEXSTATUS_QUEUED);
-        $documentsource->store();
-
-        $task = new index_source_adhoc();
-        $task->set_custom_data(['sourceid' => $documentsource->get_id()]);
-        $task->set_userid($userid);
-
-        $taskid = \core\task\manager::queue_adhoc_task($task, true);
-        if (!$taskid) {
-            $documentsource->set_indexstatus(source::INDEXSTATUS_FAILED);
-            $documentsource->store();
-            return;
-        }
-
-        $task->set_id($taskid);
-        $task->initialise_stored_progress();
-
-        $documentsource->set_indextaskid($taskid);
-        $documentsource->set_indexstatus(source::INDEXSTATUS_QUEUED);
-        $documentsource->store();
     }
 
     /**
@@ -1266,18 +961,19 @@ class sourcemanagement {
      *
      * @param \context_course $coursecontext
      * @param int $sourceid
+     * @param index_service $indexservice
      */
-    private static function delete_source(\context_course $coursecontext, int $sourceid): void {
+    private static function delete_source(
+        \context_course $coursecontext,
+        int $sourceid,
+        index_service $indexservice,
+    ): void {
         global $DB;
 
         $documentsource = self::load_document_source($sourceid);
         self::require_document_manage_access($coursecontext, $documentsource);
 
-        if ($documentsource->get_allowindex()) {
-            $manager = new \local_ai_manager\manager('embedding');
-            $indexer = new indexer_manager($documentsource->get_contextid(), $manager);
-            $indexer->delete_source_embeddings($documentsource);
-        }
+        $indexservice->stop($documentsource);
 
         $transaction = $DB->start_delegated_transaction();
         $DB->delete_records('local_ai_content_ctx_sources', ['sourceid' => $sourceid]);
@@ -1409,23 +1105,8 @@ class sourcemanagement {
             'description' => (string)$documentsource->get_description(),
             'content' => (string)$documentsource->get_content(),
             'enabled' => (bool)$documentsource->get_enabled(),
-            'allowIndex' => (bool)$documentsource->get_allowindex(),
-            'indexStatus' => (string)$documentsource->get_indexstatus(),
-            'lastIndexedAt' => self::format_timestamp((int)$documentsource->get_lastindexed()),
+            'indexState' => index_state::from_source($documentsource)->to_array(),
         ];
-    }
-
-    /**
-     * Convert timestamp values to ISO-8601, null when not available.
-     *
-     * @param int $timestamp
-     * @return ?string
-     */
-    private static function format_timestamp(int $timestamp): ?string {
-        if ($timestamp <= 0) {
-            return null;
-        }
-        return gmdate('c', $timestamp);
     }
 
     /**
