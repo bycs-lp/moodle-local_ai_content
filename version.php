@@ -24,7 +24,7 @@
  */
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version  = 2026082700;
+$plugin->version  = 2026083101;
 $plugin->requires = 2025041400;
 $plugin->supported = [500, 502];
 $plugin->release = '0.1.1';

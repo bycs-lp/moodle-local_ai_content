@@ -90,6 +90,12 @@ class source {
     /** @var ?int Last queued adhoc indexing task id. */
     protected ?int $indextaskid = null;
 
+    /** @var ?string Error message of the last failed indexing run. */
+    protected ?string $indexerror = null;
+
+    /** @var ?string Technical details of the last failed indexing run. */
+    protected ?string $indexdebuginfo = null;
+
     /** @var string Source is currently not queued/running for indexing. */
     public const INDEXSTATUS_IDLE = 'idle';
 
@@ -161,6 +167,8 @@ class source {
         $record->lastindexed = $this->lastindexed;
         $record->indexstatus = $this->indexstatus;
         $record->indextaskid = $this->indextaskid;
+        $record->indexerror = $this->indexerror;
+        $record->indexdebuginfo = $this->indexdebuginfo;
         $record->usermodified = $this->usermodified ?: (int)($USER->id ?? 0);
         $record->timemodified = $clock->time();
 
@@ -312,6 +320,8 @@ class source {
         $this->lastindexed = (int)($record->lastindexed ?? 0);
         $this->indexstatus = (string)($record->indexstatus ?? self::INDEXSTATUS_IDLE);
         $this->indextaskid = isset($record->indextaskid) ? (int)$record->indextaskid : null;
+        $this->indexerror = $record->indexerror ?? null;
+        $this->indexdebuginfo = $record->indexdebuginfo ?? null;
         $this->usermodified = (int)($record->usermodified ?? 0);
         $this->timecreated = (int)($record->timecreated ?? 0);
         $this->timemodified = (int)($record->timemodified ?? 0);
@@ -380,6 +390,26 @@ class source {
     /** @param ?int $indextaskid */
     public function set_indextaskid(?int $indextaskid): void {
         $this->indextaskid = $indextaskid;
+    }
+
+    /** @return ?string */
+    public function get_indexerror(): ?string {
+        return $this->indexerror;
+    }
+
+    /** @param ?string $indexerror */
+    public function set_indexerror(?string $indexerror): void {
+        $this->indexerror = $indexerror;
+    }
+
+    /** @return ?string */
+    public function get_indexdebuginfo(): ?string {
+        return $this->indexdebuginfo;
+    }
+
+    /** @param ?string $indexdebuginfo */
+    public function set_indexdebuginfo(?string $indexdebuginfo): void {
+        $this->indexdebuginfo = $indexdebuginfo;
     }
 
     /** @return string */
