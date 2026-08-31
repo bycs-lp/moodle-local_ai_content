@@ -474,7 +474,7 @@ class document_extractor {
     /**
      * Convert a PDF file into an array of base64-encoded page images.
      *
-     * Uses Poppler's pdftoppm binary to render each page to PNG.
+     * Uses Poppler's pdftoppm binary to render each page to JPEG.
      *
      * @param stored_file $file The PDF file.
      * @return string[] Array of base64-encoded data URLs, one per page.
@@ -496,8 +496,9 @@ class document_extractor {
         $outputprefix = $tmpdir . '/page';
         $file->copy_content_to($tmppdfpath);
 
+        // Use moderate DPI and JPEG quality to keep page images smaller without sacrificing readability.
         $command = \escapeshellarg($pdftoppm)
-            . ' -q -r 150 -png '
+            . ' -q -r 120 -jpeg -jpegopt quality=82,optimize=y,progressive=n '
             . \escapeshellarg($tmppdfpath)
             . ' '
             . \escapeshellarg($outputprefix);
@@ -509,7 +510,7 @@ class document_extractor {
             throw new \moodle_exception('error_pdfrenderingunavailable', 'local_ai_content');
         }
 
-        $images = glob($outputprefix . '-*.png') ?: [];
+        $images = glob($outputprefix . '-*.jpg') ?: [];
         sort($images, SORT_NATURAL);
 
         if (empty($images)) {
@@ -522,7 +523,7 @@ class document_extractor {
             if ($imagecontent === false) {
                 throw new \moodle_exception('error_conversionfailed', 'local_ai_content', '', $file->get_filename());
             }
-            $imagemime = 'image/png';
+            $imagemime = 'image/jpeg';
             $imagearray[] = 'data:' . $imagemime . ';base64,' . base64_encode($imagecontent);
         }
 
