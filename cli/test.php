@@ -15,18 +15,24 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version file for local_ai_content.
+ * TODO describe file test
  *
  * @package    local_ai_content
- * @copyright  2026 ISB Bayern
- * @author     Philipp Memmel
+ * @copyright  2026 YOUR NAME <your@email.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-defined('MOODLE_INTERNAL') || die();
+define('CLI_SCRIPT', true);
 
-$plugin->version  = 2026083101;
-$plugin->requires = 2025041400;
-$plugin->supported = [500, 502];
-$plugin->release = '0.1.1';
-$plugin->component = 'local_ai_content';
-$plugin->maturity = MATURITY_BETA;
+require(__DIR__ . '../../../../config.php');
+require_once($CFG->libdir . '/clilib.php');
+
+$course = get_course(41);
+$context = \context_course::instance($course->id);
+// TODO Set up a user to run the indexing as. For now, we'll just use the admin user.
+\core\session\manager::set_user(get_admin());
+
+$aimanager = new \local_ai_manager\manager('embedding');
+
+$index = new \local_ai_content\local\indexer_manager($context->id, $aimanager);
+
+$index->index();

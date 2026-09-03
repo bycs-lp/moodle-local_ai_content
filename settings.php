@@ -60,6 +60,15 @@ if ($hassiteconfig) {
         get_string('extractionprompt_default', 'local_ai_content')
     ));
 
+    // Setting: Show empty sections in RAG contexts selector
+    $settings->add(new admin_setting_configcheckbox(
+        'local_ai_content/showemptysections',
+        get_string('showemptysections', 'local_ai_content'),
+        get_string('showemptysections_desc', 'local_ai_content'),
+        0, // Default value: false (don't show empty sections)
+        PARAM_BOOL
+    ));
+
     $ADMIN->add('local_ai_content_category', $settings);
 
     // Test extraction admin page.

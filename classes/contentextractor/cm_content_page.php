@@ -14,19 +14,30 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+namespace local_ai_content\contentextractor;
+
+use local_ai_content\cm_content_extractor;
+
 /**
- * Version file for local_ai_content.
+ * Class cm_content_page
+ *
+ * Fetches the content of a page for indexing.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
  * @author     Philipp Memmel
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-defined('MOODLE_INTERNAL') || die();
+class cm_content_page extends cm_content_extractor {
+    #[\Override]
+    public function is_cm_supported(\core_course\cm_info $cm): bool {
+        return $cm->modname === 'page';
+    }
 
-$plugin->version  = 2026083101;
-$plugin->requires = 2025041400;
-$plugin->supported = [500, 502];
-$plugin->release = '0.1.1';
-$plugin->component = 'local_ai_content';
-$plugin->maturity = MATURITY_BETA;
+    #[\Override]
+    public function extract(\core_course\cm_info $cm): string {
+        $instance = $cm->get_instance_record();
+        $content = (string)($instance->content ?? '');
+        return $this->format_extracted_cm_content($content);
+    }
+}

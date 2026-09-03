@@ -14,19 +14,27 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+namespace local_ai_content\local;
+
+use local_ai_content\source;
+
 /**
- * Version file for local_ai_content.
+ * Access helper for source-management operations.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
- * @author     Philipp Memmel
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-defined('MOODLE_INTERNAL') || die();
+class source_management_access {
+    /**
+     * Require source-management capability for the context of the given source.
+     *
+     * @param source $source Source to validate access for.
+     */
+    public function require_manage_access_for_source(source $source): void {
+        require_login();
 
-$plugin->version  = 2026083101;
-$plugin->requires = 2025041400;
-$plugin->supported = [500, 502];
-$plugin->release = '0.1.1';
-$plugin->component = 'local_ai_content';
-$plugin->maturity = MATURITY_BETA;
+        $context = \context_helper::instance_by_id($source->get_contextid(), MUST_EXIST);
+        require_capability('local/ai_content:managesources', $context);
+    }
+}

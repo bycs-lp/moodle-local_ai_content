@@ -23,8 +23,11 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+$string['ai_content:managesources'] = 'Manage and index AI content sources';
 $string['ai_content:testextraction'] = 'Test the AI text extraction service via admin UI';
+$string['ai_content:usesource'] = 'Use AI content sources for retrieval';
 $string['aicontent'] = 'AI Content';
+$string['allowindexing'] = "Allow Indexing";
 $string['backend'] = 'AI backend';
 $string['backend_core_ai_subsystem'] = 'Moodle Core AI Subsystem';
 $string['backend_desc'] = 'Select the AI backend to use for text extraction from images and documents.';
@@ -43,8 +46,28 @@ $string['extractionprompt'] = 'Extraction prompt';
 $string['extractionprompt_default'] = 'Return the text that is written on the image/document. Do not wrap any explanatory text around. Return only the bare content. If the image/document contains graphics, charts or embedded images, add a precise description of them and document in the extracted text in a clear way that this is an image/graphics/chart description.';
 $string['extractionprompt_desc'] = 'The prompt sent to the AI backend when extracting text from images or documents. The AI receives this instruction together with the encoded file content.';
 $string['filename'] = 'File name';
+$string['managesourcespage'] = 'Manage AI sources';
 $string['pluginname'] = 'AI Content Manager';
 $string['privacy:metadata'] = 'The AI Content Manager plugin does not store any personal user data.';
+$string['sourceselection'] = 'Context source selection';
+$string['sourceselection_help'] = 'Select which sources should be used for this context when generating AI content.
+
+These sources may be scanned and provide additional context to the user prompt.';
+$string['sourceselectiontitle'] = 'Select sources for this context';
+$string['sourceselectiondesc'] = 'Choose which sources are selected for this context.';
+$string['ragsourcesheading'] = 'Selected sources for this context:';
+$string['indexingstatus_idle'] = 'Not indexed';
+$string['indexingstatus_queued'] = 'Queued';
+$string['indexingstatus_running'] = 'Indexing in progress';
+$string['indexingstatus_indexed'] = 'Indexed';
+$string['indexingstatus_failed'] = 'Indexing failed';
+$string['indexingerror_embeddingrequestfailed'] = 'Indexing failed because an embedding request failed: {$a}';
+$string['section'] = 'Section {$a}';
+$string['selectall'] = 'Select all';
+$string['selectnone'] = 'Select none';
+$string['showemptysections'] = 'Show empty sections';
+$string['showemptysections_desc'] = 'When enabled, sections with no selectable sources will be displayed in the context source selector. When disabled, only sections with selectable sources are shown.';
+$string['subsection'] = 'Sub-section {$a}';
 $string['task_cleanupcache'] = 'Clean up expired text extraction cache entries';
 $string['test_extraction'] = 'Test text extraction';
 $string['test_extraction_contenthash'] = 'Content hash';
