@@ -17,8 +17,11 @@
 namespace local_ai_content\local;
 
 use core\hook\di_configuration;
-use local_ai_content\backend\ai_backend;
-use local_ai_content\backend\config;
+use local_ai_content\local\backend\ai_backend;
+use local_ai_content\local\backend\config;
+use local_ai_manager\hook\before_primary_vecstore_changed;
+use local_ai_manager\hook\before_vecstore_instance_deleted;
+use local_ai_manager\hook\vecstore_usage;
 
 /**
  * Hook callbacks for local_ai_content.
@@ -42,5 +45,40 @@ class hook_callbacks {
             id: ai_backend::class,
             definition: fn() => config::create_backend(),
         );
+    }
+
+    /**
+     * Report the sources depending on a vector store instance.
+     *
+     * @param vecstore_usage $hook The hook.
+     */
+    public static function vecstore_usage(vecstore_usage $hook): void {
+        $usage = \core\di::get(index_service::class)->get_vecstore_usage($hook->instance->get_id());
+        if ($usage['sources'] > 0) {
+            $hook->add_usage_description('local_ai_content',
+                get_string('vecstoreusage_sources', 'local_ai_content', $usage['sources']));
+        }
+        if ($hook->deleting && $usage['externalsources'] > 0) {
+            $hook->add_usage_description('local_ai_content',
+                get_string('vecstoreusage_externalsources', 'local_ai_content', $usage['externalsources']));
+        }
+    }
+
+    /**
+     * Detach all sources from a vector store instance before it is deleted.
+     *
+     * @param before_vecstore_instance_deleted $hook The hook.
+     */
+    public static function before_vecstore_instance_deleted(before_vecstore_instance_deleted $hook): void {
+        \core\di::get(index_service::class)->release_vecstore($hook->instance->get_id(), $hook->deletevectors, true);
+    }
+
+    /**
+     * Detach the indexed sources from the old primary vector store instance, so they are indexed in the new one.
+     *
+     * @param before_primary_vecstore_changed $hook The hook.
+     */
+    public static function before_primary_vecstore_changed(before_primary_vecstore_changed $hook): void {
+        \core\di::get(index_service::class)->release_vecstore($hook->oldprimary->get_id(), $hook->deletevectors, false);
     }
 }

@@ -18,7 +18,6 @@ namespace local_ai_content\local;
 
 use local_ai_content\cm_content_extractor;
 use local_ai_content\source;
-use local_ai_manager\local\connector_factory;
 
 /**
  * Manages the indexing of Moodle content into the vector store.
@@ -99,8 +98,12 @@ class indexer_manager {
     /**
      * Indexes one source record.
      *
+     * Every case in which nothing could be indexed is an error, so a source is never reported as indexed without
+     * having vectors.
+     *
      * @param source $source The source to index.
      * @param ?cm_content_extractor $extractor Optional pre-resolved module content extractor.
+     * @throws \moodle_exception If the source cannot be indexed.
      */
     public function index_single_source(source $source, ?cm_content_extractor $extractor = null): void {
         if (!$source->get_allowindex()) {
@@ -109,49 +112,24 @@ class indexer_manager {
 
         if ($source->get_sourcetype() === source::TYPE_MODULE) {
             $cmid = $source->get_cmid();
-            if (empty($cmid)) {
-                return;
-            }
-            $rawcm = get_coursemodule_from_id('', $cmid, 0, false, IGNORE_MISSING);
+            $rawcm = empty($cmid) ? false : get_coursemodule_from_id('', $cmid, 0, false, IGNORE_MISSING);
             if (!$rawcm) {
-                return;
+                throw new \moodle_exception('indexingerror_sourcenotfound', 'local_ai_content');
             }
             $cm = get_fast_modinfo($rawcm->course)->get_cm($cmid);
             $extractor = $extractor ?? $this->get_cm_content_extractor($cm->modname, $cm);
             if (!$extractor) {
-                return;
+                throw new \moodle_exception('indexingerror_notsupported', 'local_ai_content');
             }
-            $chunks = $extractor->extract_as_chunks($cm);
-            $this->index_source($source, $chunks);
+            $this->index_source($source, $extractor->extract_as_chunks($cm));
             return;
         }
 
         if ($source->get_sourcetype() !== source::TYPE_DOCUMENT) {
-            return;
+            throw new \moodle_exception('indexingerror_notsupported', 'local_ai_content');
         }
 
-        $content = (string) $source->get_content();
-        if ($content === '') {
-            return;
-        }
-        $this->index_source($source, [$content]);
-    }
-
-    /**
-     * Deletes all stored vectors for a source.
-     *
-     * @param source $source The source whose vectors should be removed.
-     */
-    public function delete_source_embeddings(source $source): void {
-        $sourceid = $source->get_id();
-        if ($sourceid <= 0) {
-            return;
-        }
-        $vecstore = $this->get_vecstore_for_source($source);
-        if ($vecstore === null) {
-            return;
-        }
-        $vecstore->delete_embeddings($sourceid);
+        $this->index_source($source, [(string) $source->get_content()]);
     }
 
     /**
@@ -161,12 +139,12 @@ class indexer_manager {
      *
      * @param source $source The source to index.
      * @param string[] $chunks The content chunks to embed and store.
-     * @throws \moodle_exception If an embedding request fails.
+     * @throws \moodle_exception If there is no content to index or an embedding request fails.
      */
     protected function index_source(source $source, array $chunks): void {
         $chunks = array_values(array_filter(array_map('trim', $chunks), static fn(string $c): bool => $c !== ''));
         if (empty($chunks)) {
-            return;
+            throw new \moodle_exception('indexingerror_nocontent', 'local_ai_content');
         }
 
         $sourceid = $source->get_id();
@@ -238,7 +216,7 @@ class indexer_manager {
 
         $vecstore = $this->get_vecstore_for_source($source);
         if ($vecstore === null) {
-            return;
+            throw new \moodle_exception('error_novecstore', 'local_ai_content');
         }
         $vecstore->insert_embeddings($enrichedvectors);
 
@@ -299,24 +277,18 @@ class indexer_manager {
     }
 
     /**
-     * Resolves the vector store driver a source's vectors should be stored in.
-     *
-     * Uses the source's explicitly configured vector store instance if present, otherwise falls back to the
-     * tenant's primary vector store.
+     * Resolves the vector store driver of the vector store instance the source is bound to.
      *
      * @param source $source The source whose target vector store is resolved.
      * @return ?\local_ai_manager\base_vecstore The vector store driver, or null if none is available.
      */
     protected function get_vecstore_for_source(source $source): ?\local_ai_manager\base_vecstore {
-        $connectorfactory = \core\di::get(connector_factory::class);
         $vecstoreid = $source->get_vecstoreid();
-        if ($vecstoreid) {
-            $vecstorefactory = \core\di::get(\local_ai_manager\local\vecstore_factory::class);
-            if ($vecstorefactory->instance_exists($vecstoreid)) {
-                return $vecstorefactory->get_vecstore_by_id($vecstoreid);
-            }
+        $vecstorefactory = \core\di::get(\local_ai_manager\local\vecstore_factory::class);
+        if (!$vecstoreid || !$vecstorefactory->instance_exists($vecstoreid)) {
+            return null;
         }
-        return $connectorfactory->get_primary_vecstore();
+        return $vecstorefactory->get_vecstore_by_id($vecstoreid);
     }
 
     /**

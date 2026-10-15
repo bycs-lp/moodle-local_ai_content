@@ -31,24 +31,11 @@ import {
     openSourceSelectorModal,
     type MoodleModal,
 } from './source_selector/source_selection_modal_manager';
-
-/** A single selectable source returned by the API. */
-type SourceOption = {
-    id: number;
-    cmid: number;
-    name: string;
-    sourcetype?: string;
-};
-
-/** Shape of the GET /contexts/{contextId}/source-selections response. */
-type ContextSourceSelectionResponse = {
-    items?: Array<{
-        globalDocuments?: SourceOption[];
-        courseActivities?: SourceOption[];
-        externalSources?: SourceOption[];
-        selectedSourceIds?: string;
-    }>;
-};
+import {
+    loadSourceSelection,
+    saveSelectedSourceIds,
+    type SourceOption,
+} from './source_selector/data_manager';
 
 type ImportableCourse = {
     id: number;
@@ -96,65 +83,6 @@ type Props = {
     /** Modal title string. */
     modalTitle?: string;
 };
-
-type SourceSelectorApi = {
-    getSelectedSourceIds: (contextId: number) => number[];
-    setSelectedSourceIds: (contextId: number, sourceIds: number[]) => void;
-    subscribe: (contextId: number, callback: (sourceIds: number[]) => void) => () => void;
-    unsubscribe: (contextId: number, callback: (sourceIds: number[]) => void) => void;
-};
-
-const SOURCE_SELECTOR_API_KEY = 'localAiContentSourceSelectorApi';
-
-/**
- * Get the global source selector API instance.
- *
- * @returns {?SourceSelectorApi} API instance or null when unavailable.
- */
-function getSourceSelectorApi(): SourceSelectorApi | null {
-    const scope = window as unknown as {[key: string]: unknown};
-    const existing = scope[SOURCE_SELECTOR_API_KEY] as SourceSelectorApi | undefined;
-    if (
-        existing
-        && typeof existing.setSelectedSourceIds === 'function'
-        && typeof existing.getSelectedSourceIds === 'function'
-        && typeof existing.subscribe === 'function'
-        && typeof existing.unsubscribe === 'function'
-    ) {
-        return existing;
-    }
-    return null;
-}
-
-/**
- * Publish the current selection for optional external readers.
- *
- * @param {number} contextId The Moodle context ID.
- * @param {string} selectedSourceIds Comma-separated selected source IDs.
- */
-function publishSelected(contextId: number, selectedSourceIds: string): void {
-    const sourceSelectorApi = getSourceSelectorApi();
-    if (!sourceSelectorApi) {
-        return;
-    }
-    sourceSelectorApi.setSelectedSourceIds(contextId, Array.from(parseIds(selectedSourceIds)));
-}
-/**
- * Parse a comma-separated string of integers into a Set<number>.
- *
- * @param {string} raw Comma-separated list of integer strings.
- * @returns {Set<number>} Set of parsed IDs.
- */
-function parseIds(raw: string): Set<number> {
-    if (!raw) {
-        return new Set();
-    }
-    return new Set(
-        raw.split(',')
-            .map((s) => parseInt(s.trim(), 10))
-            .filter((n) => !isNaN(n) && n > 0),
-    );
-}
 
 /**
  * Build one compact meta string for a source.
@@ -292,41 +220,76 @@ export default function SourceSelector({
     const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
     const [modalBodyRoot, setModalBodyRoot] = useState<HTMLElement | null>(null);
     const modalRef = useRef<MoodleModal | null>(null);
+    const pendingSaves = useRef<number>(0);
 
-    useEffect(() => {
+    /**
+     * Load the sources and the selection of the context into the component state.
+     *
+     * @param {boolean} reload Whether to bypass the cache of the data manager.
+     */
+    const loadSelection = (reload: boolean) => {
         setLoading(true);
         setError(null);
 
-        Fetch.performGet('local_ai_content', `contexts/${contextId}/source-selections`)
-            .then((res: Response) => res.json() as Promise<ContextSourceSelectionResponse>)
-            .then((data: ContextSourceSelectionResponse) => {
-                const item = data.items?.[0] ?? {};
-                setGlobalDocuments(item.globalDocuments ?? []);
-                setCourseActivities(item.courseActivities ?? []);
-                setExternalSources(item.externalSources ?? []);
-                const selectedSourceIds = item.selectedSourceIds ?? '';
-                setSelected(parseIds(selectedSourceIds));
-                publishSelected(contextId, selectedSourceIds);
+        loadSourceSelection(contextId, reload)
+            .then((selection) => {
+                setGlobalDocuments(selection.globalDocuments);
+                setCourseActivities(selection.courseActivities);
+                setExternalSources(selection.externalSources);
+                setSelected(new Set(selection.selectedSourceIds));
                 setLoading(false);
-                return data;
+                return selection;
             })
             .catch(() => {
                 setError('Failed to load source selection for this context.');
                 setLoading(false);
             });
+    };
+
+    useEffect(() => {
+        loadSelection(false);
     }, [contextId]);
 
-    const handleToggle = (id: number) => {
-        setSelected((prev) => {
-            const next = new Set(prev);
-            if (next.has(id)) {
-                next.delete(id);
-            } else {
-                next.add(id);
-            }
-            return next;
-        });
+    /**
+     * Apply a new selection and persist it immediately.
+     *
+     * @param {Set<number>} next The new set of selected source ids.
+     */
+    const updateSelection = async(next: Set<number>) => {
+        setSelected(next);
         setSaveSuccess(false);
+        setError(null);
+        setSaving(true);
+        pendingSaves.current++;
+        try {
+            await saveSelectedSourceIds(contextId, [...next]);
+            setSaveSuccess(true);
+        } catch {
+            setError('Failed to save source selection for this context.');
+            // Roll back to the selection actually stored on the server.
+            try {
+                const selection = await loadSourceSelection(contextId, true);
+                setExternalSources(selection.externalSources);
+                setSelected(new Set(selection.selectedSourceIds));
+            } catch {
+                // Keep the error message, the selection is reloaded the next time the selector is opened.
+            }
+        } finally {
+            pendingSaves.current--;
+            if (pendingSaves.current === 0) {
+                setSaving(false);
+            }
+        }
+    };
+
+    const handleToggle = (id: number) => {
+        const next = new Set(selected);
+        if (next.has(id)) {
+            next.delete(id);
+        } else {
+            next.add(id);
+        }
+        updateSelection(next);
     };
 
     const handleImportToggle = (id: number) => {
@@ -343,12 +306,9 @@ export default function SourceSelector({
 
     const handleRemoveExternalSource = (id: number) => {
         setExternalSources((prev) => prev.filter((source) => source.id !== id));
-        setSelected((prev) => {
-            const next = new Set(prev);
-            next.delete(id);
-            return next;
-        });
-        setSaveSuccess(false);
+        const next = new Set(selected);
+        next.delete(id);
+        updateSelection(next);
     };
 
     const loadImportableCourses = async() => {
@@ -413,12 +373,6 @@ export default function SourceSelector({
         const byId = new Map<number, SourceOption>();
         importableSources.forEach((source) => byId.set(source.id, source));
 
-        setSelected((prev) => {
-            const next = new Set(prev);
-            stagedImportSelection.forEach((id) => next.add(id));
-            return next;
-        });
-
         setExternalSources((prev) => {
             const existingIds = new Set(prev.map((source) => source.id));
             const localIds = new Set([...globalDocuments, ...courseActivities].map((source) => source.id));
@@ -437,37 +391,8 @@ export default function SourceSelector({
         });
 
         setMode('main');
-        setSaveSuccess(false);
+        updateSelection(new Set([...selected, ...stagedImportSelection]));
     };
-
-    const handleSave = async() => {
-        setSaving(true);
-        setSaveSuccess(false);
-        setError(null);
-
-        const selectedSourceIds = [...selected].join(',');
-        publishSelected(contextId, selectedSourceIds);
-
-        const response = await Fetch.request('local_ai_content', `contexts/${contextId}/source-selections`, {
-            method: 'PUT',
-            body: {
-                selectedSourceIds,
-            },
-        });
-
-        if (!response.ok) {
-            setError(`Failed to save source selection for this context (HTTP ${response.status}).`);
-            setSaving(false);
-            return;
-        }
-
-        setSaveSuccess(true);
-        setSaving(false);
-    };
-
-    useEffect(() => {
-        publishSelected(contextId, [...selected].join(','));
-    }, [contextId, selected]);
 
     useEffect(() => {
         return () => {
@@ -481,6 +406,11 @@ export default function SourceSelector({
     const openModal = async() => {
         if (modalRef.current) {
             return;
+        }
+
+        // Sources may have finished indexing meanwhile, so refresh the list unless a save is still in progress.
+        if (pendingSaves.current === 0) {
+            loadSelection(true);
         }
 
         try {
@@ -661,14 +591,6 @@ export default function SourceSelector({
             </div>
 
             <div className="source-selector__actions mt-2 d-flex align-items-center gap-3">
-                <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    onClick={handleSave}
-                    disabled={saving}
-                >
-                    Speichern
-                </button>
                 {saving && (
                     <span className="text-muted small">Speichere...</span>
                 )}

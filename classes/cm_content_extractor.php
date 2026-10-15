@@ -25,9 +25,6 @@ namespace local_ai_content;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 abstract class cm_content_extractor {
-    /** @var string[] Text mimetypes that can be read directly from file contents. */
-    protected const TEXT_MIMETYPES = ['text/plain', 'text/html', 'text/csv'];
-
     /** @var int Number of characters per embedding chunk. */
     protected const CHUNK_SIZE = 1000;
 
@@ -89,23 +86,20 @@ abstract class cm_content_extractor {
     }
 
     /**
-     * Extract text from a stored file using direct read or local_ai_content document extraction.
+     * Extract text from a stored file using the local_ai_content document extraction.
+     *
+     * Returns an empty string if the file contains nothing to extract, deciding how to handle that is up to the caller.
      *
      * @param \stored_file $file The file to process.
      * @param int $contextid Context id used for AI availability checks.
      * @return string
+     * @throws \moodle_exception If the extraction fails.
      */
     protected function extract_content_from_file(\stored_file $file, int $contextid): string {
-        if (in_array($file->get_mimetype(), self::TEXT_MIMETYPES)) {
-            return $file->get_content();
-        }
-
         $extractor = \core\di::get(\local_ai_content\document_extractor::class);
         return $extractor->extract_text_from_file($file, $contextid, $file->get_userid() ?: null, 'local_ai_content');
     }
 }
-
-
 
 
 

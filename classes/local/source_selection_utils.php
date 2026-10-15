@@ -31,9 +31,11 @@ class source_selection_utils {
      * Return all sources selectable for this context.
      *
      * The available sources are:
-     *  - module sources of the course the context belongs to that have allowindex = 1;
+     *  - module sources of the course the context belongs to;
      *  - document and external sources attached to any context on the path from the system context down to the
      *    given context (i.e. the context itself and all its ancestors).
+     *
+     * Only sources passing {@see is_selectable()} are returned.
      *
      * Each entry in the returned array contains:
      *  - id         (int)     the local_ai_content_sources record ID
@@ -171,7 +173,7 @@ class source_selection_utils {
                     continue;
                 }
                 $modulesource = $sourcebycmid[(int)$cm->id] ?? null;
-                if ($modulesource === null || !$modulesource->get_enabled() || !$modulesource->get_allowindex()) {
+                if ($modulesource === null || !self::is_selectable($modulesource)) {
                     continue;
                 }
                 $courseactivities[] = [
@@ -187,7 +189,7 @@ class source_selection_utils {
         $coursedocuments = [];
         $sources = source::get_records_by_contextids([$sourcecoursecontext->id]);
         foreach ($sources as $documentsource) {
-            if ($documentsource->get_sourcetype() === source::TYPE_MODULE || !$documentsource->get_enabled()) {
+            if ($documentsource->get_sourcetype() === source::TYPE_MODULE || !self::is_selectable($documentsource)) {
                 continue;
             }
             if (!source_access::can_access_source($documentsource, $userid)) {
@@ -226,7 +228,7 @@ class source_selection_utils {
         $result = [];
         $sources = source::get_records_by_contextids([$systemcontext->id]);
         foreach ($sources as $pathsource) {
-            if ($pathsource->get_sourcetype() === source::TYPE_MODULE || !$pathsource->get_enabled()) {
+            if ($pathsource->get_sourcetype() === source::TYPE_MODULE || !self::is_selectable($pathsource)) {
                 continue;
             }
             $result[] = [
@@ -272,7 +274,7 @@ class source_selection_utils {
                 continue;
             }
             $modulesource = $sourcebycmid[(int)$cm->id] ?? null;
-            if ($modulesource === null || !$modulesource->get_enabled() || !$modulesource->get_allowindex()) {
+            if ($modulesource === null || !self::is_selectable($modulesource)) {
                 continue;
             }
             $result[] = [
@@ -317,6 +319,9 @@ class source_selection_utils {
             if (isset($localids[$sourceid])) {
                 continue;
             }
+            if (!self::is_selectable($selectedsource)) {
+                continue;
+            }
             if (!source_access::can_access_source($selectedsource, $userid)) {
                 continue;
             }
@@ -334,6 +339,23 @@ class source_selection_utils {
 
         usort($externalsources, static fn(array $a, array $b): int => strcmp((string)$a['name'], (string)$b['name']));
         return $externalsources;
+    }
+
+    /**
+     * Whether a source may be offered in the source selection.
+     *
+     * Only enabled sources with retrievable vectors are offered: Moodle sources (module/document) once their indexing
+     * has finished, external sources always as their vectors are managed outside of Moodle.
+     *
+     * @param source $source The source.
+     * @return bool True if the source is selectable.
+     */
+    private static function is_selectable(source $source): bool {
+        if (!$source->get_enabled()) {
+            return false;
+        }
+        return $source->get_sourcetype() === source::TYPE_EXTERNAL
+            || $source->get_indexstatus() === source::INDEXSTATUS_INDEXED;
     }
 
     /**

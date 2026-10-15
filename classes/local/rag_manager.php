@@ -18,7 +18,6 @@ namespace local_ai_content\local;
 
 use local_ai_content\source;
 use local_ai_manager\base_vecstore;
-use local_ai_manager\local\connector_factory;
 use local_ai_manager\local\vecstore_factory;
 use local_ai_manager\manager;
 
@@ -104,7 +103,7 @@ class rag_manager {
             $moodlesourcesbyvecstore[(int) $source->get_vecstoreid()][] = $source->get_id();
         }
         foreach ($moodlesourcesbyvecstore as $vecstoreid => $groupsourceids) {
-            $vecstore = $this->resolve_vecstore($vecstoreid ?: null);
+            $vecstore = $this->resolve_vecstore($vecstoreid);
             if ($vecstore === null || $vecstore->get_collection() === '') {
                 continue;
             }
@@ -117,7 +116,7 @@ class rag_manager {
             if ($source->get_sourcetype() !== source::TYPE_EXTERNAL) {
                 continue;
             }
-            $vecstore = $this->resolve_vecstore($source->get_vecstoreid());
+            $vecstore = $this->resolve_vecstore((int) $source->get_vecstoreid());
             if ($vecstore === null || $vecstore->get_collection() === '') {
                 continue;
             }
@@ -222,19 +221,19 @@ class rag_manager {
     }
 
     /**
-     * Resolves the vector store driver for a given instance id, falling back to the tenant's primary.
+     * Resolves the vector store driver of the vector store instance a source is bound to.
      *
-     * @param ?int $vecstoreid The vector store instance id, or null for the primary.
-     * @return ?base_vecstore The vector store driver, or null if none is available.
+     * Sources not bound to a vector store or bound to a removed one have no vectors to query.
+     *
+     * @param int $vecstoreid The vector store instance id, 0 if the source is not bound to one.
+     * @return ?base_vecstore The vector store driver, or null if the instance does not exist.
      */
-    protected function resolve_vecstore(?int $vecstoreid): ?base_vecstore {
-        if ($vecstoreid) {
-            $vecstorefactory = \core\di::get(vecstore_factory::class);
-            if ($vecstorefactory->instance_exists($vecstoreid)) {
-                return $vecstorefactory->get_vecstore_by_id($vecstoreid);
-            }
+    protected function resolve_vecstore(int $vecstoreid): ?base_vecstore {
+        $vecstorefactory = \core\di::get(vecstore_factory::class);
+        if ($vecstoreid <= 0 || !$vecstorefactory->instance_exists($vecstoreid)) {
+            return null;
         }
-        return \core\di::get(connector_factory::class)->get_primary_vecstore();
+        return $vecstorefactory->get_vecstore_by_id($vecstoreid);
     }
 
     /**

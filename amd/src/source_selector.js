@@ -14,160 +14,52 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Global source selector API shared between React UI and legacy AMD modules.
+ * AMD access to the source selection data manager for frontends not using ESM/React.
+ *
+ * Thin wrapper around the ESM module @moodle/lms/local_ai_content/source_selector/data_manager, so AMD and
+ * ESM consumers share the same state.
  *
  * @module     local_ai_content/source_selector
  * @copyright  2026 ISB Bayern
+ * @author     Philipp Memmel
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-const API_KEY = 'localAiContentSourceSelectorApi';
+import DataManager from 'core/esm!@moodle/lms/local_ai_content/source_selector/data_manager';
 
-const normalizeContextId = (contextid) => {
-    const normalizedcontextid = parseInt(contextid, 10);
-    if (isNaN(normalizedcontextid) || normalizedcontextid <= 0) {
-        return 0;
-    }
+/**
+ * Load the available sources and the selected source ids of a context.
+ *
+ * @param {number} contextid The context id
+ * @param {boolean} reload Whether to bypass the cache
+ * @returns {Promise<Object>} The source selection of the context
+ */
+export const loadSourceSelection = (contextid, reload = false) =>
+    DataManager.loadSourceSelection(Number(contextid), reload);
 
-    return normalizedcontextid;
-};
+/**
+ * Get the currently selected source ids of a context, loading them first if necessary.
+ *
+ * @param {number} contextid The context id
+ * @returns {Promise<number[]>} The selected source ids
+ */
+export const getSelectedSourceIds = (contextid) => DataManager.getSelectedSourceIds(Number(contextid));
 
-const normalizeSourceIds = (sourceids) => {
-    if (Array.isArray(sourceids)) {
-        return sourceids
-            .map((id) => parseInt(id, 10))
-            .filter((id) => !isNaN(id) && id > 0);
-    }
+/**
+ * Persist the selected source ids of a context.
+ *
+ * @param {number} contextid The context id
+ * @param {number[]} sourceids The selected source ids
+ * @returns {Promise<void>}
+ */
+export const saveSelectedSourceIds = (contextid, sourceids) =>
+    DataManager.saveSelectedSourceIds(Number(contextid), sourceids);
 
-    if (typeof sourceids === 'string') {
-        return sourceids
-            .split(',')
-            .map((id) => parseInt(id.trim(), 10))
-            .filter((id) => !isNaN(id) && id > 0);
-    }
-
-    return [];
-};
-
-const ensureApi = () => {
-    const scope = window;
-    const existing = scope[API_KEY];
-    if (
-        existing
-        && typeof existing.init === 'function'
-        && typeof existing.getSelectedSourceIds === 'function'
-        && typeof existing.setSelectedSourceIds === 'function'
-        && typeof existing.subscribe === 'function'
-        && typeof existing.unsubscribe === 'function'
-    ) {
-        return existing;
-    }
-
-    const contextcache = new Map();
-    const subscribers = new Map();
-
-    const notifySubscribers = (normalizedcontextid, sourceids) => {
-        const listeners = subscribers.get(normalizedcontextid);
-        if (!listeners || listeners.size === 0) {
-            return;
-        }
-
-        listeners.forEach((listener) => {
-            listener([...sourceids]);
-        });
-    };
-
-    const api = {
-        init(contextid, sourceids = []) {
-            const normalizedcontextid = normalizeContextId(contextid);
-            if (normalizedcontextid > 0) {
-                this.setSelectedSourceIds(normalizedcontextid, sourceids);
-            }
-            return this;
-        },
-
-        getSelectedSourceIds(contextid) {
-            const normalizedcontextid = normalizeContextId(contextid);
-            if (normalizedcontextid <= 0) {
-                return [];
-            }
-
-            return [...(contextcache.get(normalizedcontextid) ?? [])];
-        },
-
-        setSelectedSourceIds(contextid, sourceids) {
-            const normalizedcontextid = normalizeContextId(contextid);
-            if (normalizedcontextid <= 0) {
-                return;
-            }
-
-            const normalizedsourceids = normalizeSourceIds(sourceids);
-            contextcache.set(normalizedcontextid, normalizedsourceids);
-            notifySubscribers(normalizedcontextid, normalizedsourceids);
-        },
-
-        subscribe(contextid, callback) {
-            const normalizedcontextid = normalizeContextId(contextid);
-            if (normalizedcontextid <= 0 || typeof callback !== 'function') {
-                return () => undefined;
-            }
-
-            const listeners = subscribers.get(normalizedcontextid) ?? new Set();
-            listeners.add(callback);
-            subscribers.set(normalizedcontextid, listeners);
-
-            return () => {
-                this.unsubscribe(normalizedcontextid, callback);
-            };
-        },
-
-        unsubscribe(contextid, callback) {
-            const normalizedcontextid = normalizeContextId(contextid);
-            if (normalizedcontextid <= 0 || typeof callback !== 'function') {
-                return;
-            }
-
-            const listeners = subscribers.get(normalizedcontextid);
-            if (!listeners) {
-                return;
-            }
-
-            listeners.delete(callback);
-            if (listeners.size === 0) {
-                subscribers.delete(normalizedcontextid);
-            }
-        },
-    };
-
-    scope[API_KEY] = api;
-    return api;
-};
-
-export const init = (contextid, sourceids = []) => {
-    const api = ensureApi();
-    if (contextid !== null && typeof contextid !== 'undefined') {
-        setSelectedSourceIds(contextid, sourceids);
-    }
-    return api;
-};
-
-export const getSelectedSourceIds = (contextid) => {
-    return ensureApi().getSelectedSourceIds(contextid);
-};
-
-export const setSelectedSourceIds = (contextid, sourceids) => {
-    ensureApi().setSelectedSourceIds(contextid, sourceids);
-};
-
-export const subscribe = (contextid, callback) => {
-    return ensureApi().subscribe(contextid, callback);
-};
-
-export const unsubscribe = (contextid, callback) => {
-    ensureApi().unsubscribe(contextid, callback);
-};
-
-// Ensure the shared API singleton exists as soon as this module is loaded.
-ensureApi();
-
-
+/**
+ * Subscribe to changes of the selected source ids of a context.
+ *
+ * @param {number} contextid The context id
+ * @param {Function} callback Called with the selected source ids
+ * @returns {Function} Function to unsubscribe
+ */
+export const subscribe = (contextid, callback) => DataManager.subscribe(Number(contextid), callback);
