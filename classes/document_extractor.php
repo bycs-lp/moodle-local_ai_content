@@ -16,7 +16,7 @@
 
 namespace local_ai_content;
 
-use local_ai_content\backend\ai_backend;
+use local_ai_content\local\backend\ai_backend;
 use stored_file;
 
 /**
@@ -194,6 +194,11 @@ class document_extractor {
         if ($cached !== null) {
             $this->log("local_ai_content: Using cached content for '{$file->get_filename()}'.");
             return $cached;
+        }
+
+        // A missing file would only raise a warning and be extracted as empty content, which means "nothing to extract".
+        if (!get_file_storage()->get_file_system()->is_file_readable_remotely_by_storedfile($file)) {
+            throw new \moodle_exception('error_filenotreadable', 'local_ai_content', '', $file->get_filename());
         }
 
         // Extract based on MIME type.

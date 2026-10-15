@@ -39,8 +39,8 @@ if ($hassiteconfig) {
         'local_ai_content/backend',
         get_string('backend', 'local_ai_content'),
         get_string('backend_desc', 'local_ai_content'),
-        \local_ai_content\backend\config::DEFAULT_BACKEND,
-        \local_ai_content\backend\config::get_backend_options()
+        \local_ai_content\local\backend\config::DEFAULT_BACKEND,
+        \local_ai_content\local\backend\config::get_backend_options()
     ));
 
     // Cache TTL in days.

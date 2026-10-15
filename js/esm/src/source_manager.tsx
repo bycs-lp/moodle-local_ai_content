@@ -424,21 +424,23 @@ export default function SourceManager({contextid}: Props) {
                                 </div>
                             </td>
                             <td>
-                                <div className="form-check form-switch m-0">
-                                    <input
-                                        id={`document-index-${row.id}`}
-                                        className="form-check-input"
-                                        type="checkbox"
-                                        role="switch"
-                                        checked={row.indexState.allowIndex}
-                                        disabled={saving || !row.enabled || !row.canedit || isActive(row.indexState)}
-                                        onChange={() => handleAllowIndexToggle(row.id, !row.indexState.allowIndex)}
-                                        aria-label={`Dokument ${row.name} in Vektorstore indizieren`}
-                                    />
-                                </div>
+                                {row.enabled && (
+                                    <div className="form-check form-switch m-0">
+                                        <input
+                                            id={`document-index-${row.id}`}
+                                            className="form-check-input"
+                                            type="checkbox"
+                                            role="switch"
+                                            checked={row.indexState.allowIndex}
+                                            disabled={saving || !row.canedit || isActive(row.indexState)}
+                                            onChange={() => handleAllowIndexToggle(row.id, !row.indexState.allowIndex)}
+                                            aria-label={`Dokument ${row.name} in Vektorstore indizieren`}
+                                        />
+                                    </div>
+                                )}
                             </td>
-                            <td><IndexStatusCell state={row.indexState}/></td>
-                            <td>{formatTimestamp(row.indexState.lastIndexedAt)}</td>
+                            <td>{row.enabled && <IndexStatusCell state={row.indexState}/>}</td>
+                            <td>{row.enabled && formatTimestamp(row.indexState.lastIndexedAt)}</td>
                             <td>
                                 {row.canedit && (
                                     <div className="d-flex gap-1">
@@ -518,21 +520,23 @@ export default function SourceManager({contextid}: Props) {
                                 </div>
                             </td>
                             <td>
-                                <div className="form-check form-switch m-0">
-                                    <input
-                                        id={`module-index-${row.cmid}`}
-                                        className="form-check-input"
-                                        type="checkbox"
-                                        role="switch"
-                                        checked={row.indexState.allowIndex}
-                                        disabled={saving || !row.enabled || isActive(row.indexState)}
-                                        onChange={() => handleAllowIndexToggle(row.sourceid, !row.indexState.allowIndex)}
-                                        aria-label={`Aktivität ${row.name} in Vektorstore indizieren`}
-                                    />
-                                </div>
+                                {row.enabled && (
+                                    <div className="form-check form-switch m-0">
+                                        <input
+                                            id={`module-index-${row.cmid}`}
+                                            className="form-check-input"
+                                            type="checkbox"
+                                            role="switch"
+                                            checked={row.indexState.allowIndex}
+                                            disabled={saving || isActive(row.indexState)}
+                                            onChange={() => handleAllowIndexToggle(row.sourceid, !row.indexState.allowIndex)}
+                                            aria-label={`Aktivität ${row.name} in Vektorstore indizieren`}
+                                        />
+                                    </div>
+                                )}
                             </td>
-                            <td><IndexStatusCell state={row.indexState}/></td>
-                            <td>{formatTimestamp(row.indexState.lastIndexedAt)}</td>
+                            <td>{row.enabled && <IndexStatusCell state={row.indexState}/>}</td>
+                            <td>{row.enabled && formatTimestamp(row.indexState.lastIndexedAt)}</td>
                         </tr>
                     ))}
                     {payload.items.modules.length === 0 && (
@@ -757,5 +761,4 @@ export default function SourceManager({contextid}: Props) {
         </div>
     );
 }
-
 
