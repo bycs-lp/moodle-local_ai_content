@@ -16,7 +16,7 @@
 
 namespace local_ai_content;
 
-use local_ai_content\backend\ai_backend;
+use local_ai_content\local\backend\ai_backend;
 
 /**
  * Tests for the extractor class.

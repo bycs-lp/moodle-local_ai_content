@@ -56,5 +56,44 @@ function xmldb_local_ai_content_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026072201, 'local', 'ai_content');
     }
 
+    if ($oldversion < 2026082700) {
+        // Add source indexing status and adhoc task tracking fields.
+        $table = new xmldb_table('local_ai_content_sources');
+
+        $indexstatus = new xmldb_field('indexstatus', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, 'idle', 'lastindexed');
+        if (!$dbman->field_exists($table, $indexstatus)) {
+            $dbman->add_field($table, $indexstatus);
+        }
+
+        $indextaskid = new xmldb_field('indextaskid', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'indexstatus');
+        if (!$dbman->field_exists($table, $indextaskid)) {
+            $dbman->add_field($table, $indextaskid);
+        }
+
+        upgrade_plugin_savepoint(true, 2026082700, 'local', 'ai_content');
+    }
+
+    if ($oldversion < 2026083100) {
+        // Store the full error message of a failed indexing run, which does not fit into stored progress.
+        $table = new xmldb_table('local_ai_content_sources');
+        $indexerror = new xmldb_field('indexerror', XMLDB_TYPE_TEXT, null, null, null, null, null, 'indextaskid');
+        if (!$dbman->field_exists($table, $indexerror)) {
+            $dbman->add_field($table, $indexerror);
+        }
+
+        upgrade_plugin_savepoint(true, 2026083100, 'local', 'ai_content');
+    }
+
+    if ($oldversion < 2026083101) {
+        // Keep the technical failure details separate from the message shown to source managers.
+        $table = new xmldb_table('local_ai_content_sources');
+        $indexdebuginfo = new xmldb_field('indexdebuginfo', XMLDB_TYPE_TEXT, null, null, null, null, null, 'indexerror');
+        if (!$dbman->field_exists($table, $indexdebuginfo)) {
+            $dbman->add_field($table, $indexdebuginfo);
+        }
+
+        upgrade_plugin_savepoint(true, 2026083101, 'local', 'ai_content');
+    }
+
     return true;
 }

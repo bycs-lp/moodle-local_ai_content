@@ -39,8 +39,8 @@ if ($hassiteconfig) {
         'local_ai_content/backend',
         get_string('backend', 'local_ai_content'),
         get_string('backend_desc', 'local_ai_content'),
-        \local_ai_content\backend\config::DEFAULT_BACKEND,
-        \local_ai_content\backend\config::get_backend_options()
+        \local_ai_content\local\backend\config::DEFAULT_BACKEND,
+        \local_ai_content\local\backend\config::get_backend_options()
     ));
 
     // Cache TTL in days.
@@ -58,6 +58,15 @@ if ($hassiteconfig) {
         get_string('extractionprompt', 'local_ai_content'),
         get_string('extractionprompt_desc', 'local_ai_content'),
         get_string('extractionprompt_default', 'local_ai_content')
+    ));
+
+    // Setting: Show empty sections in RAG contexts selector
+    $settings->add(new admin_setting_configcheckbox(
+        'local_ai_content/showemptysections',
+        get_string('showemptysections', 'local_ai_content'),
+        get_string('showemptysections_desc', 'local_ai_content'),
+        0, // Default value: false (don't show empty sections)
+        PARAM_BOOL
     ));
 
     $ADMIN->add('local_ai_content_category', $settings);

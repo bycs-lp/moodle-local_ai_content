@@ -37,3 +37,45 @@ function local_ai_content_after_file_deleted(stdClass $file): void {
 
     $DB->delete_records('local_ai_content_cache', ['contenthash' => $file->contenthash]);
 }
+
+/**
+ * Add the manage sources link to the course secondary navigation.
+ *
+ * @param navigation_node $navigation The course navigation node to extend.
+ * @param stdClass $course The course object.
+ * @param context_course $context The course context object.
+ */
+function local_ai_content_extend_navigation_course(
+    navigation_node $navigation,
+    stdClass $course,
+    context_course $context
+) {
+    global $PAGE;
+
+    // Only show this link on real course pages.
+    if (!$PAGE->course || (int) $PAGE->course->id === SITEID) {
+        return;
+    }
+
+    if (!has_capability('local/ai_content:managesources', $context)) {
+        return;
+    }
+
+    $url = new moodle_url('/local/ai_content/manage_sources.php', ['courseid' => (int) $course->id]);
+    $linktext = get_string('managesourcespage', 'local_ai_content');
+
+    $node = navigation_node::create(
+        $linktext,
+        $url,
+        navigation_node::NODETYPE_LEAF,
+        'local_ai_content_manage_sources',
+        'local_ai_content_manage_sources',
+    );
+
+    if ($PAGE->url->compare($url, URL_MATCH_BASE)) {
+        $node->make_active();
+    }
+
+    $navigation->add_node($node);
+}
+
