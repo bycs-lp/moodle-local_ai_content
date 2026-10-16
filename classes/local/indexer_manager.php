@@ -148,6 +148,10 @@ class indexer_manager {
         }
 
         $sourceid = $source->get_id();
+        $vecstore = $this->get_vecstore_for_source($source);
+        if ($vecstore === null) {
+            throw new \moodle_exception('error_novecstore', 'local_ai_content');
+        }
         $embeddingmodel = '';
         $embeddedchunks = [];
         $processedchunks = [];
@@ -189,7 +193,9 @@ class indexer_manager {
                 throw $exception;
             }
 
-            if ($embeddingmodel === '') {
+            if (empty($embeddedchunks)) {
+                // Checking the first vector is enough and avoids embedding all chunks with a model not fitting the vector store.
+                $vecstore->require_matching_dimensions((array) json_decode($vectorrequest->get_content(), true));
                 $embeddingmodel = $vectorrequest->get_modelinfo();
             }
 
@@ -214,10 +220,6 @@ class indexer_manager {
             $chunkcount++;
         }
 
-        $vecstore = $this->get_vecstore_for_source($source);
-        if ($vecstore === null) {
-            throw new \moodle_exception('error_novecstore', 'local_ai_content');
-        }
         $vecstore->insert_embeddings($enrichedvectors);
 
         // Persist indexing metadata on the source record.
