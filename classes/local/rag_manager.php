@@ -55,6 +55,8 @@ class rag_manager {
      * @param int $contextid the context id from which the (embedding) request is being performed
      * @param int $topk the maximum number of chunks to include in the assembled RAG content
      * @return rag_result the assembled RAG result
+     * @throws \moodle_exception if the selected sources cannot be searched, for example because the embedding request or a
+     *  vector store query failed or the embedding model does not fit a vector store of the selected sources
      */
     public function get_rag_content(
         string $userprompt,
@@ -72,11 +74,18 @@ class rag_manager {
         $embeddingmanager = new manager('embedding');
         $response = $embeddingmanager->perform_request($userprompt, $component, $contextid);
         if ($response->get_code() !== 200) {
-            return new rag_result('');
+            $errormessage = trim($response->get_errormessage());
+            throw new \moodle_exception(
+                'error_ragembeddingfailed',
+                'local_ai_content',
+                '',
+                $errormessage !== '' ? $errormessage : 'Embedding request failed with code ' . $response->get_code() . '.',
+                $response->get_debuginfo()
+            );
         }
         $embedding = json_decode($response->get_content(), true);
         if (!is_array($embedding) || empty($embedding)) {
-            return new rag_result('');
+            throw new \moodle_exception('error_ragembeddinginvalid', 'local_ai_content', '', null, $response->get_content());
         }
 
         // Load the selected source records and split them into Moodle and external sources.
@@ -107,6 +116,7 @@ class rag_manager {
             if ($vecstore === null || $vecstore->get_collection() === '') {
                 continue;
             }
+            $vecstore->require_matching_dimensions($embedding);
             $filters = ['sourceid' => $groupsourceids];
             $matches = array_merge($matches, $this->query_matches($vecstore, $embedding, $topk, $filters));
         }
@@ -120,6 +130,7 @@ class rag_manager {
             if ($vecstore === null || $vecstore->get_collection() === '') {
                 continue;
             }
+            $vecstore->require_matching_dimensions($embedding);
             $filters = [];
             $externalfilter = $source->get_externalfilter();
             if (!empty($externalfilter)) {
@@ -247,7 +258,16 @@ class rag_manager {
      */
     protected function query_matches(base_vecstore $vecstore, array $embedding, int $topk, array $filters): array {
         $queryresponse = $vecstore->query($embedding, $topk, $filters);
-        if ($queryresponse->get_code() !== 200 || is_null($queryresponse->get_queryresponse())) {
+        if ($queryresponse->get_code() !== 200) {
+            throw new \moodle_exception(
+                'error_ragqueryfailed',
+                'local_ai_content',
+                '',
+                null,
+                trim($queryresponse->get_errormessage() . "\n" . $queryresponse->get_debuginfo())
+            );
+        }
+        if (is_null($queryresponse->get_queryresponse())) {
             return [];
         }
         return $queryresponse->get_queryresponse()->get_matches();
