@@ -127,7 +127,7 @@ class sourcemanagement {
     ): payload_response {
         $context = \context_helper::instance_by_id($contextId, MUST_EXIST);
         $coursecontext = self::require_manage_access($context);
-        $body = self::get_action_payload($request);
+        $body = (array)$request->getParsedBody();
 
         self::toggle_module_enabled($coursecontext, $cmId, self::as_bool($body['enabled']), $indexservice);
 
@@ -182,7 +182,7 @@ class sourcemanagement {
     ): payload_response {
         $context = \context_helper::instance_by_id($contextId, MUST_EXIST);
         $coursecontext = self::require_manage_access($context);
-        $body = self::get_action_payload($request);
+        $body = (array)$request->getParsedBody();
 
         $documentsource = self::create_document(
             $coursecontext,
@@ -256,7 +256,7 @@ class sourcemanagement {
     ): payload_response {
         $context = \context_helper::instance_by_id($contextId, MUST_EXIST);
         $coursecontext = self::require_manage_access($context);
-        $body = self::get_action_payload($request);
+        $body = (array)$request->getParsedBody();
 
         if (array_key_exists('enabled', $body)) {
             self::toggle_document_enabled($coursecontext, $sourceId, self::as_bool($body['enabled']), $indexservice);
@@ -416,9 +416,7 @@ class sourcemanagement {
         $modulesources = source::get_records_by_cmids($cmids);
         $sourcebycmid = [];
         foreach ($modulesources as $modulesource) {
-            if ($modulesource->get_cmid() !== null) {
-                $sourcebycmid[(int)$modulesource->get_cmid()] = $modulesource;
-            }
+            $sourcebycmid[$modulesource->get_cmid()] = $modulesource;
         }
 
         $rows = [];
@@ -744,30 +742,6 @@ class sourcemanagement {
     }
 
     /**
-     * Return a normalized action payload from parsed or raw JSON body.
-     *
-     * @param ServerRequestInterface $request
-     * @return array
-     */
-    private static function get_action_payload(ServerRequestInterface $request): array {
-        $body = $request->getParsedBody();
-        if (is_array($body)) {
-            return $body;
-        }
-        if ($body instanceof \stdClass) {
-            return (array)$body;
-        }
-
-        $rawbody = (string)$request->getBody();
-        if ($rawbody === '') {
-            return [];
-        }
-
-        $decoded = json_decode($rawbody, true);
-        return is_array($decoded) ? $decoded : [];
-    }
-
-    /**
      * Returns whether this module type has a registered local_ai_content content extractor.
      *
      * @param string $modname
@@ -790,8 +764,6 @@ class sourcemanagement {
         return $modname;
     }
 }
-
-
 
 
 

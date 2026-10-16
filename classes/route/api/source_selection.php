@@ -77,7 +77,7 @@ class source_selection {
         self::require_login_and_access($context);
 
         $groupedsources = source_selection_utils::get_grouped_sources_for_context($contextId);
-        $selectedsourceids = source_selection_utils::get_selected_sourceids($contextId) ?? '';
+        $selectedsourceids = source_selection_utils::get_selected_sourceids($contextId);
 
         return new payload_response(
             payload: [
@@ -193,10 +193,10 @@ class source_selection {
         $context = \context_helper::instance_by_id($contextId);
         self::require_login_and_access($context);
 
-        $queryparams = $request->getQueryParams();
-        $sourcecourseid = clean_param((string)($queryparams['sourceCourseId'] ?? '0'), PARAM_INT);
+        // The router has already validated the required query parameter.
+        $sourcecourseid = (int)$request->getQueryParams()['sourceCourseId'];
 
-        $sources = source_selection_utils::get_importable_sources_for_course($contextId, (int)$sourcecourseid);
+        $sources = source_selection_utils::get_importable_sources_for_course($contextId, $sourcecourseid);
 
         return new payload_response(
             payload: [
@@ -257,7 +257,7 @@ class source_selection {
         $context = \context_helper::instance_by_id($contextId);
         self::require_login_and_access($context);
 
-        $body = self::get_request_payload($request);
+        $body = (array)$request->getParsedBody();
         $selectedsourceids = clean_param((string)($body['selectedSourceIds'] ?? ''), PARAM_SEQUENCE);
 
         source_selection_utils::save_selected_sourceids($contextId, $selectedsourceids);
@@ -292,33 +292,4 @@ class source_selection {
             require_capability('moodle/course:view', $coursecontext);
         }
     }
-
-    /**
-     * Read a request payload robustly across parsed/raw JSON formats.
-     *
-     * @param ServerRequestInterface $request
-     * @return array
-     */
-    private static function get_request_payload(ServerRequestInterface $request): array {
-        $payload = $request->getParsedBody();
-        if (is_array($payload)) {
-            return $payload;
-        }
-
-        if (is_string($payload) && $payload !== '') {
-            $decoded = json_decode($payload, true);
-            if (is_array($decoded)) {
-                return $decoded;
-            }
-        }
-
-        $raw = (string)$request->getBody();
-        if ($raw === '') {
-            return [];
-        }
-
-        $decoded = json_decode($raw, true);
-        return is_array($decoded) ? $decoded : [];
-    }
-
 }

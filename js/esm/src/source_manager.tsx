@@ -580,7 +580,7 @@ export default function SourceManager({contextid}: Props) {
                                             <select
                                                 id="source-create-scope"
                                                 className="custom-select"
-                                                value={createScope ?? 'course'}
+                                                value={createScope}
                                                 onChange={(e) => setCreateScope(e.target.value === 'global' ? 'global' : 'course')}
                                             >
                                                 <option value="course">Diesem Kurs</option>
@@ -761,4 +761,3 @@ export default function SourceManager({contextid}: Props) {
         </div>
     );
 }
-

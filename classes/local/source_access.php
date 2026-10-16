@@ -88,19 +88,11 @@ class source_access {
      */
     protected static function user_can_access_module_source(source $source, int $userid): bool {
         $cmid = $source->get_cmid();
-        if (empty($cmid)) {
-            return false;
-        }
         $cmrecord = get_coursemodule_from_id('', $cmid, 0, false, IGNORE_MISSING);
         if (!$cmrecord) {
             return false;
         }
-        $modinfo = get_fast_modinfo($cmrecord->course, $userid);
-        $cms = $modinfo->get_cms();
-        if (!isset($cms[$cmid])) {
-            return false;
-        }
-        $cminfo = $cms[$cmid];
+        $cminfo = get_fast_modinfo($cmrecord->course, $userid)->get_cm($cmid);
         // uservisible respects course/section visibility and availability restrictions for this user.
         if (!$cminfo->uservisible) {
             return false;
@@ -124,12 +116,8 @@ class source_access {
      * @return bool true if the user may retrieve from the source
      */
     protected static function user_can_access_context_source(source $source, int $userid): bool {
-        $contextid = $source->get_contextid();
-        if (empty($contextid)) {
-            return false;
-        }
         try {
-            $context = \context_helper::instance_by_id($contextid);
+            $context = \context_helper::instance_by_id($source->get_contextid());
         } catch (\moodle_exception $e) {
             return false;
         }

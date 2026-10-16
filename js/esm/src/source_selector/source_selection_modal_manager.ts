@@ -30,35 +30,39 @@ export type MoodleModal = {
     hide: () => Promise<void>;
 };
 
+/** The parts of the AMD module core/modal_cancel used here. */
+type ModalCancelModule = {
+    create: (config: {title: string; body: string; large: boolean; removeOnClose: boolean}) => Promise<MoodleModal>;
+};
+
+/** The parts of the AMD module core/modal_events used here. */
+type ModalEventsModule = {
+    shown: string;
+    hidden: string;
+};
+
 /**
  * Open a Moodle core modal and provide a mount target for React content.
  *
  * @param {{title: string, onShown?: () => void, onHidden?: () => void}} options Modal open options.
- * @returns {Promise<{modal: MoodleModal, bodyRoot: HTMLElement} | null>} Modal and mount root when available.
+ * @returns {Promise<{modal: MoodleModal, bodyRoot: HTMLElement}>} Modal and mount root.
  */
 export const openSourceSelectorModal = async(
     options: {title: string; onShown?: () => void; onHidden?: () => void},
-): Promise<{modal: MoodleModal; bodyRoot: HTMLElement} | null> => {
-    const modalCancelModule = await requireAsync('core/modal_cancel') as any;
-    const modalEventsModule = await requireAsync('core/modal_events') as any;
-    const modalCancel = modalCancelModule?.default ?? modalCancelModule;
-    const modalEvents = modalEventsModule?.default ?? modalEventsModule;
+): Promise<{modal: MoodleModal; bodyRoot: HTMLElement}> => {
+    const modalCancel = await requireAsync<ModalCancelModule>('core/modal_cancel');
+    const modalEvents = await requireAsync<ModalEventsModule>('core/modal_events');
 
     const modal = await modalCancel.create({
         title: options.title,
         body: '',
         large: true,
         removeOnClose: true,
-    }) as MoodleModal;
+    });
 
     const root = modal.getRoot();
-    const bodyRootSelector = '[data-local_ai_content-region="source-selector-modal-body"]';
     modal.setBody('<div data-local_ai_content-region="source-selector-modal-body"></div>');
-
-    const bodyRoot = root[0].querySelector(bodyRootSelector);
-    if (!(bodyRoot instanceof HTMLElement)) {
-        return null;
-    }
+    const bodyRoot = root[0].querySelector('[data-local_ai_content-region="source-selector-modal-body"]') as HTMLElement;
 
     if (options.onShown) {
         root.on(modalEvents.shown, options.onShown);
@@ -75,13 +79,9 @@ export const openSourceSelectorModal = async(
 /**
  * Close a Moodle core modal instance.
  *
- * @param {?MoodleModal} modal Modal instance.
+ * @param {MoodleModal} modal Modal instance.
  * @returns {Promise<void>} Resolves when modal is closed.
  */
-export const closeSourceSelectorModal = async(modal: MoodleModal | null): Promise<void> => {
-    if (!modal) {
-        return;
-    }
-
+export const closeSourceSelectorModal = async(modal: MoodleModal): Promise<void> => {
     await modal.hide();
 };

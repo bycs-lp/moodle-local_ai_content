@@ -118,10 +118,7 @@ class source_citation {
         if ($json === null || trim($json) === '') {
             return null;
         }
-        $data = json_decode($json, true);
-        if (!is_array($data)) {
-            return null;
-        }
+        $data = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
         $citation = self::create(
             (string) ($data['title'] ?? ''),
             (string) ($data['url'] ?? ''),

@@ -779,7 +779,7 @@ ${state.debugInfo}`, "local_ai_content");
                   {
                     id: "source-create-scope",
                     className: "custom-select",
-                    value: createScope ?? "course",
+                    value: createScope,
                     onChange: (e) => setCreateScope(e.target.value === "global" ? "global" : "course"),
                     children: [
                       /* @__PURE__ */ jsxDEV("option", { value: "course", children: "Diesem Kurs" }, void 0, false, {

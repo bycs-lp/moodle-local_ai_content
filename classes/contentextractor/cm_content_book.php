@@ -34,16 +34,10 @@ class cm_content_book extends cm_content_extractor {
 
     #[\Override]
     public function extract(\core_course\cm_info $cm): string {
-        global $CFG, $DB;
+        global $CFG;
         require_once($CFG->dirroot . '/mod/book/locallib.php');
 
-        $instance = $cm->get_instance_record();
-        $book = $DB->get_record('book', ['id' => $instance->id]);
-        if (!$book) {
-            return '';
-        }
-
-        $chapters = book_preload_chapters($book);
+        $chapters = book_preload_chapters($cm->get_instance_record());
         $chaptercontents = [];
         foreach ($chapters as $chapter) {
             $chaptercontents[] = $chapter->title . '<br/>' . $chapter->content;
@@ -53,7 +47,6 @@ class cm_content_book extends cm_content_extractor {
         return $this->format_extracted_cm_content($content);
     }
 }
-
 
 
 

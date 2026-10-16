@@ -83,7 +83,7 @@ class context_source {
             $DB->insert_record(self::TABLE, (object) [
                 'contextid' => $contextid,
                 'sourceid' => $sourceid,
-                'usermodified' => (int) ($USER->id ?? 0),
+                'usermodified' => (int) $USER->id,
                 'timecreated' => $now,
                 'timemodified' => $now,
             ]);
