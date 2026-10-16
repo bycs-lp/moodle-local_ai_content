@@ -32,9 +32,6 @@ require_once($CFG->libdir . '/clilib.php');
 
 // Retrieve the primary vector store driver configured for the current (admin) user via the connector factory.
 $vecstore = \core\di::get(\local_ai_manager\local\connector_factory::class)->get_primary_vecstore();
-if (is_null($vecstore)) {
-    cli_error('No primary vector store is configured for the current user.');
-}
 
 $collection = $vecstore->get_collection();
 if (empty($collection)) {

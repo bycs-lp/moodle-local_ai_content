@@ -81,11 +81,7 @@ class index_service {
         }
 
         if (!$source->get_vecstoreid()) {
-            $primary = \core\di::get(vecstore_factory::class)->get_primary_instance();
-            if ($primary === null) {
-                throw new \moodle_exception('error_novecstore', 'local_ai_content');
-            }
-            $source->set_vecstoreid($primary->get_id());
+            $source->set_vecstoreid(\core\di::get(vecstore_factory::class)->get_primary_instance()->get_id());
         }
 
         $task = new index_source_adhoc();
