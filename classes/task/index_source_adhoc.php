@@ -41,8 +41,7 @@ class index_source_adhoc extends \core\task\adhoc_task {
     public function execute(): void {
         $this->start_stored_progress();
 
-        $sourceid = (int) ($this->get_custom_data()->sourceid ?? 0);
-        $source = source::get_record(['id' => $sourceid]);
+        $source = source::get_record(['id' => $this->get_custom_data()->sourceid]);
 
         // The source is gone, or indexing was switched off/restarted meanwhile. This run is obsolete.
         if ($source === null || (int) $source->get_indextaskid() !== (int) $this->get_id()) {
@@ -117,4 +116,3 @@ class index_source_adhoc extends \core\task\adhoc_task {
         return false;
     }
 }
-

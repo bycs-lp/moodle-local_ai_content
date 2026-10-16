@@ -33,29 +33,20 @@ require_once($CFG->libdir . '/clilib.php');
 // Retrieve the primary vector store driver configured for the current (admin) user via the connector factory.
 $vecstore = \core\di::get(\local_ai_manager\local\connector_factory::class)->get_primary_vecstore();
 
-$collection = $vecstore->get_collection();
-if (empty($collection)) {
-    cli_error('The primary vector store instance has no collection configured.');
-}
-
-cli_heading('Vectors in vector store "' . $vecstore->get_name() . '" (collection: ' . $collection . ')');
+cli_heading('Vectors in vector store "' . $vecstore->get_name() . '" (collection: ' . $vecstore->get_collection() . ')');
 
 $allvectorsresponse = $vecstore->get_all();
 if ($allvectorsresponse->get_code() !== 200) {
     cli_error('Could not fetch vectors: ' . $allvectorsresponse->get_errormessage());
 }
-$queryresponse = $allvectorsresponse->get_queryresponse();
-if (is_null($queryresponse)) {
-    cli_error('Could not fetch vectors: Missing query payload in vecstore response.');
-}
-$vectors = $queryresponse->get_matches();
+$vectors = $allvectorsresponse->get_queryresponse()->get_matches();
 if (empty($vectors)) {
     cli_writeln('No vectors found.');
     exit(0);
 }
 
 foreach ($vectors as $index => $vector) {
-    $dimensions = count(array_filter((array) json_decode($vector->get_vector(), true), 'is_numeric'));
+    $dimensions = count(json_decode($vector->get_vector(), true, flags: JSON_THROW_ON_ERROR));
     cli_writeln('----------------------------------------');
     cli_writeln('Vector #' . ($index + 1));
     cli_writeln('  Source id  : ' . $vector->get_sourceid());

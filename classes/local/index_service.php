@@ -184,7 +184,7 @@ class index_service {
         $params = ['vecstoreid' => $vecstoreid, 'external' => source::TYPE_EXTERNAL];
 
         $vecstorefactory = \core\di::get(vecstore_factory::class);
-        if ($deletevectors && $vecstorefactory->instance_exists($vecstoreid)) {
+        if ($deletevectors) {
             $vecstore = $vecstorefactory->get_vecstore_by_id($vecstoreid);
             $sourceids = [];
             $records = $DB->get_recordset_select('local_ai_content_sources', $select, $params, 'id', 'id');
@@ -222,19 +222,18 @@ class index_service {
      * Delete all vectors of one source from the vector store it is bound to.
      *
      * Only needs the vector store, not the embedding purpose, so it also works if no embedding tool is configured.
-     * Deleting is idempotent: if the source is not bound to a vector store or the vector store instance, its
-     * collection or the vectors are already gone, there is nothing to delete.
+     * Deleting is idempotent: if the source is not bound to a vector store or its collection or vectors are already
+     * gone, there is nothing to delete. A deleted vector store instance unbinds its sources beforehand.
      *
      * @param source $source The source whose vectors are deleted.
      */
     private function delete_embeddings(source $source): void {
         $vecstoreid = $source->get_vecstoreid();
-        $vecstorefactory = \core\di::get(vecstore_factory::class);
-        if (!$vecstoreid || !$vecstorefactory->instance_exists($vecstoreid)) {
+        if (!$vecstoreid) {
             return;
         }
 
-        $this->delete_from_vecstore($vecstorefactory->get_vecstore_by_id($vecstoreid), [$source->get_id()]);
+        $this->delete_from_vecstore(\core\di::get(vecstore_factory::class)->get_vecstore_by_id($vecstoreid), [$source->get_id()]);
     }
 
     /**

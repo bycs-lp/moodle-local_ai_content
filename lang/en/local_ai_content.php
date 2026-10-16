@@ -47,6 +47,7 @@ $string['error_pdfrenderingunavailable'] = 'PDF page rendering is unavailable be
 $string['error_ragembeddingfailed'] = 'The selected sources could not be searched, because the request to the embedding model failed: {$a}';
 $string['error_ragembeddinginvalid'] = 'The selected sources could not be searched, because the embedding model returned an invalid result. Please contact your tenant manager.';
 $string['error_ragqueryfailed'] = 'The selected sources could not be searched, because the request to the vector database failed. Please contact your tenant manager.';
+$string['error_storeembeddingsfailed'] = 'The indexed content could not be stored in the vector store: {$a}';
 $string['error_unsupportedfiletype'] = 'File type not supported for text extraction: {$a}';
 $string['extractionprompt'] = 'Extraction prompt';
 $string['extractionprompt_default'] = 'Return the text that is written on the image/document. Do not wrap any explanatory text around. Return only the bare content. If the image/document contains graphics, charts or embedded images, add a precise description of them and document in the extracted text in a clear way that this is an image/graphics/chart description.';

@@ -32,7 +32,7 @@ export type SourceOption = {
     id: number;
     cmid: number;
     name: string;
-    sourcetype?: string;
+    sourcetype: string;
 };
 
 /** The available sources and the selected source ids of a context. */
@@ -48,11 +48,11 @@ export type SelectionListener = (sourceIds: number[]) => void;
 
 /** Shape of the GET /contexts/{contextId}/source-selections response. */
 type ContextSourceSelectionResponse = {
-    items?: Array<{
-        globalDocuments?: SourceOption[];
-        courseActivities?: SourceOption[];
-        externalSources?: SourceOption[];
-        selectedSourceIds?: string;
+    items: Array<{
+        globalDocuments: SourceOption[];
+        courseActivities: SourceOption[];
+        externalSources: SourceOption[];
+        selectedSourceIds: string;
     }>;
 };
 
@@ -105,12 +105,12 @@ export const loadSourceSelection = (contextId: number, reload = false): Promise<
     const promise = Fetch.performGet('local_ai_content', `contexts/${contextId}/source-selections`)
         .then((response: Response) => response.json() as Promise<ContextSourceSelectionResponse>)
         .then((data: ContextSourceSelectionResponse) => {
-            const item = data.items?.[0] ?? {};
+            const item = data.items[0];
             const selection: ContextSourceSelection = {
-                globalDocuments: item.globalDocuments ?? [],
-                courseActivities: item.courseActivities ?? [],
-                externalSources: item.externalSources ?? [],
-                selectedSourceIds: parseSourceIds(item.selectedSourceIds ?? ''),
+                globalDocuments: item.globalDocuments,
+                courseActivities: item.courseActivities,
+                externalSources: item.externalSources,
+                selectedSourceIds: parseSourceIds(item.selectedSourceIds),
             };
             setSelectedSourceIds(contextId, selection.selectedSourceIds);
             return selection;
@@ -132,14 +132,9 @@ export const loadSourceSelection = (contextId: number, reload = false): Promise<
  */
 export const getSelectedSourceIds = async(contextId: number): Promise<number[]> => {
     if (!selections.has(contextId)) {
-        try {
-            await loadSourceSelection(contextId);
-        } catch {
-            // A failing source selection must not block the consumers (e.g. the chat), they just work without sources.
-            return [];
-        }
+        await loadSourceSelection(contextId);
     }
-    return [...(selections.get(contextId) ?? [])];
+    return [...selections.get(contextId)!];
 };
 
 /**

@@ -70,7 +70,7 @@ class source_selection_utils {
 
         $context = \context_helper::instance_by_id($contextid);
         $coursecontext = $context->get_course_context(false);
-        $userid = (int)($USER->id ?? 0);
+        $userid = (int)$USER->id;
         $globaldocuments = self::get_global_document_sources($userid);
 
         if ($coursecontext === false) {
@@ -154,7 +154,7 @@ class source_selection_utils {
         require_capability('moodle/course:view', $sourcecoursecontext);
         require_capability('local/ai_content:usesource', $sourcecoursecontext);
 
-        $userid = (int)($USER->id ?? 0);
+        $userid = (int)$USER->id;
         $courseactivities = [];
         $modinfo = get_fast_modinfo($sourcecourseid, $userid);
         $cms = $modinfo->get_cms();
@@ -163,9 +163,7 @@ class source_selection_utils {
             $modulesources = source::get_records_by_cmids($cmids);
             $sourcebycmid = [];
             foreach ($modulesources as $modulesource) {
-                if ($modulesource->get_cmid() !== null) {
-                    $sourcebycmid[(int)$modulesource->get_cmid()] = $modulesource;
-                }
+                $sourcebycmid[$modulesource->get_cmid()] = $modulesource;
             }
 
             foreach ($cms as $cm) {
@@ -263,9 +261,7 @@ class source_selection_utils {
         $modulesources = source::get_records_by_cmids($cmids);
         $sourcebycmid = [];
         foreach ($modulesources as $modulesource) {
-            if ($modulesource->get_cmid() !== null) {
-                $sourcebycmid[(int)$modulesource->get_cmid()] = $modulesource;
-            }
+            $sourcebycmid[$modulesource->get_cmid()] = $modulesource;
         }
 
         $result = [];
@@ -367,11 +363,7 @@ class source_selection_utils {
      */
     private static function is_external_to_course(source $source, \context_course $coursecontext): bool {
         if ($source->get_sourcetype() === source::TYPE_MODULE) {
-            $cmid = (int)($source->get_cmid() ?? 0);
-            if ($cmid <= 0) {
-                return false;
-            }
-            $cm = get_coursemodule_from_id('', $cmid, 0, false, IGNORE_MISSING);
+            $cm = get_coursemodule_from_id('', $source->get_cmid(), 0, false, IGNORE_MISSING);
             if (!$cm) {
                 return false;
             }
@@ -441,17 +433,13 @@ class source_selection_utils {
     }
 
     /**
-     * Return the currently saved selected source IDs for a context, or null.
+     * Return the currently saved selected source IDs for a context.
      *
      * @param int $contextid The Moodle context ID.
-     * @return ?string The stored comma-separated IDs, or null if nothing is saved.
+     * @return string The stored comma-separated IDs, empty if nothing is saved.
      */
-    public static function get_selected_sourceids(int $contextid): ?string {
-        $sourceids = context_source::get_sourceids_for_context($contextid);
-        if (empty($sourceids)) {
-            return null;
-        }
-        return implode(',', $sourceids);
+    public static function get_selected_sourceids(int $contextid): string {
+        return implode(',', context_source::get_sourceids_for_context($contextid));
     }
 
     /**

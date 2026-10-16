@@ -40,9 +40,6 @@ class cm_content_folder extends cm_content_extractor {
 
         $filecontents = [];
         foreach ($files as $file) {
-            if (empty($file)) {
-                continue;
-            }
             $filecontent = trim($this->extract_content_from_file($file, $context->id));
             if ($filecontent !== '') {
                 $filecontents[] = $filecontent;

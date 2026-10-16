@@ -169,7 +169,7 @@ class source {
         $record->indextaskid = $this->indextaskid;
         $record->indexerror = $this->indexerror;
         $record->indexdebuginfo = $this->indexdebuginfo;
-        $record->usermodified = $this->usermodified ?: (int)($USER->id ?? 0);
+        $record->usermodified = $this->usermodified ?: (int)$USER->id;
         $record->timemodified = $clock->time();
 
         if ($this->record === null) {
@@ -306,25 +306,25 @@ class source {
         $this->id = (int)$record->id;
         $this->contextid = (int)$record->contextid;
         $this->sourcetype = (string)$record->sourcetype;
-        $this->cmid = isset($record->cmid) ? (int)$record->cmid : null;
-        $this->name = $record->name ?? null;
-        $this->description = $record->description ?? null;
-        $this->content = $record->content ?? null;
-        $this->externalfilter = $record->externalfilter ?? null;
-        $this->citation = source_citation::from_json($record->citation ?? null);
-        $this->vecstoreid = isset($record->vecstoreid) ? (int)$record->vecstoreid : null;
-        $this->embeddingmodel = $record->embeddingmodel ?? null;
-        $this->contenthash = $record->contenthash ?? null;
+        $this->cmid = $record->cmid === null ? null : (int)$record->cmid;
+        $this->name = $record->name;
+        $this->description = $record->description;
+        $this->content = $record->content;
+        $this->externalfilter = $record->externalfilter;
+        $this->citation = source_citation::from_json($record->citation);
+        $this->vecstoreid = $record->vecstoreid === null ? null : (int)$record->vecstoreid;
+        $this->embeddingmodel = $record->embeddingmodel;
+        $this->contenthash = $record->contenthash;
         $this->enabled = !empty($record->enabled);
         $this->allowindex = !empty($record->allowindex);
-        $this->lastindexed = (int)($record->lastindexed ?? 0);
-        $this->indexstatus = (string)($record->indexstatus ?? self::INDEXSTATUS_IDLE);
-        $this->indextaskid = isset($record->indextaskid) ? (int)$record->indextaskid : null;
-        $this->indexerror = $record->indexerror ?? null;
-        $this->indexdebuginfo = $record->indexdebuginfo ?? null;
-        $this->usermodified = (int)($record->usermodified ?? 0);
-        $this->timecreated = (int)($record->timecreated ?? 0);
-        $this->timemodified = (int)($record->timemodified ?? 0);
+        $this->lastindexed = (int)$record->lastindexed;
+        $this->indexstatus = $record->indexstatus;
+        $this->indextaskid = $record->indextaskid === null ? null : (int)$record->indextaskid;
+        $this->indexerror = $record->indexerror;
+        $this->indexdebuginfo = $record->indexdebuginfo;
+        $this->usermodified = (int)$record->usermodified;
+        $this->timecreated = (int)$record->timecreated;
+        $this->timemodified = (int)$record->timemodified;
     }
 
     /** @return int */
@@ -528,7 +528,7 @@ class source {
             $citation->set_title((string) $this->name);
         }
 
-        if ($citation->get_url() === '' && $this->sourcetype === self::TYPE_MODULE && !empty($this->cmid)) {
+        if ($citation->get_url() === '' && $this->sourcetype === self::TYPE_MODULE) {
             $url = $this->derive_module_url($this->cmid);
             if ($url !== '') {
                 $citation->set_url($url);

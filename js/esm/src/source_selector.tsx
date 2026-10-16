@@ -44,13 +44,13 @@ type ImportableCourse = {
 };
 
 type ImportableCoursesResponse = {
-    items?: ImportableCourse[];
+    items: ImportableCourse[];
 };
 
 type ImportableSourcesResponse = {
-    items?: Array<{
-        courseActivities?: SourceOption[];
-        courseDocuments?: SourceOption[];
+    items: Array<{
+        courseActivities: SourceOption[];
+        courseDocuments: SourceOption[];
     }>;
 };
 
@@ -91,7 +91,7 @@ type Props = {
  * @returns {string} Origin/type label.
  */
 function getSourceMeta(source: SourceOption): string {
-    return source.sourcetype ?? '';
+    return source.sourcetype;
 }
 
 /**
@@ -317,8 +317,9 @@ export default function SourceSelector({
         try {
             const res = await Fetch.performGet('local_ai_content', `contexts/${contextId}/source-selections/importable-courses`);
             const data = await res.json() as ImportableCoursesResponse;
-            const courses = data.items ?? [];
+            const courses = data.items;
             setImportableCourses(courses);
+            // There may be no importable course at all.
             setSelectedCourseId(courses[0]?.id ?? 0);
         } catch {
             setError('Die auswählbaren Kurse konnten nicht geladen werden.');
@@ -347,10 +348,10 @@ export default function SourceSelector({
                 `contexts/${contextId}/source-selections/importable-sources?sourceCourseId=${selectedCourseId}`,
             );
             const data = await res.json() as ImportableSourcesResponse;
-            const item = data.items?.[0] ?? {};
+            const item = data.items[0];
             const existingExternalIds = new Set(externalSources.map((source) => source.id));
-            const activities = (item.courseActivities ?? []).filter((source) => !existingExternalIds.has(source.id));
-            const documents = (item.courseDocuments ?? []).filter((source) => !existingExternalIds.has(source.id));
+            const activities = item.courseActivities.filter((source) => !existingExternalIds.has(source.id));
+            const documents = item.courseDocuments.filter((source) => !existingExternalIds.has(source.id));
             const nextStaged = new Set<number>();
             [...activities, ...documents].forEach((source) => {
                 if (selected.has(source.id)) {
@@ -413,30 +414,19 @@ export default function SourceSelector({
             loadSelection(true);
         }
 
-        try {
-            const modalResult = await openSourceSelectorModal({
-                title: modalTitle,
-                onShown: () => {
-                    setIsModalOpen(true);
-                },
-                onHidden: () => {
-                    setIsModalOpen(false);
-                    setModalBodyRoot(null);
-                    modalRef.current = null;
-                },
-            });
-            if (!modalResult) {
-                return;
-            }
-
-            modalRef.current = modalResult.modal;
-            setModalBodyRoot(modalResult.bodyRoot);
-        } catch {
-            // Reset modal state so users can retry opening on transient loader errors.
-            setIsModalOpen(false);
-            setModalBodyRoot(null);
-            modalRef.current = null;
-        }
+        const modalResult = await openSourceSelectorModal({
+            title: modalTitle,
+            onShown: () => {
+                setIsModalOpen(true);
+            },
+            onHidden: () => {
+                setIsModalOpen(false);
+                setModalBodyRoot(null);
+                modalRef.current = null;
+            },
+        });
+        modalRef.current = modalResult.modal;
+        setModalBodyRoot(modalResult.bodyRoot);
     };
 
     const renderCoursesContent = () => (

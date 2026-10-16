@@ -9,10 +9,8 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
  */
 import { requireAsync } from "@moodle/lms/core/amd";
 const openSourceSelectorModal = /* @__PURE__ */ __name(async (options) => {
-  const modalCancelModule = await requireAsync("core/modal_cancel");
-  const modalEventsModule = await requireAsync("core/modal_events");
-  const modalCancel = modalCancelModule?.default ?? modalCancelModule;
-  const modalEvents = modalEventsModule?.default ?? modalEventsModule;
+  const modalCancel = await requireAsync("core/modal_cancel");
+  const modalEvents = await requireAsync("core/modal_events");
   const modal = await modalCancel.create({
     title: options.title,
     body: "",
@@ -20,12 +18,8 @@ const openSourceSelectorModal = /* @__PURE__ */ __name(async (options) => {
     removeOnClose: true
   });
   const root = modal.getRoot();
-  const bodyRootSelector = '[data-local_ai_content-region="source-selector-modal-body"]';
   modal.setBody('<div data-local_ai_content-region="source-selector-modal-body"></div>');
-  const bodyRoot = root[0].querySelector(bodyRootSelector);
-  if (!(bodyRoot instanceof HTMLElement)) {
-    return null;
-  }
+  const bodyRoot = root[0].querySelector('[data-local_ai_content-region="source-selector-modal-body"]');
   if (options.onShown) {
     root.on(modalEvents.shown, options.onShown);
   }
@@ -36,9 +30,6 @@ const openSourceSelectorModal = /* @__PURE__ */ __name(async (options) => {
   return { modal, bodyRoot };
 }, "openSourceSelectorModal");
 const closeSourceSelectorModal = /* @__PURE__ */ __name(async (modal) => {
-  if (!modal) {
-    return;
-  }
   await modal.hide();
 }, "closeSourceSelectorModal");
 export {

@@ -69,9 +69,6 @@ class indexer_manager {
                     continue;
                 }
                 $cmid = $source->get_cmid();
-                if (!isset($rawcms[$cmid])) {
-                    continue;
-                }
                 $rawcm = $rawcms[$cmid];
                 $cm = get_fast_modinfo($course)->get_cm($rawcm->cm);
                 $extractor = $this->get_cm_content_extractor($rawcm->mod, $cm);
@@ -112,7 +109,7 @@ class indexer_manager {
 
         if ($source->get_sourcetype() === source::TYPE_MODULE) {
             $cmid = $source->get_cmid();
-            $rawcm = empty($cmid) ? false : get_coursemodule_from_id('', $cmid, 0, false, IGNORE_MISSING);
+            $rawcm = get_coursemodule_from_id('', $cmid, 0, false, IGNORE_MISSING);
             if (!$rawcm) {
                 throw new \moodle_exception('indexingerror_sourcenotfound', 'local_ai_content');
             }
@@ -195,7 +192,7 @@ class indexer_manager {
 
             if (empty($embeddedchunks)) {
                 // Checking the first vector is enough and avoids embedding all chunks with a model not fitting the vector store.
-                $vecstore->require_matching_dimensions((array) json_decode($vectorrequest->get_content(), true));
+                $vecstore->require_matching_dimensions(json_decode($vectorrequest->get_content(), true, flags: JSON_THROW_ON_ERROR));
                 $embeddingmodel = $vectorrequest->get_modelinfo();
             }
 
@@ -220,7 +217,11 @@ class indexer_manager {
             $chunkcount++;
         }
 
-        $vecstore->insert_embeddings($enrichedvectors);
+        $response = $vecstore->insert_embeddings($enrichedvectors);
+        if ($response->get_code() !== 200) {
+            throw new \moodle_exception('error_storeembeddingsfailed', 'local_ai_content', '',
+                $response->get_errormessage(), $response->get_debuginfo());
+        }
 
         // Persist indexing metadata on the source record.
         $clock = \core\di::get(\core\clock::class);
@@ -282,15 +283,15 @@ class indexer_manager {
      * Resolves the vector store driver of the vector store instance the source is bound to.
      *
      * @param source $source The source whose target vector store is resolved.
-     * @return ?\local_ai_manager\base_vecstore The vector store driver, or null if none is available.
+     * @return ?\local_ai_manager\base_vecstore The vector store driver, or null if the source is not bound to one.
      */
     protected function get_vecstore_for_source(source $source): ?\local_ai_manager\base_vecstore {
         $vecstoreid = $source->get_vecstoreid();
-        $vecstorefactory = \core\di::get(\local_ai_manager\local\vecstore_factory::class);
-        if (!$vecstoreid || !$vecstorefactory->instance_exists($vecstoreid)) {
+        if (!$vecstoreid) {
             return null;
         }
-        return $vecstorefactory->get_vecstore_by_id($vecstoreid);
+        // A deleted vector store instance unbinds its sources beforehand, so a bound instance always exists.
+        return \core\di::get(\local_ai_manager\local\vecstore_factory::class)->get_vecstore_by_id($vecstoreid);
     }
 
     /**
@@ -307,9 +308,6 @@ class indexer_manager {
         }
 
         $extractor = new $classname();
-        if (!($extractor instanceof cm_content_extractor)) {
-            return null;
-        }
         if (!$extractor->is_cm_supported($cm)) {
             return null;
         }

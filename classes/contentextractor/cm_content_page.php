@@ -37,7 +37,7 @@ class cm_content_page extends cm_content_extractor {
     #[\Override]
     public function extract(\core_course\cm_info $cm): string {
         $instance = $cm->get_instance_record();
-        $content = (string)($instance->content ?? '');
+        $content = (string)$instance->content;
         return $this->format_extracted_cm_content($content);
     }
 }

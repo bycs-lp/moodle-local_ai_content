@@ -32,12 +32,12 @@ const loadSourceSelection = /* @__PURE__ */ __name((contextId, reload = false) =
     return cached;
   }
   const promise = Fetch.performGet("local_ai_content", `contexts/${contextId}/source-selections`).then((response) => response.json()).then((data) => {
-    const item = data.items?.[0] ?? {};
+    const item = data.items[0];
     const selection = {
-      globalDocuments: item.globalDocuments ?? [],
-      courseActivities: item.courseActivities ?? [],
-      externalSources: item.externalSources ?? [],
-      selectedSourceIds: parseSourceIds(item.selectedSourceIds ?? "")
+      globalDocuments: item.globalDocuments,
+      courseActivities: item.courseActivities,
+      externalSources: item.externalSources,
+      selectedSourceIds: parseSourceIds(item.selectedSourceIds)
     };
     setSelectedSourceIds(contextId, selection.selectedSourceIds);
     return selection;
@@ -50,13 +50,9 @@ const loadSourceSelection = /* @__PURE__ */ __name((contextId, reload = false) =
 }, "loadSourceSelection");
 const getSelectedSourceIds = /* @__PURE__ */ __name(async (contextId) => {
   if (!selections.has(contextId)) {
-    try {
-      await loadSourceSelection(contextId);
-    } catch {
-      return [];
-    }
+    await loadSourceSelection(contextId);
   }
-  return [...selections.get(contextId) ?? []];
+  return [...selections.get(contextId)];
 }, "getSelectedSourceIds");
 const saveSelectedSourceIds = /* @__PURE__ */ __name((contextId, sourceIds) => {
   const ids = parseSourceIds(sourceIds);

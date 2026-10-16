@@ -33,12 +33,7 @@ require_once($CFG->libdir . '/clilib.php');
 // Retrieve the primary vector store driver configured for the current (admin) user via the connector factory.
 $vecstore = \core\di::get(\local_ai_manager\local\connector_factory::class)->get_primary_vecstore();
 
-$collection = $vecstore->get_collection();
-if (empty($collection)) {
-    cli_error('The primary vector store instance has no collection configured.');
-}
-
-cli_heading('Vectors in vector store "' . $vecstore->get_name() . '" (collection: ' . $collection . ')');
+cli_heading('Vectors in vector store "' . $vecstore->get_name() . '" (collection: ' . $vecstore->get_collection() . ')');
 
 $vecstore->delete_collection();
 $vecstore->create_collection();

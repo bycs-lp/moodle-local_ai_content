@@ -113,7 +113,7 @@ class rag_manager {
         }
         foreach ($moodlesourcesbyvecstore as $vecstoreid => $groupsourceids) {
             $vecstore = $this->resolve_vecstore($vecstoreid);
-            if ($vecstore === null || $vecstore->get_collection() === '') {
+            if ($vecstore === null) {
                 continue;
             }
             $vecstore->require_matching_dimensions($embedding);
@@ -127,17 +127,14 @@ class rag_manager {
                 continue;
             }
             $vecstore = $this->resolve_vecstore((int) $source->get_vecstoreid());
-            if ($vecstore === null || $vecstore->get_collection() === '') {
+            if ($vecstore === null) {
                 continue;
             }
             $vecstore->require_matching_dimensions($embedding);
             $filters = [];
             $externalfilter = $source->get_externalfilter();
             if (!empty($externalfilter)) {
-                $decoded = json_decode($externalfilter, true);
-                if (is_array($decoded)) {
-                    $filters = $decoded;
-                }
+                $filters = json_decode($externalfilter, true, flags: JSON_THROW_ON_ERROR);
             }
             $matches = array_merge($matches, $this->query_matches($vecstore, $embedding, $topk, $filters));
         }
@@ -240,11 +237,12 @@ class rag_manager {
      * @return ?base_vecstore The vector store driver, or null if the instance does not exist.
      */
     protected function resolve_vecstore(int $vecstoreid): ?base_vecstore {
-        $vecstorefactory = \core\di::get(vecstore_factory::class);
-        if ($vecstoreid <= 0 || !$vecstorefactory->instance_exists($vecstoreid)) {
+        // Sources that have not been indexed yet are not bound to a vector store. A deleted vector store instance
+        // unbinds its sources beforehand, so a bound instance always exists.
+        if ($vecstoreid === 0) {
             return null;
         }
-        return $vecstorefactory->get_vecstore_by_id($vecstoreid);
+        return \core\di::get(vecstore_factory::class)->get_vecstore_by_id($vecstoreid);
     }
 
     /**
@@ -266,9 +264,6 @@ class rag_manager {
                 null,
                 trim($queryresponse->get_errormessage() . "\n" . $queryresponse->get_debuginfo())
             );
-        }
-        if (is_null($queryresponse->get_queryresponse())) {
-            return [];
         }
         return $queryresponse->get_queryresponse()->get_matches();
     }
