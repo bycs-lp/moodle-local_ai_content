@@ -16,23 +16,31 @@
 
 namespace local_ai_content\privacy;
 
+use core_privacy\local\metadata\collection;
+
 /**
  * Privacy provider for local_ai_content.
  *
- * This plugin does not store any personal user data.
+ * The plugin caches the extracted text of processed files by content hash. The cache has no user
+ * reference and is cleaned up when the underlying file is deleted.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
  * @author     Andreas Wagner
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class provider implements \core_privacy\local\metadata\null_provider {
+class provider implements \core_privacy\local\metadata\provider {
     /**
-     * Get the language string identifier with a description of what data this plugin stores.
+     * Describe the data stored by this plugin.
      *
-     * @return string The language string identifier.
+     * @param collection $collection The collection to add the metadata to.
+     * @return collection The updated collection.
      */
-    public static function get_reason(): string {
-        return 'privacy:metadata';
+    public static function get_metadata(collection $collection): collection {
+        return $collection->add_database_table('local_ai_content_cache', [
+            'contenthash' => 'privacy:metadata:cache:contenthash',
+            'extractedcontent' => 'privacy:metadata:cache:extractedcontent',
+            'timecreated' => 'privacy:metadata:cache:timecreated',
+        ], 'privacy:metadata:cache');
     }
 }

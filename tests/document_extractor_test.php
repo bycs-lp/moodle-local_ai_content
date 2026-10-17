@@ -17,6 +17,7 @@
 namespace local_ai_content;
 
 use local_ai_content\backend\ai_backend;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Tests for the extractor class.
@@ -325,6 +326,52 @@ final class document_extractor_test extends \advanced_testcase {
 
         $record = $DB->get_record('local_ai_content_cache', ['contenthash' => $file->get_contenthash()]);
         $this->assertEquals(1, $record->cachehit);
+    }
+
+    /**
+     * Test that nothing is written to or served from the cache if the cache lifetime is set to 0.
+     */
+    #[Group('baseline')]
+    public function test_cache_disabled_by_cachettl_violation(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $file = $this->create_test_file('notes.txt', 'Student essay', 'text/plain');
+        $contextid = \context_system::instance()->id;
+        $extractor = $this->get_extractor();
+
+        // A row cached while caching was enabled must not be served after caching has been disabled.
+        set_config('cachettl', 90, 'local_ai_content');
+        $extractor->extract_text_from_file($file, $contextid, null, 'test');
+        $this->assertEquals(1, $DB->count_records('local_ai_content_cache'));
+        $DB->set_field('local_ai_content_cache', 'extractedcontent', 'Stale cached text');
+
+        set_config('cachettl', 0, 'local_ai_content');
+        $result = $extractor->extract_text_from_file($file, $contextid, null, 'test');
+        $this->assertEquals('Student essay', $result);
+
+        // Without any cached row, nothing must be written either.
+        $DB->delete_records('local_ai_content_cache');
+        $extractor->extract_text_from_file($file, $contextid, null, 'test');
+        $this->assertEquals(0, $DB->count_records('local_ai_content_cache'));
+    }
+
+    /**
+     * Test that results are cached and served from the cache if the cache lifetime is greater than 0.
+     */
+    #[Group('baseline')]
+    public function test_cache_enabled_by_cachettl_verification(): void {
+        global $DB;
+        $this->resetAfterTest();
+        set_config('cachettl', 1, 'local_ai_content');
+        $file = $this->create_test_file('notes.txt', 'Student essay', 'text/plain');
+        $contextid = \context_system::instance()->id;
+        $extractor = $this->get_extractor();
+
+        $extractor->extract_text_from_file($file, $contextid, null, 'test');
+        $this->assertEquals(1, $DB->count_records('local_ai_content_cache'));
+        $DB->set_field('local_ai_content_cache', 'extractedcontent', 'Cached text');
+
+        $this->assertEquals('Cached text', $extractor->extract_text_from_file($file, $contextid, null, 'test'));
     }
 
     /**
