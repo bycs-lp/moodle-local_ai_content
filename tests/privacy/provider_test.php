@@ -28,7 +28,7 @@ use core_privacy\local\request\userlist;
  * @package    local_ai_content
  * @category   test
  * @copyright  2026 ISB Bayern
- * @author     Andreas Wagner
+ * @author     Thomas Schönlein
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  * @covers     \local_ai_content\privacy\provider
  */
