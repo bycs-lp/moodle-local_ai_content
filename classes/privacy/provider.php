@@ -16,23 +16,95 @@
 
 namespace local_ai_content\privacy;
 
+use core_privacy\local\metadata\collection;
+use core_privacy\local\request\approved_contextlist;
+use core_privacy\local\request\approved_userlist;
+use core_privacy\local\request\contextlist;
+use core_privacy\local\request\userlist;
+
 /**
  * Privacy provider for local_ai_content.
  *
- * This plugin does not store any personal user data.
+ * The plugin caches the extracted text of processed files by content hash. The cache has no user
+ * reference. An entry is removed when no file with this content remains or when the cache lifetime
+ * expires. If the cache lifetime is 0, nothing is cached.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
  * @author     Andreas Wagner
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class provider implements \core_privacy\local\metadata\null_provider {
+class provider implements
+    \core_privacy\local\metadata\provider,
+    \core_privacy\local\request\core_userlist_provider,
+    \core_privacy\local\request\plugin\provider {
     /**
-     * Get the language string identifier with a description of what data this plugin stores.
+     * Describe the data stored by this plugin.
      *
-     * @return string The language string identifier.
+     * @param collection $collection The collection to add the metadata to.
+     * @return collection The updated collection.
      */
-    public static function get_reason(): string {
-        return 'privacy:metadata';
+    public static function get_metadata(collection $collection): collection {
+        return $collection->add_database_table('local_ai_content_cache', [
+            'contenthash' => 'privacy:metadata:cache:contenthash',
+            'extractedcontent' => 'privacy:metadata:cache:extractedcontent',
+            'timecreated' => 'privacy:metadata:cache:timecreated',
+        ], 'privacy:metadata:cache');
+    }
+
+    /**
+     * Get the list of contexts that contain user information for the specified user.
+     *
+     * @param int $userid The user to search.
+     * @return contextlist The contextlist containing the list of contexts used in this plugin.
+     */
+    public static function get_contexts_for_userid(int $userid): contextlist {
+        // The cache has no user reference.
+        return new contextlist();
+    }
+
+    /**
+     * Get the list of users who have data within a context.
+     *
+     * @param userlist $userlist The userlist containing the list of users who have data in this context/plugin combination.
+     */
+    public static function get_users_in_context(userlist $userlist): void {
+        // The cache has no user reference.
+    }
+
+    /**
+     * Export all user data for the specified user, in the specified contexts.
+     *
+     * @param approved_contextlist $contextlist The approved contexts to export information for.
+     */
+    public static function export_user_data(approved_contextlist $contextlist): void {
+        // The cache has no user reference.
+    }
+
+    /**
+     * Delete all data for all users in the specified context.
+     *
+     * @param \context $context The specific context to delete data for.
+     */
+    public static function delete_data_for_all_users_in_context(\context $context): void {
+        // The cache has no user reference.
+    }
+
+    /**
+     * Delete all user data for the specified user, in the specified contexts.
+     *
+     * @param approved_contextlist $contextlist The approved contexts and user information to delete information for.
+     */
+    public static function delete_data_for_user(approved_contextlist $contextlist): void {
+        // The cache has no user reference.
+    }
+
+    /**
+     * Delete multiple users within a single context.
+     *
+     * @param approved_userlist $userlist The approved context and user information to delete information for.
+     */
+    public static function delete_data_for_users(approved_userlist $userlist): void {
+        // The cache has no user reference.
     }
 }

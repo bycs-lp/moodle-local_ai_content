@@ -632,6 +632,10 @@ class document_extractor {
     private function get_from_cache(string $contenthash): ?string {
         global $DB;
 
+        if ((int) get_config('local_ai_content', 'cachettl') <= 0) {
+            return null;
+        }
+
         $record = $DB->get_record('local_ai_content_cache', ['contenthash' => $contenthash]);
         if (!$record) {
             return null;
@@ -654,6 +658,10 @@ class document_extractor {
      */
     private function store_to_cache(string $contenthash, string $extractedcontent): void {
         global $DB;
+
+        if ((int) get_config('local_ai_content', 'cachettl') <= 0) {
+            return;
+        }
 
         $clock = \core\di::get(\core\clock::class);
         $now = $clock->now()->getTimestamp();
