@@ -356,6 +356,33 @@ final class document_extractor_test extends \advanced_testcase {
     }
 
     /**
+     * Test that an existing cache row is not served and not touched if the cache lifetime is set to 0.
+     *
+     * @covers ::extract_text_from_file
+     */
+    public function test_cachettl_zero_does_not_serve_existing_row(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $file = $this->create_test_file('notes.txt', 'Student essay', 'text/plain');
+        $contextid = \context_system::instance()->id;
+        $extractor = $this->get_extractor();
+
+        set_config('cachettl', 90, 'local_ai_content');
+        $extractor->extract_text_from_file($file, $contextid, null, 'test');
+        $DB->set_field('local_ai_content_cache', 'extractedcontent', 'Stale cached text');
+        $before = $DB->get_record('local_ai_content_cache', ['contenthash' => $file->get_contenthash()]);
+
+        set_config('cachettl', 0, 'local_ai_content');
+        $result = $extractor->extract_text_from_file($file, $contextid, null, 'test');
+
+        $this->assertEquals('Student essay', $result);
+        $after = $DB->get_record('local_ai_content_cache', ['contenthash' => $file->get_contenthash()]);
+        $this->assertEquals($before->cachehit, $after->cachehit);
+        $this->assertEquals($before->timelastaccessed, $after->timelastaccessed);
+        $this->assertEquals('Stale cached text', $after->extractedcontent);
+    }
+
+    /**
      * Test that results are cached and served from the cache if the cache lifetime is greater than 0.
      */
     #[Group('baseline')]
