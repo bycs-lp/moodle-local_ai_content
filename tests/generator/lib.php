@@ -52,4 +52,26 @@ class local_ai_content_generator extends testing_module_generator {
         $obj->id = $DB->insert_record('local_ai_content_cache', $obj);
         return $obj;
     }
+
+    /**
+     * Create a source in the local_ai_content_sources table.
+     *
+     * @param array $record Source fields.
+     *   - contextid (int): Context the source is attached to, required.
+     *   - sourcetype (string): One of source::TYPE_*, defaults to document.
+     *   - cmid (int): Course module id of module sources, defaults to null.
+     *   - vecstoreid (int): Vector store instance id holding the vectors, defaults to null (not indexed).
+     *   - name (string): Source name, defaults to a generated name.
+     * @return \local_ai_content\source The stored source.
+     */
+    public function create_source(array $record): \local_ai_content\source {
+        $source = new \local_ai_content\source();
+        $source->set_contextid($record['contextid']);
+        $source->set_sourcetype($record['sourcetype'] ?? \local_ai_content\source::TYPE_DOCUMENT);
+        $source->set_cmid($record['cmid'] ?? null);
+        $source->set_vecstoreid($record['vecstoreid'] ?? null);
+        $source->set_name($record['name'] ?? 'Test source ' . random_string(5));
+        $source->store();
+        return $source;
+    }
 }

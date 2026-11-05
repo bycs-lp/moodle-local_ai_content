@@ -81,6 +81,7 @@ $string['showemptysections'] = 'Show empty sections';
 $string['showemptysections_desc'] = 'When enabled, sections with no selectable sources will be displayed in the context source selector. When disabled, only sections with selectable sources are shown.';
 $string['subsection'] = 'Sub-section {$a}';
 $string['task_cleanupcache'] = 'Clean up expired text extraction cache entries';
+$string['task_cleanupcontextsources'] = 'Clean up source selections of deleted contexts';
 $string['test_extraction'] = 'Test text extraction';
 $string['test_extraction_contenthash'] = 'Content hash';
 $string['test_extraction_desc'] = 'Upload a file to test whether the text extraction works correctly with the configured AI backend.';

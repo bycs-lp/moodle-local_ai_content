@@ -17,6 +17,7 @@
 namespace local_ai_content\local;
 
 use core\hook\di_configuration;
+use core_course\hook\before_course_deleted;
 use local_ai_content\local\backend\ai_backend;
 use local_ai_content\local\backend\config;
 use local_ai_manager\hook\before_vecstore_instance_deleted;
@@ -70,5 +71,16 @@ class hook_callbacks {
      */
     public static function before_vecstore_instance_deleted(before_vecstore_instance_deleted $hook): void {
         \core\di::get(index_service::class)->release_vecstore($hook->instance->get_id(), $hook->deletevectors, true);
+    }
+
+    /**
+     * Delete all sources of a course (activities and course documents) before the course is deleted.
+     *
+     * Selections of block instances inside the course are removed when the blocks are deleted.
+     *
+     * @param before_course_deleted $hook The hook.
+     */
+    public static function before_course_deleted(before_course_deleted $hook): void {
+        \core\di::get(index_service::class)->delete_sources_in_context(\context_course::instance($hook->course->id)->id);
     }
 }

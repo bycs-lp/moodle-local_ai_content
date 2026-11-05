@@ -91,11 +91,12 @@ Index status: `idle` → `queued` → `running` → `indexed` | `failed` (`faile
 | Area | Classes |
 |---|---|
 | Records | `source` (record wrapper), `context_source` (selection per context), `local\source_citation` |
-| Indexing | `local\index_service` (start/stop/allowindex/release), `task\index_source_adhoc`, `local\indexer_manager` (chunk, embed, store), `local\index_state` (status DTO for the frontend) |
+| Indexing | `local\index_service` (start/stop/allowindex/release/delete), `task\index_source_adhoc`, `task\delete_vectors_adhoc`, `local\indexer_manager` (chunk, embed, store), `local\index_state` (status DTO for the frontend) |
 | Extraction | `cm_content_extractor` + `contentextractor\cm_content_{page,label,book,lesson,resource,folder}`, `document_extractor` (files → text via ITT backend `local\backend\*`, cached) |
 | Retrieval | `local\rag_manager`, `local\source_access`, `local\rag_result`, `local\rag_source`, `local\enriched_vector` (vector + payload, also used by ai_manager) |
 | Selection/management | `local\source_selection_utils`, `local\source_management_access` |
-| Hooks | `local\hook_callbacks` (DI, `vecstore_usage`, `before_vecstore_instance_deleted`) |
+| Hooks | `local\hook_callbacks` (DI, `vecstore_usage`, `before_vecstore_instance_deleted`, `before_course_deleted`) |
+| Events | `local\observer` (`course_module_deleted`) |
 | REST | `route\api\sourcemanagement`, `route\api\source_index`, `route\api\source_selection` |
 | Frontend | `js/esm/src/source_manager.tsx` (management page), `js/esm/src/source_selector.tsx` + `source_selector/data_manager.ts` + `source_selection_modal_manager.ts` (selection), `amd/src/source_selector.js` (AMD shim for block_ai_chat) |
 
@@ -131,6 +132,10 @@ Missing permissions are answered with HTTP 403 (`local\route_access` throws `cor
 
 ### 3.6 Further integration
 - `lib.php`: link "Manage sources" in the course navigation (`manage_sources.php?courseid=`), cache cleanup on file deletion.
+- Cleanup on deletion: course module deleted (event) → its module source; course deleted (hook) → all sources in the course
+  context. Source records and their `ctx_sources` rows are deleted immediately, vectors asynchronously via
+  `task\delete_vectors_adhoc` (per vecstore, chunks of 500; external vectors are never deleted). Moodle has no hook for deleted
+  contexts, so selections (`ctx_sources`) of deleted contexts of any plugin are removed nightly by `task\cleanup_context_sources`.
 - Capabilities: `local/ai_content:managesources` and `local/ai_content:selectsources` (editingteacher, manager; course level), `local/ai_content:usesource` (student and up; course level), `local/ai_content:useglobalsources` (authenticated user; system level), `local/ai_content:testextraction` (manager; system level).
 
 ## 4. block_ai_chat

@@ -17,6 +17,7 @@
 namespace local_ai_content\local;
 
 use local_ai_content\source;
+use local_ai_content\task\delete_vectors_adhoc;
 use local_ai_content\task\index_source_adhoc;
 use local_ai_manager\base_vecstore;
 use local_ai_manager\local\vecstore_factory;
@@ -216,6 +217,75 @@ class index_service {
                 $params + ['now' => $now],
             );
         }
+    }
+
+    /**
+     * Delete the source of a course module, e.g. because the course module has been deleted.
+     *
+     * @param int $cmid The course module id.
+     */
+    public function delete_module_source(int $cmid): void {
+        $this->delete_sources('cmid = :cmid AND sourcetype = :module', ['cmid' => $cmid, 'module' => source::TYPE_MODULE]);
+    }
+
+    /**
+     * Delete all sources attached to a context, e.g. because the context is about to be deleted.
+     *
+     * @param int $contextid The Moodle context id.
+     */
+    public function delete_sources_in_context(int $contextid): void {
+        $this->delete_sources('contextid = :contextid', ['contextid' => $contextid]);
+    }
+
+    /**
+     * Delete the vectors of the given sources from a vector store instance.
+     *
+     * @param int $vecstoreid The vector store instance id.
+     * @param int[] $sourceids The source ids.
+     */
+    public function delete_vectors(int $vecstoreid, array $sourceids): void {
+        $vecstorefactory = \core\di::get(vecstore_factory::class);
+        // The instance may have been deleted meanwhile, then there is no vector store left to delete from.
+        if (!$vecstorefactory->instance_exists($vecstoreid)) {
+            return;
+        }
+        $this->delete_from_vecstore($vecstorefactory->get_vecstore_by_id($vecstoreid), $sourceids);
+    }
+
+    /**
+     * Delete sources together with their context selections and queue the deletion of their vectors.
+     *
+     * The vectors are deleted by adhoc tasks, so an unreachable vector store neither blocks nor breaks the deletion of
+     * courses or course modules. Queued indexing tasks of the deleted sources become no-ops. External sources are never
+     * indexed by us, so their vectors are never deleted.
+     *
+     * @param string $select SQL condition on local_ai_content_sources.
+     * @param array $params Named parameters of the condition.
+     */
+    private function delete_sources(string $select, array $params): void {
+        global $DB;
+
+        $sourceidsbyvecstore = [];
+        $records = $DB->get_recordset_select('local_ai_content_sources', $select, $params, 'id', 'id, sourcetype, vecstoreid');
+        foreach ($records as $record) {
+            // External vectors are not ours, sources not bound to a vector store have no vectors.
+            if ($record->sourcetype === source::TYPE_EXTERNAL || $record->vecstoreid === null) {
+                continue;
+            }
+            $sourceidsbyvecstore[(int) $record->vecstoreid][] = (int) $record->id;
+        }
+        $records->close();
+
+        $transaction = $DB->start_delegated_transaction();
+        foreach ($sourceidsbyvecstore as $vecstoreid => $sourceids) {
+            foreach (array_chunk($sourceids, self::DELETE_CHUNK_SIZE) as $chunk) {
+                \core\task\manager::queue_adhoc_task(delete_vectors_adhoc::instance($vecstoreid, $chunk));
+            }
+        }
+        $DB->delete_records_select('local_ai_content_ctx_sources',
+            "sourceid IN (SELECT id FROM {local_ai_content_sources} WHERE {$select})", $params);
+        $DB->delete_records_select('local_ai_content_sources', $select, $params);
+        $transaction->allow_commit();
     }
 
     /**
