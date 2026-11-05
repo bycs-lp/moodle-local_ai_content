@@ -20,7 +20,9 @@ use local_ai_content\context_source;
 use local_ai_content\source;
 
 /**
- * Utility functions for context-specific source selection.
+ * Service for context-specific source selection.
+ *
+ * Obtain it via dependency injection (constructor injection or {@see \core\di::get()}).
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
@@ -46,8 +48,8 @@ class source_selection_utils {
      * @param int $contextid Any Moodle context ID.
      * @return array Array of associative arrays as described above.
      */
-    public static function get_available_sources_for_context(int $contextid): array {
-        $groups = self::get_grouped_sources_for_context($contextid);
+    public function get_available_sources_for_context(int $contextid): array {
+        $groups = $this->get_grouped_sources_for_context($contextid);
         return array_values(array_merge(
             $groups['globaldocuments'],
             $groups['courseactivities'],
@@ -65,13 +67,13 @@ class source_selection_utils {
      *   externalsources: array
      * }
      */
-    public static function get_grouped_sources_for_context(int $contextid): array {
+    public function get_grouped_sources_for_context(int $contextid): array {
         global $USER;
 
         $context = \context_helper::instance_by_id($contextid);
         $coursecontext = $context->get_course_context(false);
         $userid = (int)$USER->id;
-        $globaldocuments = self::get_global_document_sources($userid);
+        $globaldocuments = $this->get_global_document_sources($userid);
 
         if ($coursecontext === false) {
             return [
@@ -81,10 +83,10 @@ class source_selection_utils {
             ];
         }
 
-        $courseactivities = self::get_course_activity_sources($coursecontext, $userid);
+        $courseactivities = $this->get_course_activity_sources($coursecontext, $userid);
 
         $selectedsourceids = context_source::get_sourceids_for_context($contextid);
-        $externalsources = self::get_selected_external_sources($selectedsourceids, $coursecontext, $globaldocuments, $courseactivities, $userid);
+        $externalsources = $this->get_selected_external_sources($selectedsourceids, $coursecontext, $globaldocuments, $courseactivities, $userid);
 
         return [
             'globaldocuments' => $globaldocuments,
@@ -99,7 +101,7 @@ class source_selection_utils {
      * @param int $contextid Any Moodle context ID.
      * @return array<int, array{id:int,name:string,shortname:string}>
      */
-    public static function get_importable_courses_for_context(int $contextid): array {
+    public function get_importable_courses_for_context(int $contextid): array {
         global $DB;
 
         $context = \context_helper::instance_by_id($contextid);
@@ -138,7 +140,7 @@ class source_selection_utils {
      * @param int $sourcecourseid Course ID to load source options from.
      * @return array{courseactivities: array, coursedocuments: array}
      */
-    public static function get_importable_sources_for_course(int $contextid, int $sourcecourseid): array {
+    public function get_importable_sources_for_course(int $contextid, int $sourcecourseid): array {
         global $USER;
 
         $context = \context_helper::instance_by_id($contextid);
@@ -171,7 +173,7 @@ class source_selection_utils {
                     continue;
                 }
                 $modulesource = $sourcebycmid[(int)$cm->id] ?? null;
-                if ($modulesource === null || !self::is_selectable($modulesource)) {
+                if ($modulesource === null || !$this->is_selectable($modulesource)) {
                     continue;
                 }
                 $courseactivities[] = [
@@ -187,7 +189,7 @@ class source_selection_utils {
         $coursedocuments = [];
         $sources = source::get_records_by_contextids([$sourcecoursecontext->id]);
         foreach ($sources as $documentsource) {
-            if ($documentsource->get_sourcetype() === source::TYPE_MODULE || !self::is_selectable($documentsource)) {
+            if ($documentsource->get_sourcetype() === source::TYPE_MODULE || !$this->is_selectable($documentsource)) {
                 continue;
             }
             if (!source_access::can_access_source($documentsource, $userid)) {
@@ -217,7 +219,7 @@ class source_selection_utils {
      * @param int $userid User ID.
      * @return array
      */
-    private static function get_global_document_sources(int $userid): array {
+    private function get_global_document_sources(int $userid): array {
         $systemcontext = \context_system::instance();
         if (!has_capability('local/ai_content:useglobalsources', $systemcontext, $userid)) {
             return [];
@@ -226,7 +228,7 @@ class source_selection_utils {
         $result = [];
         $sources = source::get_records_by_contextids([$systemcontext->id]);
         foreach ($sources as $pathsource) {
-            if ($pathsource->get_sourcetype() === source::TYPE_MODULE || !self::is_selectable($pathsource)) {
+            if ($pathsource->get_sourcetype() === source::TYPE_MODULE || !$this->is_selectable($pathsource)) {
                 continue;
             }
             $result[] = [
@@ -249,7 +251,7 @@ class source_selection_utils {
      * @param int $userid User ID.
      * @return array
      */
-    private static function get_course_activity_sources(\context_course $coursecontext, int $userid): array {
+    private function get_course_activity_sources(\context_course $coursecontext, int $userid): array {
         $course = get_course($coursecontext->instanceid);
         $modinfo = get_fast_modinfo($course, $userid);
         $cms = $modinfo->get_cms();
@@ -270,7 +272,7 @@ class source_selection_utils {
                 continue;
             }
             $modulesource = $sourcebycmid[(int)$cm->id] ?? null;
-            if ($modulesource === null || !self::is_selectable($modulesource)) {
+            if ($modulesource === null || !$this->is_selectable($modulesource)) {
                 continue;
             }
             $result[] = [
@@ -296,7 +298,7 @@ class source_selection_utils {
      * @param int $userid
      * @return array
      */
-    private static function get_selected_external_sources(
+    private function get_selected_external_sources(
         array $selectedsourceids,
         \context_course $coursecontext,
         array $globaldocuments,
@@ -315,13 +317,13 @@ class source_selection_utils {
             if (isset($localids[$sourceid])) {
                 continue;
             }
-            if (!self::is_selectable($selectedsource)) {
+            if (!$this->is_selectable($selectedsource)) {
                 continue;
             }
             if (!source_access::can_access_source($selectedsource, $userid)) {
                 continue;
             }
-            if (!self::is_external_to_course($selectedsource, $coursecontext)) {
+            if (!$this->is_external_to_course($selectedsource, $coursecontext)) {
                 continue;
             }
             $externalsources[] = [
@@ -329,7 +331,7 @@ class source_selection_utils {
                 'cmid' => $selectedsource->get_cmid(),
                 'name' => (string)$selectedsource->get_name(),
                 'sourcetype' => (string)$selectedsource->get_sourcetype(),
-                'origin' => self::resolve_source_origin_label($selectedsource),
+                'origin' => $this->resolve_source_origin_label($selectedsource),
             ];
         }
 
@@ -346,7 +348,7 @@ class source_selection_utils {
      * @param source $source The source.
      * @return bool True if the source is selectable.
      */
-    private static function is_selectable(source $source): bool {
+    public function is_selectable(source $source): bool {
         if (!$source->get_enabled()) {
             return false;
         }
@@ -361,7 +363,7 @@ class source_selection_utils {
      * @param \context_course $coursecontext
      * @return bool
      */
-    private static function is_external_to_course(source $source, \context_course $coursecontext): bool {
+    private function is_external_to_course(source $source, \context_course $coursecontext): bool {
         if ($source->get_sourcetype() === source::TYPE_MODULE) {
             $cm = get_coursemodule_from_id('', $source->get_cmid(), 0, false, IGNORE_MISSING);
             if (!$cm) {
@@ -388,7 +390,7 @@ class source_selection_utils {
      * @param source $source
      * @return string
      */
-    private static function resolve_source_origin_label(source $source): string {
+    private function resolve_source_origin_label(source $source): string {
         try {
             $sourcecontext = \context_helper::instance_by_id($source->get_contextid());
         } catch (\moodle_exception $e) {
@@ -414,7 +416,7 @@ class source_selection_utils {
      * @param \context $context The context to resolve the path for.
      * @return int[] The context ids including the given context and all its ancestors.
      */
-    public static function get_context_path_ids(\context $context): array {
+    public function get_context_path_ids(\context $context): array {
         $ids = $context->get_parent_context_ids(true);
         return array_values(array_map('intval', $ids));
     }
@@ -427,8 +429,8 @@ class source_selection_utils {
      * @param int $contextid Any Moodle context ID.
      * @return int[] Array of local_ai_content_sources record IDs.
      */
-    public static function get_available_sourceids_for_context(int $contextid): array {
-        $records = self::get_available_sources_for_context($contextid);
+    public function get_available_sourceids_for_context(int $contextid): array {
+        $records = $this->get_available_sources_for_context($contextid);
         return array_column($records, 'id');
     }
 
@@ -438,7 +440,7 @@ class source_selection_utils {
      * @param int $contextid The Moodle context ID.
      * @return string The stored comma-separated IDs, empty if nothing is saved.
      */
-    public static function get_selected_sourceids(int $contextid): string {
+    public function get_selected_sourceids(int $contextid): string {
         return implode(',', context_source::get_sourceids_for_context($contextid));
     }
 
@@ -448,7 +450,7 @@ class source_selection_utils {
      * @param int $contextid The Moodle context ID.
      * @param string $sourceids Comma-separated list of local_ai_content_sources record IDs.
      */
-    public static function save_selected_sourceids(int $contextid, string $sourceids): void {
+    public function save_selected_sourceids(int $contextid, string $sourceids): void {
         $sourceidsarray = $sourceids === '' ? [] : explode(',', $sourceids);
         context_source::set_sourceids_for_context($contextid, $sourceidsarray);
     }

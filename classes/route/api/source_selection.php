@@ -43,6 +43,16 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 class source_selection {
     /**
+     * Constructor.
+     *
+     * @param source_selection_utils $sourceselectionutils Service providing the source selection logic.
+     */
+    public function __construct(
+        private readonly source_selection_utils $sourceselectionutils,
+    ) {
+    }
+
+    /**
      * Retrieve selectable source records and the current selection for a context.
      *
      * @param ServerRequestInterface $request
@@ -77,8 +87,8 @@ class source_selection {
         $context = \context_helper::instance_by_id($contextId);
         self::require_login_and_access($context);
 
-        $groupedsources = source_selection_utils::get_grouped_sources_for_context($contextId);
-        $selectedsourceids = source_selection_utils::get_selected_sourceids($contextId);
+        $groupedsources = $this->sourceselectionutils->get_grouped_sources_for_context($contextId);
+        $selectedsourceids = $this->sourceselectionutils->get_selected_sourceids($contextId);
 
         return new payload_response(
             payload: [
@@ -136,7 +146,7 @@ class source_selection {
         self::require_login_and_access($context);
         route_access::require_capability('local/ai_content:selectsources', $context);
 
-        $courses = source_selection_utils::get_importable_courses_for_context($contextId);
+        $courses = $this->sourceselectionutils->get_importable_courses_for_context($contextId);
 
         return new payload_response(
             payload: [
@@ -200,7 +210,7 @@ class source_selection {
         // The router has already validated the required query parameter.
         $sourcecourseid = (int)$request->getQueryParams()['sourceCourseId'];
 
-        $sources = source_selection_utils::get_importable_sources_for_course($contextId, $sourcecourseid);
+        $sources = $this->sourceselectionutils->get_importable_sources_for_course($contextId, $sourcecourseid);
 
         return new payload_response(
             payload: [
@@ -265,7 +275,7 @@ class source_selection {
         $body = (array)$request->getParsedBody();
         $selectedsourceids = clean_param((string)($body['selectedSourceIds'] ?? ''), PARAM_SEQUENCE);
 
-        source_selection_utils::save_selected_sourceids($contextId, $selectedsourceids);
+        $this->sourceselectionutils->save_selected_sourceids($contextId, $selectedsourceids);
 
         return new payload_response(
             payload: [

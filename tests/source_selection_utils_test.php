@@ -44,7 +44,7 @@ final class source_selection_utils_test extends \advanced_testcase {
         $globalsource->set_indexstatus(source::INDEXSTATUS_INDEXED);
         $globalsource->store();
 
-        $groups = source_selection_utils::get_grouped_sources_for_context(\context_system::instance()->id);
+        $groups = \core\di::get(source_selection_utils::class)->get_grouped_sources_for_context(\context_system::instance()->id);
 
         $this->assertArrayHasKey('globaldocuments', $groups);
         $this->assertArrayHasKey('courseactivities', $groups);
@@ -128,7 +128,7 @@ final class source_selection_utils_test extends \advanced_testcase {
         $globalsource->set_indexstatus($indexstatus);
         $globalsource->store();
 
-        $ids = source_selection_utils::get_available_sourceids_for_context(\context_system::instance()->id);
+        $ids = \core\di::get(source_selection_utils::class)->get_available_sourceids_for_context(\context_system::instance()->id);
 
         $this->assertSame($expected, in_array($globalsource->get_id(), $ids));
     }
