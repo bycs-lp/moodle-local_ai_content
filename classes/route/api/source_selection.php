@@ -23,6 +23,7 @@ use core\router\schema\objects\schema_object;
 use core\router\schema\objects\scalar_type;
 use core\router\schema\response\payload_response;
 use core\router\schema\response\content\payload_response_type;
+use local_ai_content\local\route_access;
 use local_ai_content\local\source_selection_utils;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -86,6 +87,7 @@ class source_selection {
                     'courseActivities' => $groupedsources['courseactivities'],
                     'externalSources' => $groupedsources['externalsources'],
                     'selectedSourceIds' => $selectedsourceids,
+                    'canSelect' => has_capability('local/ai_content:selectsources', $context),
                 ]],
                 'pagination' => [
                     'page' => 1,
@@ -132,6 +134,7 @@ class source_selection {
     ): payload_response {
         $context = \context_helper::instance_by_id($contextId);
         self::require_login_and_access($context);
+        route_access::require_capability('local/ai_content:selectsources', $context);
 
         $courses = source_selection_utils::get_importable_courses_for_context($contextId);
 
@@ -192,6 +195,7 @@ class source_selection {
     ): payload_response {
         $context = \context_helper::instance_by_id($contextId);
         self::require_login_and_access($context);
+        route_access::require_capability('local/ai_content:selectsources', $context);
 
         // The router has already validated the required query parameter.
         $sourcecourseid = (int)$request->getQueryParams()['sourceCourseId'];
@@ -256,6 +260,7 @@ class source_selection {
     ): payload_response {
         $context = \context_helper::instance_by_id($contextId);
         self::require_login_and_access($context);
+        route_access::require_capability('local/ai_content:selectsources', $context);
 
         $body = (array)$request->getParsedBody();
         $selectedsourceids = clean_param((string)($body['selectedSourceIds'] ?? ''), PARAM_SEQUENCE);
@@ -280,16 +285,17 @@ class source_selection {
     }
 
     /**
-     * Enforce login and basic view capability for a context.
+     * Enforce login, course access and the capability to use sources for a context.
      *
-     * @param \context $context
+     * @param \context $context The context the source selection belongs to.
      */
     private static function require_login_and_access(\context $context): void {
         require_login();
 
         $coursecontext = $context->get_course_context(false);
         if ($coursecontext !== false) {
-            require_capability('moodle/course:view', $coursecontext);
+            route_access::require_capability('local/ai_content:usesource', $coursecontext);
+            route_access::require_course_access($coursecontext);
         }
     }
 }

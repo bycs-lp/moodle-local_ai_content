@@ -108,7 +108,7 @@ class source_selection_utils {
             return [];
         }
 
-        $records = $DB->get_records_select('course', 'id <> :siteid', ['siteid' => SITEID], 'fullname ASC', 'id, fullname, shortname');
+        $records = $DB->get_records_select('course', 'id <> :siteid', ['siteid' => SITEID], 'fullname ASC', 'id, fullname, shortname, visible');
         $courses = [];
         foreach ($records as $record) {
             if ((int)$record->id === (int)$coursecontext->instanceid) {
@@ -118,7 +118,7 @@ class source_selection_utils {
             if (!$sourcecoursecontext) {
                 continue;
             }
-            if (!has_capability('moodle/course:view', $sourcecoursecontext) || !has_capability('local/ai_content:usesource', $sourcecoursecontext)) {
+            if (!can_access_course($record, null, 'local/ai_content:usesource')) {
                 continue;
             }
             $courses[] = [
@@ -151,8 +151,8 @@ class source_selection_utils {
         }
 
         $sourcecoursecontext = \context_course::instance($sourcecourseid, MUST_EXIST);
-        require_capability('moodle/course:view', $sourcecoursecontext);
-        require_capability('local/ai_content:usesource', $sourcecoursecontext);
+        route_access::require_capability('local/ai_content:usesource', $sourcecoursecontext);
+        route_access::require_course_access($sourcecoursecontext);
 
         $userid = (int)$USER->id;
         $courseactivities = [];
@@ -219,7 +219,7 @@ class source_selection_utils {
      */
     private static function get_global_document_sources(int $userid): array {
         $systemcontext = \context_system::instance();
-        if (!has_capability('local/ai_content:usesource', $systemcontext, $userid)) {
+        if (!has_capability('local/ai_content:useglobalsources', $systemcontext, $userid)) {
             return [];
         }
 

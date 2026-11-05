@@ -35,6 +35,6 @@ class source_management_access {
         require_login();
 
         $context = \context_helper::instance_by_id($source->get_contextid(), MUST_EXIST);
-        require_capability('local/ai_content:managesources', $context);
+        route_access::require_capability('local/ai_content:managesources', $context);
     }
 }

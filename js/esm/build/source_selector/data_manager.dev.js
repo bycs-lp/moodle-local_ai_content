@@ -37,7 +37,8 @@ const loadSourceSelection = /* @__PURE__ */ __name((contextId, reload = false) =
       globalDocuments: item.globalDocuments,
       courseActivities: item.courseActivities,
       externalSources: item.externalSources,
-      selectedSourceIds: parseSourceIds(item.selectedSourceIds)
+      selectedSourceIds: parseSourceIds(item.selectedSourceIds),
+      canSelect: item.canSelect
     };
     setSelectedSourceIds(contextId, selection.selectedSourceIds);
     return selection;
