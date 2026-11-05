@@ -41,6 +41,8 @@ export type ContextSourceSelection = {
     courseActivities: SourceOption[];
     externalSources: SourceOption[];
     selectedSourceIds: number[];
+    /** Whether the current user may change the selection of the context. */
+    canSelect: boolean;
 };
 
 /** Callback being notified about changes of the selected source ids of a context. */
@@ -53,6 +55,7 @@ type ContextSourceSelectionResponse = {
         courseActivities: SourceOption[];
         externalSources: SourceOption[];
         selectedSourceIds: string;
+        canSelect: boolean;
     }>;
 };
 
@@ -111,6 +114,7 @@ export const loadSourceSelection = (contextId: number, reload = false): Promise<
                 courseActivities: item.courseActivities,
                 externalSources: item.externalSources,
                 selectedSourceIds: parseSourceIds(item.selectedSourceIds),
+                canSelect: item.canSelect,
             };
             setSelectedSourceIds(contextId, selection.selectedSourceIds);
             return selection;

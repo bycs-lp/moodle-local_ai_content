@@ -31,18 +31,19 @@ function SourceListSection({
   emptyText,
   selected,
   saving,
+  readOnly,
   onToggle,
   onRemove
 }) {
   return /* @__PURE__ */ jsxDEV("section", { className: "mb-3", children: [
     /* @__PURE__ */ jsxDEV("h6", { className: "mb-2", children: sectionTitle }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 115,
+      lineNumber: 118,
       columnNumber: 13
     }, this),
     sources.length === 0 && /* @__PURE__ */ jsxDEV("div", { className: "text-muted small", children: emptyText }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 116,
+      lineNumber: 119,
       columnNumber: 38
     }, this),
     sources.length > 0 && /* @__PURE__ */ jsxDEV("ul", { className: "source-selector__list list-unstyled mb-0", children: sources.map((source) => /* @__PURE__ */ jsxDEV("li", { className: "source-selector__item mb-1", children: /* @__PURE__ */ jsxDEV("div", { className: "d-flex justify-content-between align-items-start gap-2", children: [
@@ -52,6 +53,7 @@ function SourceListSection({
           id: `source-selector-source-${contextId}-${source.id}`,
           checked: selected.has(source.id),
           onChange: () => onToggle(source.id),
+          disabled: readOnly,
           label: source.name,
           supportingText: getSourceMeta(source)
         },
@@ -59,16 +61,16 @@ function SourceListSection({
         false,
         {
           fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-          lineNumber: 123,
+          lineNumber: 126,
           columnNumber: 37
         },
         this
       ) }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 122,
+        lineNumber: 125,
         columnNumber: 33
       }, this),
-      onRemove && /* @__PURE__ */ jsxDEV(
+      onRemove && !readOnly && /* @__PURE__ */ jsxDEV(
         "button",
         {
           type: "button",
@@ -79,7 +81,7 @@ function SourceListSection({
           disabled: saving,
           children: /* @__PURE__ */ jsxDEV("i", { className: "icon fa fa-unlink", "aria-hidden": "true" }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-            lineNumber: 140,
+            lineNumber: 144,
             columnNumber: 41
           }, this)
         },
@@ -87,27 +89,27 @@ function SourceListSection({
         false,
         {
           fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-          lineNumber: 132,
+          lineNumber: 136,
           columnNumber: 37
         },
         this
       )
     ] }, void 0, true, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 121,
+      lineNumber: 124,
       columnNumber: 29
     }, this) }, source.id, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 120,
+      lineNumber: 123,
       columnNumber: 25
     }, this)) }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 118,
+      lineNumber: 121,
       columnNumber: 17
     }, this)
   ] }, void 0, true, {
     fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-    lineNumber: 114,
+    lineNumber: 117,
     columnNumber: 9
   }, this);
 }
@@ -123,12 +125,12 @@ function ImportListSection({
   return /* @__PURE__ */ jsxDEV("section", { className: "mb-3", children: [
     /* @__PURE__ */ jsxDEV("h6", { className: "mb-2", children: sectionTitle }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 168,
+      lineNumber: 172,
       columnNumber: 13
     }, this),
     sources.length === 0 && /* @__PURE__ */ jsxDEV("div", { className: "text-muted small", children: emptyText }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 169,
+      lineNumber: 173,
       columnNumber: 38
     }, this),
     sources.length > 0 && /* @__PURE__ */ jsxDEV("ul", { className: "source-selector__list list-unstyled mb-0", children: sources.map((source) => /* @__PURE__ */ jsxDEV("li", { className: "source-selector__item mb-1", children: /* @__PURE__ */ jsxDEV(
@@ -144,22 +146,22 @@ function ImportListSection({
       false,
       {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 174,
+        lineNumber: 178,
         columnNumber: 29
       },
       this
     ) }, source.id, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 173,
+      lineNumber: 177,
       columnNumber: 25
     }, this)) }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 171,
+      lineNumber: 175,
       columnNumber: 17
     }, this)
   ] }, void 0, true, {
     fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-    lineNumber: 167,
+    lineNumber: 171,
     columnNumber: 9
   }, this);
 }
@@ -173,6 +175,7 @@ function SourceSelector({
   const [courseActivities, setCourseActivities] = useState([]);
   const [externalSources, setExternalSources] = useState([]);
   const [selected, setSelected] = useState(/* @__PURE__ */ new Set());
+  const [canSelect, setCanSelect] = useState(false);
   const [mode, setMode] = useState("main");
   const [importableCourses, setImportableCourses] = useState([]);
   const [selectedCourseId, setSelectedCourseId] = useState(0);
@@ -196,6 +199,7 @@ function SourceSelector({
       setCourseActivities(selection.courseActivities);
       setExternalSources(selection.externalSources);
       setSelected(new Set(selection.selectedSourceIds));
+      setCanSelect(selection.canSelect);
       setLoading(false);
       return selection;
     }).catch(() => {
@@ -366,7 +370,7 @@ function SourceSelector({
     /* @__PURE__ */ jsxDEV("div", { className: "d-flex justify-content-between align-items-center mb-3", children: [
       /* @__PURE__ */ jsxDEV("h6", { className: "mb-0", children: "Fremdkurs ausw\xE4hlen" }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 435,
+        lineNumber: 441,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV(
@@ -382,31 +386,31 @@ function SourceSelector({
         false,
         {
           fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-          lineNumber: 436,
+          lineNumber: 442,
           columnNumber: 17
         },
         this
       )
     ] }, void 0, true, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 434,
+      lineNumber: 440,
       columnNumber: 13
     }, this),
     loadingImportView && /* @__PURE__ */ jsxDEV("div", { className: "text-muted small mb-2", children: "Lade Kurse..." }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 446,
+      lineNumber: 452,
       columnNumber: 35
     }, this),
     !loadingImportView && importableCourses.length === 0 && /* @__PURE__ */ jsxDEV("div", { className: "text-muted small mb-2", children: "Keine weiteren Kurse mit nutzbaren Quellen gefunden." }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 448,
+      lineNumber: 454,
       columnNumber: 17
     }, this),
     !loadingImportView && importableCourses.length > 0 && /* @__PURE__ */ jsxDEV(Fragment, { children: [
       /* @__PURE__ */ jsxDEV("div", { className: "form-group", children: [
         /* @__PURE__ */ jsxDEV("label", { htmlFor: `source-selector-import-course-${contextId}`, children: "Kurs" }, void 0, false, {
           fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-          lineNumber: 453,
+          lineNumber: 459,
           columnNumber: 25
         }, this),
         /* @__PURE__ */ jsxDEV(
@@ -419,7 +423,7 @@ function SourceSelector({
             disabled: saving,
             children: importableCourses.map((course) => /* @__PURE__ */ jsxDEV("option", { value: course.id, children: course.name }, course.id, false, {
               fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-              lineNumber: 462,
+              lineNumber: 468,
               columnNumber: 33
             }, this))
           },
@@ -427,14 +431,14 @@ function SourceSelector({
           false,
           {
             fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-            lineNumber: 454,
+            lineNumber: 460,
             columnNumber: 25
           },
           this
         )
       ] }, void 0, true, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 452,
+        lineNumber: 458,
         columnNumber: 21
       }, this),
       /* @__PURE__ */ jsxDEV(
@@ -450,31 +454,31 @@ function SourceSelector({
         false,
         {
           fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-          lineNumber: 466,
+          lineNumber: 472,
           columnNumber: 21
         },
         this
       )
     ] }, void 0, true, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 451,
+      lineNumber: 457,
       columnNumber: 17
     }, this),
     error && /* @__PURE__ */ jsxDEV("div", { className: "text-danger small mt-2", children: error }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 477,
+      lineNumber: 483,
       columnNumber: 23
     }, this)
   ] }, void 0, true, {
     fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-    lineNumber: 433,
+    lineNumber: 439,
     columnNumber: 9
   }, this), "renderCoursesContent");
   const renderImportSourcesContent = /* @__PURE__ */ __name(() => /* @__PURE__ */ jsxDEV("div", { className: "source-selector source-selector--empty", children: [
     /* @__PURE__ */ jsxDEV("div", { className: "d-flex justify-content-between align-items-center mb-3", children: [
       /* @__PURE__ */ jsxDEV("h6", { className: "mb-0", children: "Quellen aus Fremdkurs hinzuf\xFCgen" }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 484,
+        lineNumber: 490,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV(
@@ -490,19 +494,19 @@ function SourceSelector({
         false,
         {
           fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-          lineNumber: 485,
+          lineNumber: 491,
           columnNumber: 17
         },
         this
       )
     ] }, void 0, true, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 483,
+      lineNumber: 489,
       columnNumber: 13
     }, this),
     loadingImportView && /* @__PURE__ */ jsxDEV("div", { className: "text-muted small", children: "Lade Quellen..." }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 495,
+      lineNumber: 501,
       columnNumber: 35
     }, this),
     !loadingImportView && /* @__PURE__ */ jsxDEV(Fragment, { children: [
@@ -520,7 +524,7 @@ function SourceSelector({
         false,
         {
           fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-          lineNumber: 498,
+          lineNumber: 504,
           columnNumber: 21
         },
         this
@@ -539,7 +543,7 @@ function SourceSelector({
         false,
         {
           fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-          lineNumber: 506,
+          lineNumber: 512,
           columnNumber: 21
         },
         this
@@ -558,7 +562,7 @@ function SourceSelector({
           false,
           {
             fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-            lineNumber: 516,
+            lineNumber: 522,
             columnNumber: 25
           },
           this
@@ -576,29 +580,29 @@ function SourceSelector({
           false,
           {
             fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-            lineNumber: 524,
+            lineNumber: 530,
             columnNumber: 25
           },
           this
         )
       ] }, void 0, true, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 515,
+        lineNumber: 521,
         columnNumber: 21
       }, this)
     ] }, void 0, true, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 497,
+      lineNumber: 503,
       columnNumber: 17
     }, this),
     error && /* @__PURE__ */ jsxDEV("div", { className: "text-danger small mt-2", children: error }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 536,
+      lineNumber: 542,
       columnNumber: 23
     }, this)
   ] }, void 0, true, {
     fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-    lineNumber: 482,
+    lineNumber: 488,
     columnNumber: 9
   }, this), "renderImportSourcesContent");
   const renderMainContent = /* @__PURE__ */ __name(() => /* @__PURE__ */ jsxDEV("div", { className: "source-selector", children: [
@@ -611,13 +615,14 @@ function SourceSelector({
         emptyText: "Keine globalen Dokumente verf\xFCgbar.",
         selected,
         saving,
+        readOnly: !canSelect,
         onToggle: handleToggle
       },
       void 0,
       false,
       {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 542,
+        lineNumber: 548,
         columnNumber: 13
       },
       this
@@ -631,13 +636,14 @@ function SourceSelector({
         emptyText: "Keine Kursaktivit\xE4ten verf\xFCgbar.",
         selected,
         saving,
+        readOnly: !canSelect,
         onToggle: handleToggle
       },
       void 0,
       false,
       {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 551,
+        lineNumber: 558,
         columnNumber: 13
       },
       this
@@ -651,6 +657,7 @@ function SourceSelector({
         emptyText: "Keine externen Quellen hinzugef\xFCgt.",
         selected,
         saving,
+        readOnly: !canSelect,
         onToggle: handleToggle,
         onRemove: handleRemoveExternalSource
       },
@@ -658,12 +665,12 @@ function SourceSelector({
       false,
       {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 560,
+        lineNumber: 568,
         columnNumber: 13
       },
       this
     ),
-    /* @__PURE__ */ jsxDEV("div", { className: "mb-3", children: /* @__PURE__ */ jsxDEV(
+    canSelect && /* @__PURE__ */ jsxDEV("div", { className: "mb-3", children: /* @__PURE__ */ jsxDEV(
       "button",
       {
         type: "button",
@@ -673,8 +680,8 @@ function SourceSelector({
         children: [
           /* @__PURE__ */ jsxDEV("i", { className: "icon fa fa-plus mr-1", "aria-hidden": "true" }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-            lineNumber: 578,
-            columnNumber: 21
+            lineNumber: 588,
+            columnNumber: 25
           }, this),
           "Quelle hinzuf\xFCgen"
         ]
@@ -683,46 +690,46 @@ function SourceSelector({
       true,
       {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 572,
-        columnNumber: 17
+        lineNumber: 582,
+        columnNumber: 21
       },
       this
     ) }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 571,
-      columnNumber: 13
+      lineNumber: 581,
+      columnNumber: 17
     }, this),
     /* @__PURE__ */ jsxDEV("div", { className: "source-selector__actions mt-2 d-flex align-items-center gap-3", children: [
       saving && /* @__PURE__ */ jsxDEV("span", { className: "text-muted small", children: "Speichere..." }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 585,
+        lineNumber: 596,
         columnNumber: 21
       }, this),
       saveSuccess && /* @__PURE__ */ jsxDEV("span", { className: "text-success small", children: "Gespeichert" }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 589,
+        lineNumber: 600,
         columnNumber: 21
       }, this),
       error && /* @__PURE__ */ jsxDEV("span", { className: "text-danger small", children: error }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 593,
+        lineNumber: 604,
         columnNumber: 21
       }, this)
     ] }, void 0, true, {
       fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-      lineNumber: 583,
+      lineNumber: 594,
       columnNumber: 13
     }, this)
   ] }, void 0, true, {
     fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-    lineNumber: 541,
+    lineNumber: 547,
     columnNumber: 9
   }, this), "renderMainContent");
   const renderSelectorContent = /* @__PURE__ */ __name(() => {
     if (loading) {
       return /* @__PURE__ */ jsxDEV("div", { className: "source-selector source-selector--loading", children: "Lade Quellen..." }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 601,
+        lineNumber: 612,
         columnNumber: 20
       }, this);
     }
@@ -745,7 +752,7 @@ function SourceSelector({
         onClick: openModal,
         children: /* @__PURE__ */ jsxDEV("i", { className: "fa fa-paperclip", "aria-hidden": "true" }, void 0, false, {
           fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-          lineNumber: 624,
+          lineNumber: 635,
           columnNumber: 17
         }, this)
       },
@@ -753,7 +760,7 @@ function SourceSelector({
       false,
       {
         fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-        lineNumber: 617,
+        lineNumber: 628,
         columnNumber: 13
       },
       this
@@ -761,7 +768,7 @@ function SourceSelector({
     isModalOpen && modalBodyRoot && createPortal(renderSelectorContent(), modalBodyRoot)
   ] }, void 0, true, {
     fileName: "public/local/ai_content/js/esm/src/source_selector.tsx",
-    lineNumber: 616,
+    lineNumber: 627,
     columnNumber: 9
   }, this);
 }

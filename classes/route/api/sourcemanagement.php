@@ -24,6 +24,7 @@ use core\router\schema\response\content\payload_response_type;
 use core\router\schema\response\payload_response;
 use local_ai_content\local\index_service;
 use local_ai_content\local\index_state;
+use local_ai_content\local\route_access;
 use local_ai_content\source;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -345,9 +346,14 @@ class sourcemanagement {
         require_login();
         $coursecontext = $context->get_course_context(false);
         if (!$coursecontext) {
-            throw new \required_capability_exception($context, 'local/ai_content:managesources', 'nopermissions', '');
+            throw new \core\exception\access_denied_exception(
+                'nopermissions',
+                'error',
+                '',
+                get_capability_string('local/ai_content:managesources'),
+            );
         }
-        require_capability('local/ai_content:managesources', $coursecontext);
+        route_access::require_capability('local/ai_content:managesources', $coursecontext);
         return $coursecontext;
     }
 
@@ -646,7 +652,7 @@ class sourcemanagement {
 
         if ($scope === 'global') {
             $systemcontext = \context_system::instance();
-            require_capability('local/ai_content:managesources', $systemcontext);
+            route_access::require_capability('local/ai_content:managesources', $systemcontext);
             return $systemcontext->id;
         }
 
@@ -662,12 +668,17 @@ class sourcemanagement {
     private static function require_document_manage_access(\context_course $coursecontext, source $source): void {
         $systemcontext = \context_system::instance();
         if ($source->get_contextid() === $systemcontext->id) {
-            require_capability('local/ai_content:managesources', $systemcontext);
+            route_access::require_capability('local/ai_content:managesources', $systemcontext);
             return;
         }
 
         if ($source->get_contextid() !== $coursecontext->id) {
-            throw new \required_capability_exception($coursecontext, 'local/ai_content:managesources', 'nopermissions', '');
+            throw new \core\exception\access_denied_exception(
+                'nopermissions',
+                'error',
+                '',
+                get_capability_string('local/ai_content:managesources'),
+            );
         }
     }
 
@@ -764,6 +775,5 @@ class sourcemanagement {
         return $modname;
     }
 }
-
 
 

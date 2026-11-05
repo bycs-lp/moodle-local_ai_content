@@ -24,7 +24,9 @@
  */
 
 $string['ai_content:managesources'] = 'Manage and index AI content sources';
+$string['ai_content:selectsources'] = 'Select the AI content sources used in a context';
 $string['ai_content:testextraction'] = 'Test the AI text extraction service via admin UI';
+$string['ai_content:useglobalsources'] = 'Use global AI content sources for retrieval';
 $string['ai_content:usesource'] = 'Use AI content sources for retrieval';
 $string['aicontent'] = 'AI Content';
 $string['allowindexing'] = "Allow Indexing";

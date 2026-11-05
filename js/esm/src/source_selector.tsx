@@ -61,6 +61,8 @@ type SourceListSectionProps = {
     emptyText: string;
     selected: Set<number>;
     saving: boolean;
+    /** Whether the selection is shown read-only. */
+    readOnly: boolean;
     onToggle: (id: number) => void;
     onRemove?: (id: number) => void;
 };
@@ -107,6 +109,7 @@ function SourceListSection({
     emptyText,
     selected,
     saving,
+    readOnly,
     onToggle,
     onRemove,
 }: SourceListSectionProps) {
@@ -124,11 +127,12 @@ function SourceListSection({
                                         id={`source-selector-source-${contextId}-${source.id}`}
                                         checked={selected.has(source.id)}
                                         onChange={() => onToggle(source.id)}
+                                        disabled={readOnly}
                                         label={source.name}
                                         supportingText={getSourceMeta(source)}
                                     />
                                 </div>
-                                {onRemove && (
+                                {onRemove && !readOnly && (
                                     <button
                                         type="button"
                                         className="btn btn-link btn-sm p-0 text-muted"
@@ -204,6 +208,7 @@ export default function SourceSelector({
     const [courseActivities, setCourseActivities] = useState<SourceOption[]>([]);
     const [externalSources, setExternalSources] = useState<SourceOption[]>([]);
     const [selected, setSelected] = useState<Set<number>>(new Set());
+    const [canSelect, setCanSelect] = useState<boolean>(false);
 
     const [mode, setMode] = useState<'main' | 'courses' | 'sources'>('main');
     const [importableCourses, setImportableCourses] = useState<ImportableCourse[]>([]);
@@ -237,6 +242,7 @@ export default function SourceSelector({
                 setCourseActivities(selection.courseActivities);
                 setExternalSources(selection.externalSources);
                 setSelected(new Set(selection.selectedSourceIds));
+                setCanSelect(selection.canSelect);
                 setLoading(false);
                 return selection;
             })
@@ -546,6 +552,7 @@ export default function SourceSelector({
                 emptyText="Keine globalen Dokumente verfügbar."
                 selected={selected}
                 saving={saving}
+                readOnly={!canSelect}
                 onToggle={handleToggle}
             />
             <SourceListSection
@@ -555,6 +562,7 @@ export default function SourceSelector({
                 emptyText="Keine Kursaktivitäten verfügbar."
                 selected={selected}
                 saving={saving}
+                readOnly={!canSelect}
                 onToggle={handleToggle}
             />
             <SourceListSection
@@ -564,21 +572,24 @@ export default function SourceSelector({
                 emptyText="Keine externen Quellen hinzugefügt."
                 selected={selected}
                 saving={saving}
+                readOnly={!canSelect}
                 onToggle={handleToggle}
                 onRemove={handleRemoveExternalSource}
             />
 
-            <div className="mb-3">
-                <button
-                    type="button"
-                    className="btn btn-outline-secondary btn-sm"
-                    onClick={openCourseSelection}
-                    disabled={saving || loadingImportView}
-                >
-                    <i className="icon fa fa-plus mr-1" aria-hidden="true" />
-                    Quelle hinzufügen
-                </button>
-            </div>
+            {canSelect && (
+                <div className="mb-3">
+                    <button
+                        type="button"
+                        className="btn btn-outline-secondary btn-sm"
+                        onClick={openCourseSelection}
+                        disabled={saving || loadingImportView}
+                    >
+                        <i className="icon fa fa-plus mr-1" aria-hidden="true" />
+                        Quelle hinzufügen
+                    </button>
+                </div>
+            )}
 
             <div className="source-selector__actions mt-2 d-flex align-items-center gap-3">
                 {saving && (

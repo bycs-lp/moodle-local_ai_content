@@ -27,7 +27,7 @@ use local_ai_content\source;
  *  - Module sources: the related activity must be visible to the user (respecting availability restrictions and
  *    course/section visibility) and the user must hold the activity's view capability where the module defines one.
  *  - Document and external sources: the user must hold the local/ai_content:usesource capability in the context
- *    the source is attached to.
+ *    the source is attached to, or local/ai_content:useglobalsources for global sources (system context).
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
@@ -109,7 +109,9 @@ class source_access {
     }
 
     /**
-     * Whether the user holds the usesource capability in the context a non-module source is attached to.
+     * Whether the user may retrieve from a non-module source in the context it is attached to.
+     *
+     * Global sources (system context) require local/ai_content:useglobalsources, all others local/ai_content:usesource.
      *
      * @param source $source the document or external source to check
      * @param int $userid the user to check access for
@@ -120,6 +122,9 @@ class source_access {
             $context = \context_helper::instance_by_id($source->get_contextid());
         } catch (\moodle_exception $e) {
             return false;
+        }
+        if ($context->contextlevel === CONTEXT_SYSTEM) {
+            return has_capability('local/ai_content:useglobalsources', $context, $userid);
         }
         return has_capability('local/ai_content:usesource', $context, $userid);
     }
