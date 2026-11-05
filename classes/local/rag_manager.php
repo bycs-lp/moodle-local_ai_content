@@ -16,6 +16,7 @@
 
 namespace local_ai_content\local;
 
+use local_ai_content\context_source;
 use local_ai_content\source;
 use local_ai_manager\base_vecstore;
 use local_ai_manager\local\vecstore_factory;
@@ -44,15 +45,27 @@ class rag_manager {
     private const DEFAULT_TOPK = 5;
 
     /**
+     * Constructor.
+     *
+     * @param source_selection_utils $sourceselectionutils Service deciding which sources are selectable.
+     */
+    public function __construct(
+        private readonly source_selection_utils $sourceselectionutils,
+    ) {
+    }
+
+    /**
      * Retrieves the RAG content for a given user prompt.
      *
      * Embeds the user prompt via the "embedding" purpose, performs vector searches restricted to the given source
-     * IDs (after removing those the user may not access) and assembles the matching chunks into a single string.
+     * IDs and assembles the matching chunks into a single string. Only source IDs stored as selection for the
+     * context are used, and of those only selectable sources the user may access.
      *
      * @param string $userprompt the user prompt to embed and search for
-     * @param int[] $sourceids list of local_ai_content_sources record IDs to filter by; must be non-empty
+     * @param int[] $sourceids list of local_ai_content_sources record IDs to filter by (client input)
      * @param string $component the component from which the (embedding) request is being performed
-     * @param int $contextid the context id from which the (embedding) request is being performed
+     * @param int $contextid the context id from which the (embedding) request is being performed and whose stored
+     *  source selection applies
      * @param int $topk the maximum number of chunks to include in the assembled RAG content
      * @return rag_result the assembled RAG result
      * @throws \moodle_exception if the selected sources cannot be searched, for example because the embedding request or a
@@ -65,8 +78,28 @@ class rag_manager {
         int $contextid,
         int $topk = self::DEFAULT_TOPK
     ): rag_result {
-        $sourceids = array_values(array_unique(array_filter(array_map('intval', $sourceids))));
+        // Security: the source ids come from the client, so only those stored as selection for the context are used.
+        $sourceids = array_intersect(
+            array_map('intval', $sourceids),
+            context_source::get_sourceids_for_context($contextid)
+        );
         if (empty($sourceids)) {
+            return new rag_result('');
+        }
+
+        // Load the selected source records, keeping only selectable ones (enabled and with retrievable vectors).
+        $sources = array_filter(
+            source::get_records_by_ids($sourceids),
+            fn(source $source): bool => $this->sourceselectionutils->is_selectable($source)
+        );
+        if (empty($sources)) {
+            return new rag_result('');
+        }
+
+        // Security: restrict the selection to the sources the requesting user is actually allowed to retrieve from.
+        $accessiblesourceids = source_access::filter_accessible_sourceids(array_keys($sources));
+        $sources = array_intersect_key($sources, array_flip($accessiblesourceids));
+        if (empty($sources)) {
             return new rag_result('');
         }
 
@@ -86,19 +119,6 @@ class rag_manager {
         $embedding = json_decode($response->get_content(), true);
         if (!is_array($embedding) || empty($embedding)) {
             throw new \moodle_exception('error_ragembeddinginvalid', 'local_ai_content', '', null, $response->get_content());
-        }
-
-        // Load the selected source records and split them into Moodle and external sources.
-        $sources = source::get_records_by_ids($sourceids);
-        if (empty($sources)) {
-            return new rag_result('');
-        }
-
-        // Security: restrict the selection to the sources the requesting user is actually allowed to retrieve from.
-        $accessiblesourceids = source_access::filter_accessible_sourceids(array_keys($sources));
-        $sources = array_intersect_key($sources, array_flip($accessiblesourceids));
-        if (empty($sources)) {
-            return new rag_result('');
         }
 
         $matches = [];
