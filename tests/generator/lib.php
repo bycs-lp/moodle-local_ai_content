@@ -62,6 +62,11 @@ class local_ai_content_generator extends testing_module_generator {
      *   - cmid (int): Course module id of module sources, defaults to null.
      *   - vecstoreid (int): Vector store instance id holding the vectors, defaults to null (not indexed).
      *   - name (string): Source name, defaults to a generated name.
+     *   - content (string): Content of document sources, defaults to null.
+     *   - enabled (bool): Whether the source is enabled, defaults to true.
+     *   - allowindex (bool): Whether indexing is switched on, defaults to false.
+     *   - externalcollection (string): Collection of external sources, defaults to null.
+     *   - externalmodel (string): Embedding model of external sources, defaults to null.
      * @return \local_ai_content\source The stored source.
      */
     public function create_source(array $record): \local_ai_content\source {
@@ -71,7 +76,33 @@ class local_ai_content_generator extends testing_module_generator {
         $source->set_cmid($record['cmid'] ?? null);
         $source->set_vecstoreid($record['vecstoreid'] ?? null);
         $source->set_name($record['name'] ?? 'Test source ' . random_string(5));
+        $source->set_content($record['content'] ?? null);
+        $source->set_enabled($record['enabled'] ?? true);
+        $source->set_allowindex($record['allowindex'] ?? false);
+        $source->set_externalcollection($record['externalcollection'] ?? null);
+        $source->set_externalmodel($record['externalmodel'] ?? null);
         $source->store();
         return $source;
+    }
+
+    /**
+     * Create the index of a source for an embedding model in the local_ai_content_index table.
+     *
+     * @param array $record Index fields.
+     *   - sourceid (int): Id of the indexed source, required.
+     *   - embeddingmodel (string): Name of the embedding model, defaults to 'embedding-model'.
+     *   - status (string): One of model_index::STATUS_*, defaults to indexed.
+     *   - taskid (int): Id of the indexing task, defaults to null.
+     * @return \local_ai_content\local\model_index The stored index.
+     */
+    public function create_model_index(array $record): \local_ai_content\local\model_index {
+        $index = \local_ai_content\local\model_index::create(
+            $record['sourceid'],
+            $record['embeddingmodel'] ?? 'embedding-model'
+        );
+        $index->set_status($record['status'] ?? \local_ai_content\local\model_index::STATUS_INDEXED);
+        $index->set_taskid($record['taskid'] ?? null);
+        $index->store();
+        return $index;
     }
 }

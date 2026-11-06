@@ -51,5 +51,23 @@ final class rag_result_test extends \advanced_testcase {
         $this->assertEquals('https://example.org/r1', $array['sources'][0]['url']);
         $this->assertEquals('p. 2', $array['sources'][0]['locator']);
         $this->assertTrue($result->has_sources());
+        $this->assertSame([], $array['unavailableSources']);
+    }
+
+    /**
+     * Ensure rag_result exports the selected sources which could not be used.
+     */
+    public function test_to_array_contains_unavailable_sources(): void {
+        $result = new rag_result('', [], [
+            ['sourceid' => 7, 'name' => 'Source 7', 'reason' => rag_result::UNAVAILABLE_OTHERMODEL],
+        ]);
+
+        $array = $result->to_array();
+
+        $this->assertFalse($result->has_sources());
+        $this->assertSame(
+            [['sourceId' => 7, 'name' => 'Source 7', 'reason' => rag_result::UNAVAILABLE_OTHERMODEL]],
+            $array['unavailableSources']
+        );
     }
 }

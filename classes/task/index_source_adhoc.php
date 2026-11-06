@@ -16,14 +16,16 @@
 
 namespace local_ai_content\task;
 
+use local_ai_content\local\embedding_model_resolver;
 use local_ai_content\local\indexer_manager;
+use local_ai_content\local\model_index;
 use local_ai_content\source;
 
 /**
- * Adhoc task indexing a single source.
+ * Adhoc task indexing a single source with one embedding model.
  *
- * The task always leaves the source in a terminal state (indexed or failed) so the frontend never has to
- * guess what happened.
+ * The task runs as the user who started the indexing, the embedding requests are made with their AI tool. The task always
+ * leaves the index in a terminal state (indexed or failed) so the frontend never has to guess what happened.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
@@ -41,38 +43,47 @@ class index_source_adhoc extends \core\task\adhoc_task {
     public function execute(): void {
         $this->start_stored_progress();
 
-        $source = source::get_record(['id' => $this->get_custom_data()->sourceid]);
+        $data = $this->get_custom_data();
+        $index = model_index::get((int) $data->sourceid, (string) $data->embeddingmodel);
+        $source = source::get_record(['id' => $data->sourceid]);
 
-        // The source is gone, or indexing was switched off/restarted meanwhile. This run is obsolete.
-        if ($source === null || (int) $source->get_indextaskid() !== (int) $this->get_id()) {
+        // The source or index is gone, or indexing was switched off/restarted meanwhile. This run is obsolete.
+        if ($index === null || $source === null || (int) $index->get_taskid() !== (int) $this->get_id()) {
             return;
         }
 
         try {
-            $source->set_indexstatus(source::INDEXSTATUS_RUNNING);
-            $source->set_indexerror(null);
-            $source->set_indexdebuginfo(null);
-            $source->store();
+            $index->set_status(model_index::STATUS_RUNNING);
+            $index->set_error(null);
+            $index->set_debuginfo(null);
+            $index->store();
             $this->progress->update_full(10, get_string('indexingstatus_running', 'local_ai_content'));
 
-            $indexer = new indexer_manager($source->get_contextid(), new \local_ai_manager\manager('embedding'));
-            $indexer->index_single_source($source);
+            // The AI tool of the user may have been changed since the task has been queued.
+            if (\core\di::get(embedding_model_resolver::class)->get_current_model() !== $index->get_embeddingmodel()) {
+                throw new \moodle_exception('indexingerror_modelchanged', 'local_ai_content', '',
+                    $index->get_embeddingmodel());
+            }
 
-            $source->set_indexstatus(source::INDEXSTATUS_INDEXED);
-            $source->store();
+            $indexer = new indexer_manager($source->get_contextid(), new \local_ai_manager\manager('embedding'));
+            $indexer->index_single_source($source, $index);
+
+            $index->set_status(model_index::STATUS_INDEXED);
+            $index->store();
             $this->progress->update_full(100, get_string('indexingstatus_indexed', 'local_ai_content'));
         } catch (\Throwable $e) {
             $errormessage = trim($e->getMessage()) ?: get_string('indexingstatus_failed', 'local_ai_content');
 
-            // A failed run switches indexing off so users have to explicitly requeue it.
-            $source->set_allowindex(false);
-            $source->set_indexstatus(source::INDEXSTATUS_FAILED);
-            $source->set_indexerror($errormessage);
-            $source->set_indexdebuginfo(self::build_debug_info($e));
-            $source->store();
+            $index->set_status(model_index::STATUS_FAILED);
+            $index->set_error($errormessage);
+            $index->set_debuginfo(self::build_debug_info($e));
+            $index->store();
 
-            // Stored progress only holds a short summary, the full message lives on the source record.
+            // Stored progress only holds a short summary, the full message lives on the index record.
             $this->progress->error(self::shorten_for_progress($errormessage));
+
+            // Rethrow so cron marks the task as failed and writes the error to the task log.
+            throw $e;
         }
     }
 

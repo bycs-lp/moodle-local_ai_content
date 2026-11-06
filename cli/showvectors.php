@@ -30,29 +30,32 @@ require_once($CFG->libdir . '/clilib.php');
 // Run as the admin user so the tenant configuration of the primary vector store is resolved for them.
 \core\session\manager::set_user(get_admin());
 
-// Retrieve the primary vector store driver configured for the current (admin) user via the connector factory.
-$vecstore = \core\di::get(\local_ai_manager\local\connector_factory::class)->get_primary_vecstore();
+// Retrieve the primary vector store driver configured for the current (admin) user.
+$vecstore = \core\di::get(\local_ai_manager\local\vecstore_factory::class)->get_primary_vecstore();
 
-cli_heading('Vectors in vector store "' . $vecstore->get_name() . '" (collection: ' . $vecstore->get_collection() . ')');
+foreach ($vecstore->get_collections() as $model => $collection) {
+    cli_heading('Vectors of model "' . $model . '" in vector store "' . $vecstore->get_name() . '" (collection: '
+        . $collection . ')');
 
-$allvectorsresponse = $vecstore->get_all();
-if ($allvectorsresponse->get_code() !== 200) {
-    cli_error('Could not fetch vectors: ' . $allvectorsresponse->get_errormessage());
-}
-$vectors = $allvectorsresponse->get_queryresponse()->get_matches();
-if (empty($vectors)) {
-    cli_writeln('No vectors found.');
-    exit(0);
-}
+    $allvectorsresponse = $vecstore->get_all($collection);
+    if ($allvectorsresponse->get_code() !== 200) {
+        cli_error('Could not fetch vectors: ' . $allvectorsresponse->get_errormessage());
+    }
+    $vectors = $allvectorsresponse->get_queryresponse()->get_matches();
+    if (empty($vectors)) {
+        cli_writeln('No vectors found.');
+        continue;
+    }
 
-foreach ($vectors as $index => $vector) {
-    $dimensions = count(json_decode($vector->get_vector(), true, flags: JSON_THROW_ON_ERROR));
+    foreach ($vectors as $index => $vector) {
+        $dimensions = count(json_decode($vector->get_vector(), true, flags: JSON_THROW_ON_ERROR));
+        cli_writeln('----------------------------------------');
+        cli_writeln('Vector #' . ($index + 1));
+        cli_writeln('  Source id  : ' . $vector->get_sourceid());
+        cli_writeln('  Chunk      : ' . ($vector->get_chunk()) . ' / ' . $vector->get_maxchunks());
+        cli_writeln('  Dimensions : ' . $dimensions);
+        cli_writeln('  Content    : ' . shorten_text($vector->get_content(), 200));
+    }
     cli_writeln('----------------------------------------');
-    cli_writeln('Vector #' . ($index + 1));
-    cli_writeln('  Source id  : ' . $vector->get_sourceid());
-    cli_writeln('  Chunk      : ' . ($vector->get_chunk()) . ' / ' . $vector->get_maxchunks());
-    cli_writeln('  Dimensions : ' . $dimensions);
-    cli_writeln('  Content    : ' . shorten_text($vector->get_content(), 200));
+    cli_writeln('Total: ' . count($vectors) . ' vector(s).');
 }
-cli_writeln('----------------------------------------');
-cli_writeln('Total: ' . count($vectors) . ' vector(s).');

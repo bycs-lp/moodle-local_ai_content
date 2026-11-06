@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * CLI script that lists all vectors currently stored in the primary vector store available to the admin user.
+ * CLI script that deletes all collections of the primary vector store available to the admin user.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
@@ -30,11 +30,10 @@ require_once($CFG->libdir . '/clilib.php');
 // Run as the admin user so the tenant configuration of the primary vector store is resolved for them.
 \core\session\manager::set_user(get_admin());
 
-// Retrieve the primary vector store driver configured for the current (admin) user via the connector factory.
-$vecstore = \core\di::get(\local_ai_manager\local\connector_factory::class)->get_primary_vecstore();
+// Retrieve the primary vector store driver configured for the current (admin) user.
+$vecstore = \core\di::get(\local_ai_manager\local\vecstore_factory::class)->get_primary_vecstore();
 
-cli_heading('Vectors in vector store "' . $vecstore->get_name() . '" (collection: ' . $vecstore->get_collection() . ')');
-
-$vecstore->delete_collection();
-$vecstore->create_collection();
-cli_writeln('Collection re-created');
+foreach ($vecstore->get_collections() as $model => $collection) {
+    $vecstore->drop_collection($model);
+    cli_writeln('Collection "' . $collection . '" of model "' . $model . '" deleted');
+}

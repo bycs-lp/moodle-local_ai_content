@@ -16,6 +16,9 @@
 
 namespace local_ai_content;
 
+use local_ai_content\local\model_index;
+use local_ai_content\task\index_source_adhoc;
+
 /**
  * Tests for index_source_adhoc task safeguards.
  *
@@ -25,89 +28,136 @@ namespace local_ai_content;
  * @author     Philipp Memmel
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-#[\PHPUnit\Framework\Attributes\CoversClass(\local_ai_content\task\index_source_adhoc::class)]
+#[\PHPUnit\Framework\Attributes\CoversClass(index_source_adhoc::class)]
 final class index_source_adhoc_test extends \advanced_testcase {
-    /**
-     * Create a document source bound to one indexing task.
-     *
-     * @param ?int $indextaskid Task id the source is bound to.
-     * @return source
-     */
-    private function create_source(?int $indextaskid): source {
-        $source = new source();
-        $source->set_contextid(\context_system::instance()->id);
-        $source->set_sourcetype(source::TYPE_DOCUMENT);
-        $source->set_name('Test source');
-        $source->set_content('Sample content');
-        $source->set_enabled(true);
-        $source->set_allowindex(true);
-        $source->set_indexstatus(source::INDEXSTATUS_QUEUED);
-        $source->set_indextaskid($indextaskid);
-        $source->store();
+    /** @var string Embedding model of the index under test. */
+    private const MODEL = 'embedding-model';
 
-        return $source;
+    /**
+     * Create a document source with a queued index.
+     *
+     * @return model_index The index of the source.
+     */
+    private function create_index(): model_index {
+        /** @var \local_ai_content_generator $generator */
+        $generator = $this->getDataGenerator()->get_plugin_generator('local_ai_content');
+        $source = $generator->create_source([
+            'contextid' => \context_system::instance()->id,
+            'content' => 'Sample content',
+            'allowindex' => true,
+        ]);
+        return $generator->create_model_index([
+            'sourceid' => $source->get_id(),
+            'embeddingmodel' => self::MODEL,
+            'status' => model_index::STATUS_QUEUED,
+        ]);
+    }
+
+    /**
+     * Queue an indexing task for a source.
+     *
+     * @param int $sourceid The source id in the custom data.
+     * @return index_source_adhoc The queued task carrying its id.
+     */
+    private function queue_task(int $sourceid): index_source_adhoc {
+        $task = new index_source_adhoc();
+        $task->set_custom_data(['sourceid' => $sourceid, 'embeddingmodel' => self::MODEL]);
+        $task->set_id(\core\task\manager::queue_adhoc_task($task));
+        return $task;
+    }
+
+    /**
+     * Queue an indexing task for the source of an index and make it the active task of the index.
+     *
+     * @param model_index $index The index.
+     * @return index_source_adhoc The queued task.
+     */
+    private function queue_active_task(model_index $index): index_source_adhoc {
+        $task = $this->queue_task($index->get_sourceid());
+        $index->set_taskid($task->get_id());
+        $index->store();
+        return $task;
     }
 
     /**
      * Run one indexing task without emitting progress output.
      *
-     * @param int $taskid The task id.
-     * @param int $sourceid The source id in the custom data.
+     * @param index_source_adhoc $task The task.
      */
-    private function execute_task(int $taskid, int $sourceid): void {
-        $task = new \local_ai_content\task\index_source_adhoc();
-        $task->set_id($taskid);
-        $task->set_custom_data(['sourceid' => $sourceid]);
+    private function execute_task(index_source_adhoc $task): void {
         ob_start();
         $task->execute();
         ob_end_clean();
     }
 
     /**
-     * A task that is no longer the active task of its source must not change any state.
+     * Run one indexing task that is expected to fail and rethrow its error for the task log.
+     *
+     * @param index_source_adhoc $task The task.
+     */
+    private function execute_failing_task(index_source_adhoc $task): void {
+        ob_start();
+        try {
+            $task->execute();
+            $this->fail('The indexing task must rethrow its error.');
+        } catch (\moodle_exception $e) {
+            $this->assertSame('indexingerror_modelchanged', $e->errorcode);
+        } finally {
+            ob_end_clean();
+        }
+    }
+
+    /**
+     * A task that is no longer the active task of its index must not change any state.
      */
     public function test_execute_skips_superseded_task(): void {
         $this->resetAfterTest();
         $this->setAdminUser();
 
-        $source = $this->create_source(9999);
-        $this->execute_task(1234, $source->get_id());
+        $index = $this->create_index();
+        $supersededtask = $this->queue_task($index->get_sourceid());
+        $activetask = $this->queue_active_task($index);
+        $this->execute_task($supersededtask);
 
-        $reloaded = source::get_record(['id' => $source->get_id()]);
+        $reloaded = model_index::get($index->get_sourceid(), self::MODEL);
 
-        $this->assertSame(source::INDEXSTATUS_QUEUED, $reloaded->get_indexstatus());
-        $this->assertSame(9999, $reloaded->get_indextaskid());
-        $this->assertTrue($reloaded->get_allowindex());
+        $this->assertSame(model_index::STATUS_QUEUED, $reloaded->get_status());
+        $this->assertSame($activetask->get_id(), $reloaded->get_taskid());
     }
 
     /**
      * A task for a deleted source must not raise an error.
      */
     public function test_execute_skips_deleted_source(): void {
+        global $DB;
         $this->resetAfterTest();
         $this->setAdminUser();
 
-        $this->execute_task(1234, 999999);
+        $index = $this->create_index();
+        $task = $this->queue_active_task($index);
+        $DB->delete_records('local_ai_content_sources', ['id' => $index->get_sourceid()]);
+
+        $this->execute_task($task);
 
         $this->assertDebuggingNotCalled();
     }
 
     /**
-     * A failing indexing run must switch indexing off and report the failed status.
+     * A failing indexing run must report the failed status and keep indexing switched on.
      */
-    public function test_execute_marks_source_failed_on_error(): void {
+    public function test_execute_marks_index_failed_on_error(): void {
         $this->resetAfterTest();
         $this->setAdminUser();
 
-        // No embedding connector is configured in tests, so indexing is guaranteed to fail.
-        $source = $this->create_source(4242);
-        $this->execute_task(4242, $source->get_id());
+        // No embedding tool is configured in tests, so the embedding model of the index is not available.
+        $index = $this->create_index();
+        $this->execute_failing_task($this->queue_active_task($index));
 
-        $reloaded = source::get_record(['id' => $source->get_id()]);
+        $reloaded = model_index::get($index->get_sourceid(), self::MODEL);
 
-        $this->assertSame(source::INDEXSTATUS_FAILED, $reloaded->get_indexstatus());
-        $this->assertFalse($reloaded->get_allowindex());
-        $this->assertNotEmpty($reloaded->get_indexerror());
+        $this->assertSame(model_index::STATUS_FAILED, $reloaded->get_status());
+        $this->assertSame(get_string('indexingerror_modelchanged', 'local_ai_content', self::MODEL), $reloaded->get_error());
+        $this->assertTrue(source::get_record(['id' => $index->get_sourceid()])->get_allowindex());
     }
 
     /**
@@ -118,13 +168,13 @@ final class index_source_adhoc_test extends \advanced_testcase {
         $this->setAdminUser();
         set_debugging(DEBUG_DEVELOPER);
 
-        $source = $this->create_source(4243);
-        $this->execute_task(4243, $source->get_id());
+        $index = $this->create_index();
+        $this->execute_failing_task($this->queue_active_task($index));
 
-        $reloaded = source::get_record(['id' => $source->get_id()]);
+        $reloaded = model_index::get($index->get_sourceid(), self::MODEL);
 
-        $this->assertNotEmpty($reloaded->get_indexerror());
-        $this->assertNotEmpty($reloaded->get_indexdebuginfo());
+        $this->assertNotEmpty($reloaded->get_error());
+        $this->assertNotEmpty($reloaded->get_debuginfo());
     }
 
     /**
@@ -135,13 +185,13 @@ final class index_source_adhoc_test extends \advanced_testcase {
         $this->setAdminUser();
         set_debugging(DEBUG_NONE);
 
-        $source = $this->create_source(4244);
-        $this->execute_task(4244, $source->get_id());
+        $index = $this->create_index();
+        $this->execute_failing_task($this->queue_active_task($index));
 
-        $reloaded = source::get_record(['id' => $source->get_id()]);
+        $reloaded = model_index::get($index->get_sourceid(), self::MODEL);
 
-        $this->assertNotEmpty($reloaded->get_indexerror());
-        $this->assertNull($reloaded->get_indexdebuginfo());
+        $this->assertNotEmpty($reloaded->get_error());
+        $this->assertNull($reloaded->get_debuginfo());
     }
 
     /**
@@ -152,15 +202,13 @@ final class index_source_adhoc_test extends \advanced_testcase {
         $this->setAdminUser();
         set_debugging(DEBUG_DEVELOPER);
 
-        $source = $this->create_source(4245);
-        $this->execute_task(4245, $source->get_id());
+        $index = $this->create_index();
+        $this->execute_failing_task($this->queue_active_task($index));
 
-        $reloaded = source::get_record(['id' => $source->get_id()]);
+        $reloaded = model_index::get($index->get_sourceid(), self::MODEL);
 
-        $this->assertStringNotContainsString('#0 ', (string) $reloaded->get_indexerror());
-        $this->assertStringContainsString('#0 ', (string) $reloaded->get_indexdebuginfo());
+        $this->assertStringNotContainsString('#0 ', (string) $reloaded->get_error());
+        $this->assertStringContainsString('#0 ', (string) $reloaded->get_debuginfo());
     }
 }
-
-
 

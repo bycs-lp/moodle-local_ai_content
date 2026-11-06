@@ -25,8 +25,9 @@ use local_ai_manager\local\vecstore_factory;
 /**
  * Service controlling the indexing lifecycle of a source.
  *
- * Every operation returns the resulting {@see index_state} so that callers never have to derive the
- * status themselves.
+ * A source is indexed with the embedding model of the user starting the indexing, who also pays for the embedding requests.
+ * Users with another embedding model can add an index for their model (see {@see model_index}). Every operation returns the
+ * resulting {@see index_state} so that callers never have to derive the status themselves.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
@@ -41,15 +42,20 @@ class index_service {
      * Constructor.
      *
      * @param source_management_access $access Access service for source management checks.
+     * @param embedding_model_resolver $modelresolver Resolver of the embedding model of the current user.
      */
     public function __construct(
         /** @var source_management_access Access service for source management checks. */
         private readonly source_management_access $access,
+        /** @var embedding_model_resolver Resolver of the embedding model of the current user. */
+        private readonly embedding_model_resolver $modelresolver,
     ) {
     }
 
     /**
      * Switch indexing on or off for one source, enforcing management access.
+     *
+     * Switching indexing on while it is already on adds or restarts the index for the embedding model of the current user.
      *
      * @param int $sourceid The source record id.
      * @param bool $allowindex Whether indexing should be switched on.
@@ -66,65 +72,127 @@ class index_service {
     }
 
     /**
-     * Queue an indexing task for one source.
+     * Queue an indexing task for one source with the embedding model of the current user.
      *
      * A source not bound to a vector store yet is bound to the current primary vector store, all its vectors
-     * are stored there.
+     * are stored there. Indexes of other embedding models are kept.
      *
      * @param source $source The source to index.
      * @return index_state The resulting state.
+     * @throws \invalid_parameter_exception If the source is disabled.
+     * @throws \moodle_exception If the current user has no embedding model.
      */
     public function start(source $source): index_state {
-        global $USER;
+        global $DB, $USER;
 
         if (!$source->get_enabled()) {
             throw new \invalid_parameter_exception('Source must be enabled before indexing can be started.');
+        }
+        $model = $this->modelresolver->get_current_model();
+        if ($model === null) {
+            throw new \moodle_exception('error_noembeddingmodel', 'local_ai_content');
         }
 
         if (!$source->get_vecstoreid()) {
             $source->set_vecstoreid(\core\di::get(vecstore_factory::class)->get_primary_instance()->get_id());
         }
 
+        // The task must not see the index before it is bound to the task.
+        $transaction = $DB->start_delegated_transaction();
+        $source->set_allowindex(true);
+        $source->store();
+
         $task = new index_source_adhoc();
-        $task->set_custom_data(['sourceid' => $source->get_id()]);
+        $task->set_custom_data(['sourceid' => $source->get_id(), 'embeddingmodel' => $model]);
         $task->set_userid((int) $USER->id);
         $taskid = \core\task\manager::queue_adhoc_task($task);
-
         $task->set_id($taskid);
         $task->initialise_stored_progress();
 
-        $source->set_allowindex(true);
-        $source->set_indextaskid($taskid);
-        $source->set_indexstatus(source::INDEXSTATUS_QUEUED);
-        $source->set_indexerror(null);
-        $source->set_indexdebuginfo(null);
-        $source->store();
+        $index = model_index::get($source->get_id(), $model) ?? model_index::create($source->get_id(), $model);
+        $index->set_status(model_index::STATUS_QUEUED);
+        $index->set_taskid($taskid);
+        $index->set_error(null);
+        $index->set_debuginfo(null);
+        $index->set_usermodified((int) $USER->id);
+        $index->store();
+        $transaction->allow_commit();
 
-        return index_state::from_source($source);
+        return $this->get_state($source);
     }
 
     /**
      * Remove all vectors of one source from its vector store and reset its indexing state.
      *
-     * Detaching the task id makes any queued indexing task for this source a no-op. The source is unbound from its
+     * Deleting the indexes makes any queued indexing task for this source a no-op. The source is unbound from its
      * vector store, so indexing it again uses the then primary vector store.
      *
      * @param source $source The source to stop indexing for.
      * @return index_state The resulting state.
      */
     public function stop(source $source): index_state {
-        $this->delete_embeddings($source);
+        global $DB;
+
+        $this->delete_embeddings($source, null);
+        $DB->delete_records('local_ai_content_index', ['sourceid' => $source->get_id()]);
 
         $source->set_vecstoreid(null);
         $source->set_allowindex(false);
-        $source->set_indexstatus(source::INDEXSTATUS_IDLE);
-        $source->set_indextaskid(null);
-        $source->set_indexerror(null);
-        $source->set_indexdebuginfo(null);
-        $source->set_lastindexed(0);
         $source->store();
 
-        return index_state::from_source($source);
+        return $this->get_state($source);
+    }
+
+    /**
+     * Re-index a source after its content has changed.
+     *
+     * The current user can only re-index with their own embedding model. Indexes of other embedding models are outdated
+     * now and get deleted, they have to be created again by users with these embedding models.
+     *
+     * @param source $source The changed source.
+     * @return index_state The resulting state.
+     */
+    public function reindex_changed_source(source $source): index_state {
+        global $DB;
+
+        $currentmodel = $this->modelresolver->get_current_model();
+        foreach (model_index::get_for_sources([$source->get_id()])[$source->get_id()] ?? [] as $model => $index) {
+            if ($model === $currentmodel) {
+                continue;
+            }
+            $this->delete_embeddings($source, $model);
+            $DB->delete_records('local_ai_content_index', ['id' => $index->get_id()]);
+        }
+
+        return $this->start($source);
+    }
+
+    /**
+     * Return the indexing state of one source.
+     *
+     * @param source $source The source.
+     * @return index_state The state.
+     */
+    public function get_state(source $source): index_state {
+        return $this->get_states([$source])[$source->get_id()];
+    }
+
+    /**
+     * Return the indexing states of the given sources.
+     *
+     * @param source[] $sources The sources.
+     * @return index_state[] The states indexed by source id.
+     */
+    public function get_states(array $sources): array {
+        $sourceids = array_map(static fn(source $source): int => $source->get_id(), $sources);
+        $indexes = model_index::get_for_sources($sourceids);
+        $currentmodel = $this->modelresolver->get_current_model();
+
+        $states = [];
+        foreach ($sources as $source) {
+            $states[$source->get_id()] = index_state::from_source($source, $indexes[$source->get_id()] ?? [], $currentmodel);
+        }
+        return $states;
     }
 
     /**
@@ -136,18 +204,16 @@ class index_service {
      * @return array[] API representations of the states.
      */
     public function get_states_for_contexts(array $contextids): array {
-        $states = [];
-        foreach (source::get_records_by_contextids($contextids) as $source) {
-            if (!in_array($source->get_sourcetype(), [source::TYPE_MODULE, source::TYPE_DOCUMENT], true)) {
-                continue;
-            }
-            if (!$source->get_enabled()) {
-                continue;
-            }
-            $states[] = index_state::from_source($source)->to_array();
-        }
+        $sources = array_filter(
+            source::get_records_by_contextids($contextids),
+            static fn(source $source): bool => $source->get_enabled()
+                && in_array($source->get_sourcetype(), [source::TYPE_MODULE, source::TYPE_DOCUMENT], true)
+        );
 
-        return $states;
+        return array_values(array_map(
+            static fn(index_state $state): array => $state->to_array(),
+            $this->get_states($sources)
+        ));
     }
 
     /**
@@ -201,12 +267,14 @@ class index_service {
         }
 
         $now = \core\di::get(\core\clock::class)->time();
+        // Deleting the indexes makes queued indexing tasks no-ops.
+        $DB->delete_records_select('local_ai_content_index',
+            "sourceid IN (SELECT id FROM {local_ai_content_sources} WHERE {$select})", $params);
         $DB->execute(
             "UPDATE {local_ai_content_sources}
-                SET vecstoreid = NULL, allowindex = 0, indexstatus = :idle, indextaskid = NULL, indexerror = NULL,
-                    indexdebuginfo = NULL, lastindexed = 0, timemodified = :now
+                SET vecstoreid = NULL, allowindex = 0, timemodified = :now
               WHERE {$select}",
-            $params + ['idle' => source::INDEXSTATUS_IDLE, 'now' => $now],
+            $params + ['now' => $now],
         );
 
         if ($disableexternalsources) {
@@ -282,28 +350,31 @@ class index_service {
                 \core\task\manager::queue_adhoc_task(delete_vectors_adhoc::instance($vecstoreid, $chunk));
             }
         }
-        $DB->delete_records_select('local_ai_content_ctx_sources',
-            "sourceid IN (SELECT id FROM {local_ai_content_sources} WHERE {$select})", $params);
+        $sourcesubselect = "sourceid IN (SELECT id FROM {local_ai_content_sources} WHERE {$select})";
+        $DB->delete_records_select('local_ai_content_ctx_sources', $sourcesubselect, $params);
+        $DB->delete_records_select('local_ai_content_index', $sourcesubselect, $params);
         $DB->delete_records_select('local_ai_content_sources', $select, $params);
         $transaction->allow_commit();
     }
 
     /**
-     * Delete all vectors of one source from the vector store it is bound to.
+     * Delete the vectors of one source from the vector store it is bound to.
      *
      * Only needs the vector store, not the embedding purpose, so it also works if no embedding tool is configured.
-     * Deleting is idempotent: if the source is not bound to a vector store or its collection or vectors are already
+     * Deleting is idempotent: if the source is not bound to a vector store or its collections or vectors are already
      * gone, there is nothing to delete. A deleted vector store instance unbinds its sources beforehand.
      *
      * @param source $source The source whose vectors are deleted.
+     * @param ?string $model The embedding model whose vectors are deleted, null for the vectors of all embedding models.
      */
-    private function delete_embeddings(source $source): void {
+    private function delete_embeddings(source $source, ?string $model): void {
         $vecstoreid = $source->get_vecstoreid();
         if (!$vecstoreid) {
             return;
         }
 
-        $this->delete_from_vecstore(\core\di::get(vecstore_factory::class)->get_vecstore_by_id($vecstoreid), [$source->get_id()]);
+        $this->delete_from_vecstore(\core\di::get(vecstore_factory::class)->get_vecstore_by_id($vecstoreid), [$source->get_id()],
+            $model);
     }
 
     /**
@@ -311,13 +382,14 @@ class index_service {
      *
      * @param base_vecstore $vecstore The vector store.
      * @param int[] $sourceids The source ids.
+     * @param ?string $model The embedding model whose vectors are deleted, null for the vectors of all embedding models.
      * @throws \moodle_exception If the vector store reports an error.
      */
-    private function delete_from_vecstore(base_vecstore $vecstore, array $sourceids): void {
+    private function delete_from_vecstore(base_vecstore $vecstore, array $sourceids, ?string $model = null): void {
         if (empty($sourceids)) {
             return;
         }
-        $response = $vecstore->delete_embeddings(...$sourceids);
+        $response = $vecstore->delete_embeddings($model, ...$sourceids);
         if ($response->get_code() !== 200) {
             throw new \moodle_exception('error_deleteembeddingsfailed', 'local_ai_content', '',
                 $response->get_errormessage(), $response->get_debuginfo());

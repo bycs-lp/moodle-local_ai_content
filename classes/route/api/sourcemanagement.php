@@ -424,6 +424,7 @@ class sourcemanagement {
         foreach ($modulesources as $modulesource) {
             $sourcebycmid[$modulesource->get_cmid()] = $modulesource;
         }
+        $states = \core\di::get(index_service::class)->get_states($modulesources);
 
         $rows = [];
         foreach ($cms as $cm) {
@@ -442,7 +443,7 @@ class sourcemanagement {
                 'sourceid' => $modulesource ? $modulesource->get_id() : 0,
                 'enabled' => $modulesource ? $modulesource->get_enabled() : false,
                 'indexState' => $modulesource
-                    ? index_state::from_source($modulesource)->to_array()
+                    ? $states[$modulesource->get_id()]->to_array()
                     : index_state::unmanaged()->to_array(),
             ];
         }
@@ -459,19 +460,20 @@ class sourcemanagement {
      * @return array
      */
     private static function get_document_rows(int $contextid, bool $canedit): array {
-        $sources = source::get_records_by_contextids([$contextid]);
+        $sources = array_filter(
+            source::get_records_by_contextids([$contextid]),
+            static fn(source $source): bool => $source->get_sourcetype() === source::TYPE_DOCUMENT
+        );
+        $states = \core\di::get(index_service::class)->get_states($sources);
         $rows = [];
         foreach ($sources as $documentsource) {
-            if ($documentsource->get_sourcetype() !== source::TYPE_DOCUMENT) {
-                continue;
-            }
             $rows[] = [
                 'id' => $documentsource->get_id(),
                 'name' => (string)$documentsource->get_name(),
                 'description' => (string)$documentsource->get_description(),
                 'content' => (string)$documentsource->get_content(),
                 'enabled' => $documentsource->get_enabled(),
-                'indexState' => index_state::from_source($documentsource)->to_array(),
+                'indexState' => $states[$documentsource->get_id()]->to_array(),
                 'canedit' => $canedit,
             ];
         }
@@ -555,8 +557,6 @@ class sourcemanagement {
         $documentsource->set_content($content);
         $documentsource->set_enabled(true);
         $documentsource->set_allowindex(false);
-        $documentsource->set_indexstatus(source::INDEXSTATUS_IDLE);
-        $documentsource->set_indextaskid(null);
         $documentsource->store();
         return $documentsource;
     }
@@ -590,7 +590,7 @@ class sourcemanagement {
         $documentsource->store();
 
         if ($contentchanged && $documentsource->get_allowindex()) {
-            $indexservice->start($documentsource);
+            $indexservice->reindex_changed_source($documentsource);
         }
     }
 
@@ -705,8 +705,6 @@ class sourcemanagement {
             $modulesource->set_name((string)$cm->name);
             $modulesource->set_enabled(false);
             $modulesource->set_allowindex(false);
-            $modulesource->set_indexstatus(source::INDEXSTATUS_IDLE);
-            $modulesource->set_indextaskid(null);
             $modulesource->store();
             return $modulesource;
         }
@@ -748,7 +746,7 @@ class sourcemanagement {
             'description' => (string)$documentsource->get_description(),
             'content' => (string)$documentsource->get_content(),
             'enabled' => (bool)$documentsource->get_enabled(),
-            'indexState' => index_state::from_source($documentsource)->to_array(),
+            'indexState' => \core\di::get(index_service::class)->get_state($documentsource)->to_array(),
         ];
     }
 

@@ -20,6 +20,7 @@ use local_ai_content\context_source;
 use local_ai_content\source;
 use local_ai_manager\base_vecstore;
 use local_ai_manager\local\vecstore_factory;
+use local_ai_manager\local\vecstore_response;
 use local_ai_manager\manager;
 
 /**
@@ -28,6 +29,9 @@ use local_ai_manager\manager;
  * Given a user prompt, this class embeds the user prompt using the "embedding" purpose, performs a similarity search
  * against the relevant vector store(s) and assembles the matching content into a structured result object that can be injected
  * into the system prompt of a chat request. The vector store returns the matches as {@see enriched_vector} objects.
+ *
+ * Vectors of different embedding models cannot be compared, so only sources indexed with the embedding model of the requesting
+ * user can be searched. The other selected sources are reported as unavailable in the result.
  *
  * Retrieval distinguishes two kinds of sources:
  *  - Moodle sources (module/document) are filtered by their source id (the user pre-selection), after the
@@ -48,9 +52,11 @@ class rag_manager {
      * Constructor.
      *
      * @param source_selection_utils $sourceselectionutils Service deciding which sources are selectable.
+     * @param embedding_model_resolver $modelresolver Resolver of the embedding model of the current user.
      */
     public function __construct(
         private readonly source_selection_utils $sourceselectionutils,
+        private readonly embedding_model_resolver $modelresolver,
     ) {
     }
 
@@ -59,7 +65,8 @@ class rag_manager {
      *
      * Embeds the user prompt via the "embedding" purpose, performs vector searches restricted to the given source
      * IDs and assembles the matching chunks into a single string. Only source IDs stored as selection for the
-     * context are used, and of those only selectable sources the user may access.
+     * context are used, and of those only selectable sources the user may access. Selected sources which are not indexed
+     * with the embedding model of the user are reported as unavailable in the result.
      *
      * @param string $userprompt the user prompt to embed and search for
      * @param int[] $sourceids list of local_ai_content_sources record IDs to filter by (client input)
@@ -69,7 +76,7 @@ class rag_manager {
      * @param int $topk the maximum number of chunks to include in the assembled RAG content
      * @return rag_result the assembled RAG result
      * @throws \moodle_exception if the selected sources cannot be searched, for example because the embedding request or a
-     *  vector store query failed or the embedding model does not fit a vector store of the selected sources
+     *  vector store query failed
      */
     public function get_rag_content(
         string $userprompt,
@@ -101,6 +108,13 @@ class rag_manager {
         $sources = array_intersect_key($sources, array_flip($accessiblesourceids));
         if (empty($sources)) {
             return new rag_result('');
+        }
+
+        // Only sources indexed with the embedding model of the user can be searched.
+        $model = $this->modelresolver->get_current_model();
+        [$sources, $unavailablesources] = $this->split_by_usability($sources, $model);
+        if (empty($sources)) {
+            return new rag_result('', [], $unavailablesources);
         }
 
         // Embed the user prompt using the embedding purpose.
@@ -136,12 +150,12 @@ class rag_manager {
             if ($vecstore === null) {
                 continue;
             }
-            $vecstore->require_matching_dimensions($embedding);
             $filters = ['sourceid' => $groupsourceids];
-            $matches = array_merge($matches, $this->query_matches($vecstore, $embedding, $topk, $filters));
+            $queryresponse = $vecstore->query($model, $embedding, $topk, $filters);
+            $matches = array_merge($matches, $this->get_matches($queryresponse));
         }
 
-        // External sources: each queried with its own stored payload filter.
+        // External sources: each queried in its own collection with its own stored payload filter.
         foreach ($sources as $source) {
             if ($source->get_sourcetype() !== source::TYPE_EXTERNAL) {
                 continue;
@@ -150,17 +164,17 @@ class rag_manager {
             if ($vecstore === null) {
                 continue;
             }
-            $vecstore->require_matching_dimensions($embedding);
             $filters = [];
             $externalfilter = $source->get_externalfilter();
             if (!empty($externalfilter)) {
                 $filters = json_decode($externalfilter, true, flags: JSON_THROW_ON_ERROR);
             }
-            $matches = array_merge($matches, $this->query_matches($vecstore, $embedding, $topk, $filters));
+            $queryresponse = $vecstore->query_collection((string) $source->get_externalcollection(), $embedding, $topk, $filters);
+            $matches = array_merge($matches, $this->get_matches($queryresponse));
         }
 
         if (empty($matches)) {
-            return new rag_result('');
+            return new rag_result('', [], $unavailablesources);
         }
 
         // Keep backend relevance order and cap to topk chunks.
@@ -190,10 +204,50 @@ class rag_manager {
             }
         }
         if (empty($chunks)) {
-            return new rag_result('');
+            return new rag_result('', [], $unavailablesources);
         }
 
-        return new rag_result(implode("\n\n---\n\n", $chunks), array_values($references));
+        return new rag_result(implode("\n\n---\n\n", $chunks), array_values($references), $unavailablesources);
+    }
+
+    /**
+     * Splits the selected sources into the ones searchable with the embedding model of the user and the unavailable ones.
+     *
+     * @param source[] $sources the selected sources indexed by record id
+     * @param ?string $model the embedding model of the user, null if the user has none
+     * @return array{0: source[], 1: array[]} the searchable sources indexed by record id and the unavailable sources in the
+     *  format of {@see rag_result::get_unavailable_sources()}
+     */
+    protected function split_by_usability(array $sources, ?string $model): array {
+        $indexes = model_index::get_for_sources(array_keys($sources));
+        $usable = [];
+        $unavailable = [];
+        foreach ($sources as $sourceid => $source) {
+            $reason = rag_result::UNAVAILABLE_OTHERMODEL;
+            if ($source->get_sourcetype() === source::TYPE_EXTERNAL) {
+                if ($model !== null && $source->get_externalmodel() === $model) {
+                    $reason = null;
+                }
+            } else {
+                $index = $model === null ? null : ($indexes[$sourceid][$model] ?? null);
+                if ($index?->get_status() === model_index::STATUS_INDEXED) {
+                    $reason = null;
+                } else if ($index?->is_active()) {
+                    $reason = rag_result::UNAVAILABLE_INDEXING;
+                }
+            }
+
+            if ($reason === null) {
+                $usable[$sourceid] = $source;
+                continue;
+            }
+            $unavailable[] = [
+                'sourceid' => $source->get_id(),
+                'name' => $source->get_effective_citation()->get_title(),
+                'reason' => $reason,
+            ];
+        }
+        return [$usable, $unavailable];
     }
 
     /**
@@ -266,16 +320,13 @@ class rag_manager {
     }
 
     /**
-     * Runs a similarity search and returns the matched enriched vectors.
+     * Returns the matched enriched vectors of a similarity search.
      *
-     * @param base_vecstore $vecstore The vector store driver to query.
-     * @param array $embedding The query embedding vector.
-     * @param int $topk The maximum number of neighbours to return.
-     * @param array $filters The payload filters to apply.
+     * @param vecstore_response $queryresponse The response of the similarity search.
      * @return enriched_vector[] The matched enriched vectors.
+     * @throws \moodle_exception If the similarity search failed.
      */
-    protected function query_matches(base_vecstore $vecstore, array $embedding, int $topk, array $filters): array {
-        $queryresponse = $vecstore->query($embedding, $topk, $filters);
+    protected function get_matches(vecstore_response $queryresponse): array {
         if ($queryresponse->get_code() !== 200) {
             throw new \moodle_exception(
                 'error_ragqueryfailed',

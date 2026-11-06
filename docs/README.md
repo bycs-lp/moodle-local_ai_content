@@ -7,6 +7,7 @@ Living project documentation for RAG (retrieval augmented generation) across the
 |---|---|
 | [architecture.md](architecture.md) | Components, data model, flows, endpoints, dependencies |
 | [usage.md](usage.md) | Setup and usage per role, developer tools |
+| [concept-multi-model-index.md](concept-multi-model-index.md) | Concept: parallel indexes per embedding model (implemented) |
 
 ## Status
 - Branch `MBS-10900-Implement_RAG` in all three plugins, analysis of 2026-10-16.

@@ -31,17 +31,12 @@
               <FIELD NAME="cmid" TYPE="int" LENGTH="11" NOTNULL="false" SEQUENCE="false" COMMENT="Related course module id for module sources"/>
               <FIELD NAME="content" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Inline plain-text content for document sources"/>
               <FIELD NAME="externalfilter" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON filter identifying the vectors of an external source inside its vector store instance"/>
+              <FIELD NAME="externalcollection" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Backend name of the collection holding the vectors of an external source"/>
+              <FIELD NAME="externalmodel" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Name of the embedding model which created the vectors of an external source"/>
               <FIELD NAME="citation" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON source-level citation metadata (title, url, author, publisher, date, license, locatortype)"/>
               <FIELD NAME="vecstoreid" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="The local_ai_manager_vecstore instance holding the vectors of this source"/>
-              <FIELD NAME="embeddingmodel" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Name of the embedding model used to index this source"/>
-              <FIELD NAME="contenthash" TYPE="char" LENGTH="64" NOTNULL="false" SEQUENCE="false" COMMENT="SHA-256 of the last indexed content, used for change detection"/>
               <FIELD NAME="enabled" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether this source participates in RAG retrieval"/>
               <FIELD NAME="allowindex" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Is the content allowed to be indexed"/>
-              <FIELD NAME="lastindexed" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="The timestamp of the last indexing operation for this source"/>
-              <FIELD NAME="indexstatus" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="idle" SEQUENCE="false" COMMENT="Current indexing status (idle, queued, running, indexed, failed)"/>
-              <FIELD NAME="indextaskid" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Last queued adhoc task ID used to index this source"/>
-              <FIELD NAME="indexerror" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Error message of the last failed indexing run"/>
-              <FIELD NAME="indexdebuginfo" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Technical details of the last failed indexing run, only filled while developer debugging is enabled"/>
               <FIELD NAME="usermodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
               <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
               <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
@@ -55,6 +50,30 @@
               <INDEX NAME="contextid" UNIQUE="false" FIELDS="contextid"/>
               <INDEX NAME="cmid" UNIQUE="false" FIELDS="cmid"/>
               <INDEX NAME="sourcetype" UNIQUE="false" FIELDS="sourcetype"/>
+          </INDEXES>
+      </TABLE>
+      <TABLE NAME="local_ai_content_index" COMMENT="Index of a source for one embedding model, the vectors live in the collection of this model">
+          <FIELDS>
+              <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+              <FIELD NAME="sourceid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Foreign key to local_ai_content_sources.id"/>
+              <FIELD NAME="embeddingmodel" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Name of the embedding model the source is indexed with"/>
+              <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" SEQUENCE="false" COMMENT="Indexing status (queued, running, indexed, failed)"/>
+              <FIELD NAME="taskid" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Last queued adhoc task ID used to index the source with this model"/>
+              <FIELD NAME="error" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Error message of the last failed indexing run"/>
+              <FIELD NAME="debuginfo" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Technical details of the last failed indexing run, only filled while developer debugging is enabled"/>
+              <FIELD NAME="contenthash" TYPE="char" LENGTH="64" NOTNULL="false" SEQUENCE="false" COMMENT="SHA-256 of the last indexed content, used for change detection"/>
+              <FIELD NAME="lastindexed" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="The timestamp of the last successful indexing run"/>
+              <FIELD NAME="usermodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="The user who started the last indexing run and pays for its embedding requests"/>
+              <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+              <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+          </FIELDS>
+          <KEYS>
+              <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+              <KEY NAME="sourceid" TYPE="foreign" FIELDS="sourceid" REFTABLE="local_ai_content_sources" REFFIELDS="id"/>
+              <KEY NAME="usermodified" TYPE="foreign" FIELDS="usermodified" REFTABLE="user" REFFIELDS="id"/>
+          </KEYS>
+          <INDEXES>
+              <INDEX NAME="sourceid_embeddingmodel" UNIQUE="true" FIELDS="sourceid, embeddingmodel"/>
           </INDEXES>
       </TABLE>
       <TABLE NAME="local_ai_content_ctx_sources" COMMENT="Junction table mapping which sources are activated for RAG in a given context">

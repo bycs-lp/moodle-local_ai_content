@@ -342,8 +342,9 @@ class source_selection_utils {
     /**
      * Whether a source may be offered in the source selection.
      *
-     * Only enabled sources with retrievable vectors are offered: Moodle sources (module/document) once their indexing
-     * has finished, external sources always as their vectors are managed outside of Moodle.
+     * Only enabled sources with retrievable vectors are offered: Moodle sources (module/document) once they have been
+     * indexed with at least one embedding model, external sources always as their vectors are managed outside of Moodle.
+     * Whether a source can be searched with the embedding model of a user is only decided on retrieval.
      *
      * @param source $source The source.
      * @return bool True if the source is selectable.
@@ -353,7 +354,7 @@ class source_selection_utils {
             return false;
         }
         return $source->get_sourcetype() === source::TYPE_EXTERNAL
-            || $source->get_indexstatus() === source::INDEXSTATUS_INDEXED;
+            || model_index::is_source_indexed($source->get_id());
     }
 
     /**

@@ -32,7 +32,18 @@ export type MoodleModal = {
 
 /** The parts of the AMD module core/modal_cancel used here. */
 type ModalCancelModule = {
-    create: (config: {title: string; body: string; large: boolean; removeOnClose: boolean}) => Promise<MoodleModal>;
+    create: (config: {
+        title: string;
+        body: string;
+        large: boolean;
+        removeOnClose: boolean;
+        buttons: {cancel: string};
+    }) => Promise<MoodleModal>;
+};
+
+/** The parts of the AMD module core/str used here. */
+type StrModule = {
+    getString: (key: string, component: string) => Promise<string>;
 };
 
 /** The parts of the AMD module core/modal_events used here. */
@@ -52,12 +63,15 @@ export const openSourceSelectorModal = async(
 ): Promise<{modal: MoodleModal; bodyRoot: HTMLElement}> => {
     const modalCancel = await requireAsync<ModalCancelModule>('core/modal_cancel');
     const modalEvents = await requireAsync<ModalEventsModule>('core/modal_events');
+    const str = await requireAsync<StrModule>('core/str');
 
+    // Changes are saved immediately, so the footer button only closes the modal.
     const modal = await modalCancel.create({
         title: options.title,
         body: '',
         large: true,
         removeOnClose: true,
+        buttons: {cancel: await str.getString('closebuttontitle', 'core')},
     });
 
     const root = modal.getRoot();

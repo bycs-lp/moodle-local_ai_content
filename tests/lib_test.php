@@ -25,11 +25,10 @@ namespace local_ai_content;
  * @author     Andreas Wagner
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
+#[\PHPUnit\Framework\Attributes\CoversFunction('local_ai_content_after_file_deleted')]
 final class lib_test extends \advanced_testcase {
     /**
      * Test that cache entries are deleted only after the last file with a content hash is deleted.
-     *
-     * @covers \local_ai_content_after_file_deleted
      */
     public function test_local_ai_content_after_file_deleted(): void {
         global $DB;

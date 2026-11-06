@@ -52,57 +52,17 @@ class indexer_manager {
     }
 
     /**
-     * Index all sources associated with this context that are allowed to be indexed.
+     * Indexes one source with the embedding model of an index.
      *
-     * Module sources are indexed for the course the context belongs to; document sources attached directly to
-     * this context are indexed from their stored content.
-     */
-    public function index(): void {
-        // Index module sources if the context belongs to a course.
-        $coursecontext = $this->context->get_course_context(false);
-        if ($coursecontext) {
-            $course = get_course($coursecontext->instanceid);
-            [$rawcms, $sources] = source::get_module_sources_for_course($course);
-
-            foreach ($sources as $source) {
-                if (!$source->get_allowindex()) {
-                    continue;
-                }
-                $cmid = $source->get_cmid();
-                $rawcm = $rawcms[$cmid];
-                $cm = get_fast_modinfo($course)->get_cm($rawcm->cm);
-                $extractor = $this->get_cm_content_extractor($rawcm->mod, $cm);
-                if (!$extractor) {
-                    continue;
-                }
-                $this->index_single_source($source, $extractor);
-            }
-        }
-
-        // Index document sources attached directly to this context.
-        $documentsources = source::get_records_by_contextids([$this->context->id]);
-        foreach ($documentsources as $source) {
-            if ($source->get_sourcetype() !== source::TYPE_DOCUMENT) {
-                continue;
-            }
-            if (!$source->get_allowindex()) {
-                continue;
-            }
-            $this->index_single_source($source);
-        }
-    }
-
-    /**
-     * Indexes one source record.
-     *
-     * Every case in which nothing could be indexed is an error, so a source is never reported as indexed without
-     * having vectors.
+     * The embedding requests are made with the AI manager passed to the constructor, which has to use the embedding model
+     * of the index. Every case in which nothing could be indexed is an error, so a source is never reported as indexed
+     * without having vectors.
      *
      * @param source $source The source to index.
-     * @param ?cm_content_extractor $extractor Optional pre-resolved module content extractor.
+     * @param model_index $index The index of the source for the embedding model, updated with the indexing metadata.
      * @throws \moodle_exception If the source cannot be indexed.
      */
-    public function index_single_source(source $source, ?cm_content_extractor $extractor = null): void {
+    public function index_single_source(source $source, model_index $index): void {
         if (!$source->get_allowindex()) {
             return;
         }
@@ -114,11 +74,11 @@ class indexer_manager {
                 throw new \moodle_exception('indexingerror_sourcenotfound', 'local_ai_content');
             }
             $cm = get_fast_modinfo($rawcm->course)->get_cm($cmid);
-            $extractor = $extractor ?? $this->get_cm_content_extractor($cm->modname, $cm);
+            $extractor = $this->get_cm_content_extractor($cm->modname, $cm);
             if (!$extractor) {
                 throw new \moodle_exception('indexingerror_notsupported', 'local_ai_content');
             }
-            $this->index_source($source, $extractor->extract_as_chunks($cm));
+            $this->index_source($source, $index, $extractor->extract_as_chunks($cm));
             return;
         }
 
@@ -126,19 +86,20 @@ class indexer_manager {
             throw new \moodle_exception('indexingerror_notsupported', 'local_ai_content');
         }
 
-        $this->index_source($source, [(string) $source->get_content()]);
+        $this->index_source($source, $index, [(string) $source->get_content()]);
     }
 
     /**
-     * Embeds the given content chunks of a source and stores them in the source's vector store instance.
+     * Embeds the given content chunks of a source and stores them in the collection of the embedding model.
      *
-     * Records the used embedding model, the content hash and the indexing timestamp on the source record.
+     * Records the content hash and the indexing timestamp on the index record.
      *
      * @param source $source The source to index.
+     * @param model_index $index The index of the source for the embedding model.
      * @param string[] $chunks The content chunks to embed and store.
      * @throws \moodle_exception If there is no content to index or an embedding request fails.
      */
-    protected function index_source(source $source, array $chunks): void {
+    protected function index_source(source $source, model_index $index, array $chunks): void {
         $chunks = array_values(array_filter(array_map('trim', $chunks), static fn(string $c): bool => $c !== ''));
         if (empty($chunks)) {
             throw new \moodle_exception('indexingerror_nocontent', 'local_ai_content');
@@ -149,7 +110,6 @@ class indexer_manager {
         if ($vecstore === null) {
             throw new \moodle_exception('error_novecstore', 'local_ai_content');
         }
-        $embeddingmodel = '';
         $embeddedchunks = [];
         $processedchunks = [];
         $pendingchunks = array_values($chunks);
@@ -190,12 +150,6 @@ class indexer_manager {
                 throw $exception;
             }
 
-            if (empty($embeddedchunks)) {
-                // Checking the first vector is enough and avoids embedding all chunks with a model not fitting the vector store.
-                $vecstore->require_matching_dimensions(json_decode($vectorrequest->get_content(), true, flags: JSON_THROW_ON_ERROR));
-                $embeddingmodel = $vectorrequest->get_modelinfo();
-            }
-
             $processedchunks[] = $chunk;
             $embeddedchunks[] = [
                 'vector' => $vectorrequest->get_content(),
@@ -217,18 +171,17 @@ class indexer_manager {
             $chunkcount++;
         }
 
-        $response = $vecstore->insert_embeddings($enrichedvectors);
+        $response = $vecstore->insert_embeddings($index->get_embeddingmodel(), $enrichedvectors);
         if ($response->get_code() !== 200) {
             throw new \moodle_exception('error_storeembeddingsfailed', 'local_ai_content', '',
                 $response->get_errormessage(), $response->get_debuginfo());
         }
 
-        // Persist indexing metadata on the source record.
+        // Persist indexing metadata on the index record.
         $clock = \core\di::get(\core\clock::class);
-        $source->set_embeddingmodel($embeddingmodel);
-        $source->set_contenthash(hash('sha256', implode("\n", $processedchunks)));
-        $source->set_lastindexed($clock->time());
-        $source->store();
+        $index->set_contenthash(hash('sha256', implode("\n", $processedchunks)));
+        $index->set_lastindexed($clock->time());
+        $index->store();
     }
 
     /**
