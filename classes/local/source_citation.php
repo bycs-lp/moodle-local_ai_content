@@ -24,8 +24,9 @@ namespace local_ai_content\local;
  *    URL, author, publisher, publication date, license). It is stored once as JSON on the
  *    local_ai_content_sources record and can be edited without re-indexing.
  *  - Vector-level: per-chunk information that may differ between the vectors of a single source (the exact
- *    locator such as a page number or timestamp, and an optional per-chunk deep link). These are carried on the
- *    individual {@see enriched_vector} and stored in the vector store payload.
+ *    locator such as a page number or timestamp, and an optional per-chunk deep link). These are carried in the
+ *    metadata of the individual {@see \local_ai_manager\local\vector_record} (see {@see rag_manager::PAYLOAD_LOCATOR}
+ *    and {@see rag_manager::PAYLOAD_URL}) and stored in the vector store payload.
  *
  * The {@see self::$locatortype} defines how a vector-level locator string of the same source is to be
  * interpreted (e.g. as a page number or a media timestamp).

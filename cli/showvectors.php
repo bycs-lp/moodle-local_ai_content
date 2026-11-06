@@ -51,8 +51,9 @@ foreach ($vecstore->get_collections() as $model => $collection) {
         $dimensions = count(json_decode($vector->get_vector(), true, flags: JSON_THROW_ON_ERROR));
         cli_writeln('----------------------------------------');
         cli_writeln('Vector #' . ($index + 1));
-        cli_writeln('  Source id  : ' . $vector->get_sourceid());
-        cli_writeln('  Chunk      : ' . ($vector->get_chunk()) . ' / ' . $vector->get_maxchunks());
+        $metadata = $vector->get_metadata();
+        cli_writeln('  Source id  : ' . $vector->get_documentid());
+        cli_writeln('  Chunk      : ' . ($metadata['chunk'] ?? '-') . ' / ' . ($metadata['maxchunks'] ?? '-'));
         cli_writeln('  Dimensions : ' . $dimensions);
         cli_writeln('  Content    : ' . shorten_text($vector->get_content(), 200));
     }

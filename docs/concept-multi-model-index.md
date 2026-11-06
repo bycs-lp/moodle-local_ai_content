@@ -54,10 +54,10 @@ instance, one collection per model. External sources get `externalcollection` an
 
 ## Vecstore API (`base_vecstore`)
 - `insert_embeddings(string $model, array $embeddings)`: creates and registers the model collection if missing,
-  replaces the vectors of the affected `sourceid`s in this collection only.
+  replaces the vectors of the affected `documentid`s (= source ids) in this collection only.
 - `query(string $model, array $vector, int $topk, array $filters)`: empty result if the model has no collection yet.
 - `query_collection(string $collection, …)`: for external collections.
-- `delete_embeddings(?string $model, int ...$sourceids)`: `null` = all collections of the instance.
+- `delete_embeddings(?string $model, int ...$documentids)`: `null` = all collections of the instance.
 - `drop_collection(string $model)`: drops the collection of a model.
 - Subplugins (Qdrant, Postgres) only receive the collection name.
 
@@ -75,9 +75,9 @@ instance, one collection per model. External sources get `externalcollection` an
 1. Requested sources ∩ context selection ∩ access (unchanged).
 2. Determine the model of the requesting user; sources without an `indexed` index for it (external: other
    `externalmodel`) are skipped and reported as unavailable (`indexing` or `othermodel`).
-3. One query embedding with the user's own tool; per vecstore query the collection of this model with `sourceid` filter.
+3. One query embedding with the user's own tool; per vecstore query the collection of this model with `documentid` filter.
 4. If no source is usable, the request continues without RAG. The notice is shown at the end of the answer after the
-   source list (block_ai_chat, `ragresult.unavailableSources`).
+   source list (block_ai_chat, `contextdata.ragresult.unavailableSources`).
 
 `source_selection_utils::is_selectable()`: a source is selectable if it is enabled and indexed with at least one model.
 

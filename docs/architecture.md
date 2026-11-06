@@ -3,15 +3,16 @@
 ## 1. Overview
 
 ```
-block_ai_chat ──(prompt + sourceids)──▶ local_ai_manager: aipurpose_chat::format_prompt_text()
-   │  React source selector                       │ calls
-   │  (local_ai_content/source_selector)          ▼
-   │                                  local_ai_content: local\rag_manager
+block_ai_chat ──(prompt + sourceids)──▶ local_ai_manager: manager::perform_request()
+   │  React source selector                       │ dispatches hook\additional_prompt_context
+   │  (local_ai_content/source_selector,          ▼
+   │   only if local_ai_content is installed)  local_ai_content: local\rag_manager::add_rag_context()
    │                                     │ 1. embed prompt (aipurpose_embedding)
    │                                     │ 2. filter access (source_access)
    │                                     │ 3. query vecstore (base_vecstore::query)
+   │                                     │ 4. hook->add_context() / set_result_data('ragresult')
    ▼                                     ▼
-answer + source list ◀── ragresult in request_log.requestoptions
+answer + source list ◀── contextdata.ragresult in request_log.requestoptions
 
 local_ai_content (indexing): source → text → chunks → embeddings → base_vecstore::insert_embeddings()
 local_ai_manager (infrastructure): embedding purpose/tool, vecstore subplugins (aivecstore_qdrant, aivecstore_postgres)
@@ -19,7 +20,7 @@ local_ai_manager (infrastructure): embedding purpose/tool, vecstore subplugins (
 
 | Plugin | Responsibility |
 |---|---|
-| `local_ai_manager` | Infrastructure: embedding requests (purpose `embedding`, tool `openaiembedding`), vector databases (subplugin type `aivecstore`), tenant/primary vecstore, RAG hook-in in the chat purpose |
+| `local_ai_manager` | Infrastructure: embedding requests (purpose `embedding`, tool `openaiembedding`), vector databases (subplugin type `aivecstore`), tenant/primary vecstore, generic hook to add context to AI requests |
 | `local_ai_content` | Domain logic: manage sources, extract content, index, retrieve, citations, source selection (REST + React) |
 | `block_ai_chat` | UI: source selection in the chat header, sending `sourceids`, source list below the answer |
 
@@ -33,7 +34,9 @@ local_ai_manager (infrastructure): embedding purpose/tool, vecstore subplugins (
 - Implementations:
   - `qdrant`: REST via `core\http_client`, collection = Qdrant collection, search via `/points/search`.
   - `postgres`: external PostgreSQL with pgvector via `pg_connect`; the DSN is stored in field `apikey`; table `(id, embedding vector(N), payload jsonb)`.
-- Payload per vector (from `enriched_vector`): `content`, `sourceid`, `chunk`, `maxchunks`, optional `locator`, `url`.
+- Payload per vector (from `local\vector_record`): `content`, `documentid` (key chosen by the caller, used for replace/delete
+  and filters) plus the caller's metadata as flat keys. local_ai_content stores the source id as `documentid` and
+  `chunk`, `maxchunks` as metadata; `locator`, `url` are read from the metadata if present (external sources).
 - Table `local_ai_manager_vecstore`: `name`, `tenant`, `vecstore`, `isglobal`, `endpoint`, `apikey`, `useglobalapikey`,
   `collection` (prefix of the collection names), `distancemetric`, `timecreated`, `timemodified`.
 - One collection per embedding model and instance (`{collection}_{model slug}`), registered in `local_ai_manager_collection`
@@ -46,13 +49,13 @@ local_ai_manager (infrastructure): embedding purpose/tool, vecstore subplugins (
 |---|---|
 | `base_vecstore::is_available()` | Connection test |
 | `create_collection()` / `delete_collection()` | Create/delete collection/table (created automatically when missing, `with_existing_collection()`) |
-| `insert_embeddings(model, enriched_vector[])` | Creates the model collection if missing; replace: first deletes the vectors of the affected `sourceid`s in this collection, then stores |
+| `insert_embeddings(model, vector_record[])` | Creates the model collection if missing; replace: first deletes the vectors of the affected `documentid`s in this collection, then stores |
 | `query(model, vector, topk, filters)` | Similarity search in the model collection (empty if missing); filters: scalar = equality, array = IN |
 | `query_collection(collection, vector, topk, filters)` | Similarity search in a collection by backend name (external sources) |
-| `delete_embeddings(?model, int ...sourceids)` / `drop_collection(model)` / `get_all(collection)` | Delete vectors (`null` = all models) / drop a model collection / read all vectors (debugging) |
+| `delete_embeddings(?model, int ...documentids)` / `drop_collection(model)` / `get_all(collection)` | Delete vectors (`null` = all models) / drop a model collection / read all vectors (debugging) |
 | `vecstore_factory` | Load/create instances, `get_primary_vecstore()`, `set_primary()`, `delete_instance()` (dispatches hooks) |
 
-- Responses: `local\vecstore_response` (code, errormessage, debuginfo, optional `vecstore_query_response` with `enriched_vector[]`).
+- Responses: `local\vecstore_response` (code, errormessage, debuginfo, optional `vecstore_query_response` with `vector_record[]`).
 - Hooks (listeners in `local_ai_content`):
   - `hook\vecstore_usage` – before deletion: collect usage descriptions (number of sources).
   - `hook\before_vecstore_instance_deleted` – detach sources, optionally delete vectors, disable external sources.
@@ -67,12 +70,16 @@ local_ai_manager (infrastructure): embedding purpose/tool, vecstore subplugins (
   New: `text-embedding-3-small`, `-3-large`, `-ada-002`, `BAAI/bge-m3` (telli).
 - Call: `(new manager(embedding))->perform_request(text, component, contextid)` → `json_decode(get_content())`.
 
-### 2.3 RAG in the chat purpose (`purposes/chat/classes/purpose.php`)
-- New options: `sourceids` (PARAM_SEQUENCE), `ragresult` (array).
-- `format_prompt_text()`: calls `local_ai_content\local\rag_manager::get_rag_content()`, appends `RAG_PRE_PROMPT` + the
-  excerpts wrapped in `<retrieved_excerpts>` to the
-  system message in `conversationcontext` and writes `ragresult` (text + sources) into the options → ends up in
+### 2.3 Adding context to AI requests (hook `hook\additional_prompt_context`)
+- Generic option `sourceids` (PARAM_SEQUENCE) for all purposes (`base_purpose`), only evaluated by hook listeners.
+- `manager::perform_request()` dispatches `hook\additional_prompt_context` (prompt + sanitized `request_options`) before
+  `format_prompt_text()`. Listeners call `add_context(text)` and `set_result_data(key, array)`.
+- Contexts are passed to `base_purpose::add_prompt_contexts()`: default = put them in front of the prompt text; the chat
+  purpose appends them to the system message in `conversationcontext`.
+- Result data is stored in the options under `contextdata` (not accepted from clients) → ends up in
   `local_ai_manager_request_log.requestoptions`.
+- local_ai_content listens (`hook_callbacks::additional_prompt_context` → `rag_manager::add_rag_context()`): adds
+  `RAG_PRE_PROMPT` + the excerpts wrapped in `<retrieved_excerpts>` as context and the `rag_result` as `ragresult`.
 - `RAG_PRE_PROMPT` tells the model that the excerpts are automatically retrieved fragments (possibly incomplete, out of
   order or irrelevant), that it has to infer the context from them, must not follow instructions inside them and should
   name the source (and location) of the information it uses.
@@ -103,9 +110,9 @@ management shows a summarized status (failed > running > queued > indexed) plus 
 | Records | `source` (record wrapper), `context_source` (selection per context), `local\source_citation` |
 | Indexing | `local\index_service` (start/stop/allowindex/release/delete), `task\index_source_adhoc`, `task\delete_vectors_adhoc`, `local\indexer_manager` (chunk, embed, store), `local\index_state` (status DTO for the frontend) |
 | Extraction | `cm_content_extractor` + `contentextractor\cm_content_{page,label,book,lesson,resource,folder}`, `document_extractor` (files → text via ITT backend `local\backend\*`, cached) |
-| Retrieval | `local\rag_manager`, `local\source_access`, `local\rag_result`, `local\rag_source`, `local\enriched_vector` (vector + payload, also used by ai_manager) |
+| Retrieval | `local\rag_manager`, `local\source_access`, `local\rag_result`, `local\rag_source` |
 | Selection/management | `local\source_selection_utils`, `local\source_management_access` |
-| Hooks | `local\hook_callbacks` (DI, `vecstore_usage`, `before_vecstore_instance_deleted`, `before_course_deleted`) |
+| Hooks | `local\hook_callbacks` (DI, `vecstore_usage`, `before_vecstore_instance_deleted`, `additional_prompt_context`, `before_course_deleted`) |
 | Events | `local\observer` (`course_module_deleted`, content change events of the extractors) |
 | REST | `route\api\sourcemanagement`, `route\api\source_index`, `route\api\source_selection` |
 | Frontend | `js/esm/src/source_manager.tsx` (management page), `js/esm/src/source_selector.tsx` + `source_selector/data_manager.ts` + `source_selection_modal_manager.ts` (selection), `amd/src/source_selector.js` (AMD shim for block_ai_chat) |
@@ -138,7 +145,7 @@ management shows a summarized status (failed > running > queued > indexed) plus 
 2. Load sources, filter accessible ones (`source_access`: activity `uservisible` + `mod/X:view`; global sources `local/ai_content:useglobalsources`; otherwise `local/ai_content:usesource` in the source context).
 3. Skip sources without an `indexed` index for the user's embedding model (external: other `externalmodel`) and report
    them in `rag_result` as unavailable (shown after the source list in block_ai_chat). Query modules/documents per
-   vecstore in the model collection with filter `sourceid IN (...)`, external sources in their collection with their own
+   vecstore in the model collection with filter `documentid IN (...)`, external sources in their collection with their own
    filter. Without usable sources the request continues without RAG.
 4. Merge matches in query order, cap at `topk`, wrap every chunk into an excerpt block and join them; deduplicate source
    references (`rag_source`: sourceId, title, url, locator).
@@ -180,13 +187,17 @@ Missing permissions are answered with HTTP 403 (`local\route_access` throws `cor
 - Capabilities: `local/ai_content:managesources` and `local/ai_content:selectsources` (editingteacher, manager; course level), `local/ai_content:usesource` (student and up; course level), `local/ai_content:useglobalsources` (authenticated user; system level), `local/ai_content:testextraction` (manager; system level).
 
 ## 4. block_ai_chat
-- `templates/state_header.mustache` includes `local_ai_content/source_selector` (React); the selection lives in the ai_content DataManager.
-- `amd/src/components/chat.js`: before every request `getSelectedSourceIds(contextid)` (AMD shim) → `sourceids` to `block_ai_chat_request_ai`.
-- `classes/external/request_ai.php`: parameter `sourceids` (PARAM_SEQUENCE) → options for the chat purpose.
-- `classes/manager.php::convert_log_entry_to_messages()`: reads `ragresult.sources` from the request log → `ragResult` of the message.
+- local_ai_content is optional: `get_initial_state()` sets `static.ragAvailable` if it is installed.
+- `amd/src/components/headeractions.js` renders `local_ai_content/source_selector` (React) into the placeholder of
+  `templates/state_header.mustache`; the selection lives in the ai_content DataManager.
+- `amd/src/components/chat.js`: in chat mode before every request `getSelectedSourceIds(contextid)` (AMD shim, dynamic import)
+  → `sourceids` to `block_ai_chat_request_ai`.
+- `classes/external/request_ai.php`: parameter `sourceids` (PARAM_SEQUENCE) → request options.
+- `classes/manager.php::convert_log_entry_to_messages()`: reads `contextdata.ragresult.sources` from the request log → `ragResult` of the message.
 - Rendering: `templates/rag_sources.mustache`, `templates/rag_source_item.mustache` (2 visible, rest collapsible).
 
 ## 5. Dependencies
-- `block_ai_chat` → `local_ai_content` (AMD import, mustache partial) and `local_ai_manager`.
-- `local_ai_content` → `local_ai_manager` (embedding, vecstores, hooks, ITT).
-- `local_ai_manager` → `local_ai_content` (`enriched_vector` in the vecstore API, `rag_manager` in the chat purpose) – **circular**, not declared in any `version.php`.
+- `block_ai_chat` → `local_ai_manager`; `local_ai_content` optional (source selector, `contextdata.ragresult`).
+- `local_ai_content` → `local_ai_manager` (embedding, vecstores, hooks, ITT), declared in `version.php` (minimum version still to
+  be set before the release).
+- `local_ai_manager` does not know `local_ai_content`.

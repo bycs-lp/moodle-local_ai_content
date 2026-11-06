@@ -20,6 +20,7 @@ use core\hook\di_configuration;
 use core_course\hook\before_course_deleted;
 use local_ai_content\local\backend\ai_backend;
 use local_ai_content\local\backend\config;
+use local_ai_manager\hook\additional_prompt_context;
 use local_ai_manager\hook\before_vecstore_instance_deleted;
 use local_ai_manager\hook\vecstore_usage;
 
@@ -71,6 +72,15 @@ class hook_callbacks {
      */
     public static function before_vecstore_instance_deleted(before_vecstore_instance_deleted $hook): void {
         \core\di::get(index_service::class)->release_vecstore($hook->instance->get_id(), $hook->deletevectors, true);
+    }
+
+    /**
+     * Add the content retrieved from the selected sources (RAG) as context to an AI request.
+     *
+     * @param additional_prompt_context $hook The hook.
+     */
+    public static function additional_prompt_context(additional_prompt_context $hook): void {
+        \core\di::get(rag_manager::class)->add_rag_context($hook);
     }
 
     /**
