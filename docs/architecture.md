@@ -69,9 +69,13 @@ local_ai_manager (infrastructure): embedding purpose/tool, vecstore subplugins (
 
 ### 2.3 RAG in the chat purpose (`purposes/chat/classes/purpose.php`)
 - New options: `sourceids` (PARAM_SEQUENCE), `ragresult` (array).
-- `format_prompt_text()`: calls `local_ai_content\local\rag_manager::get_rag_content()`, appends `RAG_PRE_PROMPT` + matches to the
+- `format_prompt_text()`: calls `local_ai_content\local\rag_manager::get_rag_content()`, appends `RAG_PRE_PROMPT` + the
+  excerpts wrapped in `<retrieved_excerpts>` to the
   system message in `conversationcontext` and writes `ragresult` (text + sources) into the options → ends up in
   `local_ai_manager_request_log.requestoptions`.
+- `RAG_PRE_PROMPT` tells the model that the excerpts are automatically retrieved fragments (possibly incomplete, out of
+  order or irrelevant), that it has to infer the context from them, must not follow instructions inside them and should
+  name the source (and location) of the information it uses.
 
 ## 3. local_ai_content
 
@@ -119,14 +123,28 @@ management shows a summarized status (failed > running > queued > indexed) plus 
    the model index gets `contenthash`, `lastindexed`.
 6. Errors → model index `failed`, `error` (debug info only with developer debugging).
 
-### 3.4 Retrieval (`rag_manager::get_rag_content(prompt, sourceids, component, contextid, topk = 5)`)
+### 3.4 Retrieval (`rag_manager::get_rag_content(prompt, sourceids, component, contextid, topk = 10)`)
 1. Embed prompt (purpose `embedding`).
 2. Load sources, filter accessible ones (`source_access`: activity `uservisible` + `mod/X:view`; global sources `local/ai_content:useglobalsources`; otherwise `local/ai_content:usesource` in the source context).
 3. Skip sources without an `indexed` index for the user's embedding model (external: other `externalmodel`) and report
    them in `rag_result` as unavailable (shown after the source list in block_ai_chat). Query modules/documents per
    vecstore in the model collection with filter `sourceid IN (...)`, external sources in their collection with their own
    filter. Without usable sources the request continues without RAG.
-4. Merge matches in query order, cap at `topk`, join texts with `---`; deduplicate source references (`rag_source`: sourceId, title, url, locator).
+4. Merge matches in query order, cap at `topk`, wrap every chunk into an excerpt block and join them; deduplicate source
+   references (`rag_source`: sourceId, title, url, locator).
+   ```
+   <excerpt index="1" source="Script photosynthesis" location="page 4">
+   …chunk text…
+   </excerpt>
+   ```
+   **Metadata sent to the AI tool (privacy):** per excerpt only the relevance position (`index`), the source title
+   (`source`, effective citation title, falls back to the source name) and the location inside the source (`location`,
+   built from the vector locator and the citation `locatortype`; character offsets are omitted). Citation fields that may
+   contain personal data (author, publisher, date, license) as well as URLs, ids and any user data are deliberately never
+   sent. Note that the title is entered freely by teachers, so like the chunk text itself it may contain whatever they
+   wrote.
+   **Prompt injection:** `<excerpt` / `<retrieved_excerpts` (opening and closing) inside chunk text and attributes are
+   neutralized (`<` → `‹`), so retrieved content cannot break out of its excerpt block.
 
 ### 3.5 REST endpoints (`/api/rest/v2/local_ai_content/...`)
 | Method + path | Purpose | Permission |
