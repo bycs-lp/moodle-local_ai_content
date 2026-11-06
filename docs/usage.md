@@ -1,10 +1,15 @@
 # Setup and usage
 
 ## 1. Administrators / tenant managers (local_ai_manager)
-1. Enable tool `openaiembedding`, create a tool instance with an embedding model (e.g. `text-embedding-3-small`, 1536 dimensions)
-   and assign it to purpose `embedding`.
+1. Enable tool `openaiembedding`, create a tool instance with an embedding model (e.g. `text-embedding-3-small`)
+   and assign it to purpose `embedding`. **Currently all users must use the same embedding model**: the purpose
+   configuration rejects different models for the basic and extended role, and all tenants sharing sources (e.g. course
+   participants from other schools) have to configure the same model. Sources are only searchable with the embedding
+   model they were indexed with (see [concept-multi-model-index.md](concept-multi-model-index.md)); several models
+   become possible once several models per purpose can be configured.
 2. Enable a vecstore subplugin (`qdrant` or `postgres`).
-3. Tenant configuration → vector databases: create an instance (endpoint/API key or DSN, collection, dimensions = model dimensions, distance metric).
+3. Tenant configuration → vector databases: create an instance (endpoint/API key or DSN, collection prefix, distance metric).
+   One collection per embedding model is created automatically, its dimensions are taken from the first vectors.
    Global instances require `local/ai_manager:manageglobalvecstores`.
 4. "Test" checks the connection; "Set as primary" defines the vecstore for new indexing runs.
 5. Deleting an instance shows its usage (sources) and offers to delete the vectors as well.
@@ -12,12 +17,15 @@
 ## 2. Teachers (local_ai_content)
 1. Course navigation → Manage sources (`/local/ai_content/manage_sources.php?courseid=…`).
 2. Activities: "active for AI access" creates the source, "index" queues the adhoc task (cron required). Status is polled.
+   Indexing uses your embedding model and quota. The status shows each embedding model the source is indexed with; if
+   the source is not indexed with your model yet, "Index with my embedding model" adds an index for it.
 3. Documents: create, edit, delete text documents in the course or globally (only with `managesources` in the system context).
-   Changed text is re-indexed automatically.
+   Changed text is re-indexed automatically with your embedding model; indexes of other models are deleted.
 
 ## 3. Users (block_ai_chat)
 1. Select sources via the sources button in the chat header (indexed, enabled sources; sources from other courses can be imported).
    The selection currently applies to the whole context, not per user.
+   Selected sources not indexed with the user's embedding model are skipped; the answer lists them after the sources.
 2. Every chat request uses the selected sources; the source list with links is shown below the answer.
 
 ## 4. Developer tools (not for production)

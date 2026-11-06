@@ -24,7 +24,16 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
 import Config from '@moodle/lms/core/config';
 import Log from '@moodle/lms/core/log';
+import MoodleString from '@moodle/lms/core/String';
 import {Button, ProgressBar} from '@moodlehq/design-system';
+
+/** The indexing state of one source for one embedding model. */
+type ModelIndexState = {
+    model: string;
+    status: 'queued' | 'running' | 'indexed' | 'failed';
+    statusLabel: string;
+    lastIndexedAt: string | null;
+};
 
 /** The complete indexing state of one source as delivered by the backend. */
 type IndexState = {
@@ -36,6 +45,9 @@ type IndexState = {
     message: string;
     debugInfo: string;
     lastIndexedAt: string | null;
+    models: ModelIndexState[];
+    currentModel: string | null;
+    canIndexCurrentModel: boolean;
 };
 
 type ModuleSource = {
@@ -132,8 +144,15 @@ function formatTimestamp(timestamp: string | null): string {
     return new Date(timestamp).toLocaleString();
 }
 
-/** Renders the status badge, the progress bar and the error message of one source. */
-function IndexStatusCell({state}: {state: IndexState}) {
+/**
+ * Renders the summarized status badge, the progress bar and the error message of one source, the states of the single
+ * embedding models and the action to index the source with the embedding model of the current user.
+ */
+function IndexStatusCell({state, disabled, onIndexCurrentModel}: {
+    state: IndexState;
+    disabled: boolean;
+    onIndexCurrentModel: () => void;
+}) {
     const active = isActive(state);
     const failed = state.status === 'failed';
 
@@ -156,6 +175,23 @@ function IndexStatusCell({state}: {state: IndexState}) {
             )}
             {failed && state.message && (
                 <div className="small text-danger mt-1">{state.message}</div>
+            )}
+            {state.models.length > 0 && (
+                <ul className="list-unstyled small text-muted mt-1 mb-0">
+                    {state.models.map((modelstate) => (
+                        <li key={modelstate.model}>{modelstate.model}: {modelstate.statusLabel}</li>
+                    ))}
+                </ul>
+            )}
+            {state.canIndexCurrentModel && state.currentModel && (
+                <button
+                    type="button"
+                    className="btn btn-link btn-sm p-0 mt-1"
+                    disabled={disabled || active}
+                    onClick={onIndexCurrentModel}
+                >
+                    <MoodleString identifier="indexwithmymodel" component="local_ai_content" params={state.currentModel}/>
+                </button>
             )}
         </>
     );
@@ -439,7 +475,13 @@ export default function SourceManager({contextid}: Props) {
                                     </div>
                                 )}
                             </td>
-                            <td>{row.enabled && <IndexStatusCell state={row.indexState}/>}</td>
+                            <td>{row.enabled && (
+                                <IndexStatusCell
+                                    state={row.indexState}
+                                    disabled={saving || !row.canedit}
+                                    onIndexCurrentModel={() => handleAllowIndexToggle(row.id, true)}
+                                />
+                            )}</td>
                             <td>{row.enabled && formatTimestamp(row.indexState.lastIndexedAt)}</td>
                             <td>
                                 {row.canedit && (
@@ -535,7 +577,13 @@ export default function SourceManager({contextid}: Props) {
                                     </div>
                                 )}
                             </td>
-                            <td>{row.enabled && <IndexStatusCell state={row.indexState}/>}</td>
+                            <td>{row.enabled && (
+                                <IndexStatusCell
+                                    state={row.indexState}
+                                    disabled={saving}
+                                    onIndexCurrentModel={() => handleAllowIndexToggle(row.sourceid, true)}
+                                />
+                            )}</td>
                             <td>{row.enabled && formatTimestamp(row.indexState.lastIndexedAt)}</td>
                         </tr>
                     ))}

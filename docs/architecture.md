@@ -35,7 +35,10 @@ local_ai_manager (infrastructure): embedding purpose/tool, vecstore subplugins (
   - `postgres`: external PostgreSQL with pgvector via `pg_connect`; the DSN is stored in field `apikey`; table `(id, embedding vector(N), payload jsonb)`.
 - Payload per vector (from `enriched_vector`): `content`, `sourceid`, `chunk`, `maxchunks`, optional `locator`, `url`.
 - Table `local_ai_manager_vecstore`: `name`, `tenant`, `vecstore`, `isglobal`, `endpoint`, `apikey`, `useglobalapikey`,
-  `collection`, `dimensions`, `distancemetric`, `timecreated`, `timemodified`.
+  `collection` (prefix of the collection names), `distancemetric`, `timecreated`, `timemodified`.
+- One collection per embedding model and instance (`{collection}_{model slug}`), registered in `local_ai_manager_collection`
+  (`vecstoreid`, `embeddingmodel`, `collection`, `dimensions` from the first stored vector), see
+  [concept-multi-model-index.md](concept-multi-model-index.md).
 - Primary vecstore: per tenant in `config_manager` under `primary_vecstore`. Candidates = own + global (`isglobal = 1`) instances.
   If exactly one enabled instance exists, it automatically becomes the primary vecstore.
 
@@ -43,10 +46,10 @@ local_ai_manager (infrastructure): embedding purpose/tool, vecstore subplugins (
 |---|---|
 | `base_vecstore::is_available()` | Connection test |
 | `create_collection()` / `delete_collection()` | Create/delete collection/table (created automatically when missing, `with_existing_collection()`) |
-| `insert_embeddings(enriched_vector[])` | Replace: first deletes all vectors of the affected `sourceid`s, then stores |
-| `query(vector, topk, filters)` | Similarity search; filters: scalar = equality, array = IN |
-| `delete_embeddings(int ...sourceids)` / `get_all()` | Delete vectors / read all vectors (debugging) |
-| `require_matching_dimensions(vector)` | Check dimensions model ↔ instance (must be called by the caller) |
+| `insert_embeddings(model, enriched_vector[])` | Creates the model collection if missing; replace: first deletes the vectors of the affected `sourceid`s in this collection, then stores |
+| `query(model, vector, topk, filters)` | Similarity search in the model collection (empty if missing); filters: scalar = equality, array = IN |
+| `query_collection(collection, vector, topk, filters)` | Similarity search in a collection by backend name (external sources) |
+| `delete_embeddings(?model, int ...sourceids)` / `drop_collection(model)` / `get_all(collection)` | Delete vectors (`null` = all models) / drop a model collection / read all vectors (debugging) |
 | `vecstore_factory` | Load/create instances, `get_primary_vecstore()`, `set_primary()`, `delete_instance()` (dispatches hooks) |
 
 - Responses: `local\vecstore_response` (code, errormessage, debuginfo, optional `vecstore_query_response` with `enriched_vector[]`).
@@ -76,16 +79,19 @@ local_ai_manager (infrastructure): embedding purpose/tool, vecstore subplugins (
 | Table | Content |
 |---|---|
 | `local_ai_content_cache` | Cache of extracted file texts (key: contenthash) – existed before RAG |
-| `local_ai_content_sources` | One row per source: `contextid`, `sourcetype`, `name`, `description`, `cmid`, `content`, `externalfilter`, `citation`, `vecstoreid`, `embeddingmodel`, `contenthash`, `enabled`, `allowindex`, index status fields |
+| `local_ai_content_sources` | One row per source: `contextid`, `sourcetype`, `name`, `description`, `cmid`, `content`, `externalfilter`, `citation`, `vecstoreid`, `enabled`, `allowindex`, `externalcollection`, `externalmodel` |
+| `local_ai_content_index` | One row per source and embedding model: `status`, `taskid`, `error`, `debuginfo`, `contenthash`, `lastindexed`, `usermodified` |
 | `local_ai_content_ctx_sources` | Sources selected for RAG per context (`contextid`, `sourceid`), applies to all users of the context |
 
 Source types (`source::TYPE_*`):
 - `module`: course activity (`cmid`, `contextid` = course context).
 - `document`: manually entered text (course or system context = global).
-- `external`: existing vectors in a vecstore, identified by `externalfilter` (JSON).
+- `external`: existing vectors in the collection `externalcollection` of a vecstore, created with `externalmodel`,
+  identified by `externalfilter` (JSON).
 
-Fields: `enabled` = source active/selectable for AI access; `allowindex` = indexing allowed.
-Index status: `idle` → `queued` → `running` → `indexed` | `failed` (`failed` sets `allowindex` = 0).
+Fields: `enabled` = source active/selectable for AI access; `allowindex` = indexing switched on.
+Index status per model: `queued` → `running` → `indexed` | `failed`; without any index the source is `idle`. The source
+management shows a summarized status (failed > running > queued > indexed) plus the status per model.
 
 ### 3.2 Classes
 | Area | Classes |
@@ -102,17 +108,24 @@ Index status: `idle` → `queued` → `running` → `indexed` | `failed` (`faile
 
 ### 3.3 Indexing
 1. Teacher enables indexing on `manage_sources.php` → `PUT /sources/{id}/index-state` → `index_service::start()`:
-   bind primary vecstore, queue `index_source_adhoc` (as triggering user), status `queued`.
-2. Task: stale tasks (indextaskid mismatch) abort; otherwise `indexer_manager::index_single_source()`.
+   bind primary vecstore, queue `index_source_adhoc` (as triggering user, with the user's embedding model), index of this
+   model `queued`. Indexes of other models stay. A content change of a document source re-indexes it with the editing
+   user's model and deletes the indexes of other models.
+2. Task: stale tasks (taskid mismatch on the model index) abort, a changed embedding model of the user fails the run;
+   otherwise `indexer_manager::index_single_source()`.
 3. Text: activity via `cm_content_{modname}` (files via `document_extractor`), `html_to_text`; document = stored text.
 4. Chunking: 1000 characters, 100 overlap; on HTTP 400 (context length) the chunk is halved and retried.
-5. One embedding request per chunk, then `insert_embeddings()` into the source vecstore; the source gets `embeddingmodel`, `contenthash`, `lastindexed`.
-6. Errors → status `failed`, `indexerror` (debug info only with developer debugging).
+5. One embedding request per chunk, then `insert_embeddings(model, …)` into the model collection of the source vecstore;
+   the model index gets `contenthash`, `lastindexed`.
+6. Errors → model index `failed`, `error` (debug info only with developer debugging).
 
 ### 3.4 Retrieval (`rag_manager::get_rag_content(prompt, sourceids, component, contextid, topk = 5)`)
 1. Embed prompt (purpose `embedding`).
 2. Load sources, filter accessible ones (`source_access`: activity `uservisible` + `mod/X:view`; global sources `local/ai_content:useglobalsources`; otherwise `local/ai_content:usesource` in the source context).
-3. Query modules/documents per vecstore with filter `sourceid IN (...)`, external sources each with their own filter.
+3. Skip sources without an `indexed` index for the user's embedding model (external: other `externalmodel`) and report
+   them in `rag_result` as unavailable (shown after the source list in block_ai_chat). Query modules/documents per
+   vecstore in the model collection with filter `sourceid IN (...)`, external sources in their collection with their own
+   filter. Without usable sources the request continues without RAG.
 4. Merge matches in query order, cap at `topk`, join texts with `---`; deduplicate source references (`rag_source`: sourceId, title, url, locator).
 
 ### 3.5 REST endpoints (`/api/rest/v2/local_ai_content/...`)

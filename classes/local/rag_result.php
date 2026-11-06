@@ -17,28 +17,40 @@
 namespace local_ai_content\local;
 
 /**
- * DTO holding retrieved RAG context and source references.
+ * DTO holding retrieved RAG context, source references and the selected sources which could not be used.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class rag_result {
+    /** @var string Reason for an unusable source: it is being indexed with the embedding model of the user right now. */
+    public const UNAVAILABLE_INDEXING = 'indexing';
+
+    /** @var string Reason for an unusable source: it is not indexed with the embedding model of the user. */
+    public const UNAVAILABLE_OTHERMODEL = 'othermodel';
+
     /** @var string Retrieved text chunks used as grounding context. */
     protected string $retrievedtext;
 
     /** @var rag_source[] Sources ordered by relevance. */
     protected array $sources;
 
+    /** @var array[] Selected sources which could not be used, each with the keys sourceid, name and reason. */
+    protected array $unavailablesources;
+
     /**
      * Constructor.
      *
      * @param string $retrievedtext Retrieved text chunks.
      * @param rag_source[] $sources Source references.
+     * @param array[] $unavailablesources Selected sources which could not be used, each with the keys sourceid (int),
+     *  name (string) and reason (one of the UNAVAILABLE_* constants).
      */
-    public function __construct(string $retrievedtext, array $sources = []) {
+    public function __construct(string $retrievedtext, array $sources = [], array $unavailablesources = []) {
         $this->retrievedtext = $retrievedtext;
         $this->sources = $sources;
+        $this->unavailablesources = $unavailablesources;
     }
 
     /**
@@ -69,6 +81,15 @@ class rag_result {
     }
 
     /**
+     * Get the selected sources which could not be used.
+     *
+     * @return array[] Each with the keys sourceid, name and reason.
+     */
+    public function get_unavailable_sources(): array {
+        return $this->unavailablesources;
+    }
+
+    /**
      * Export to API-safe array.
      *
      * @return array
@@ -77,6 +98,11 @@ class rag_result {
         return [
             'retrievedText' => $this->retrievedtext,
             'sources' => array_map(static fn(rag_source $source): array => $source->to_array(), $this->sources),
+            'unavailableSources' => array_map(static fn(array $source): array => [
+                'sourceId' => $source['sourceid'],
+                'name' => $source['name'],
+                'reason' => $source['reason'],
+            ], $this->unavailablesources),
         ];
     }
 }

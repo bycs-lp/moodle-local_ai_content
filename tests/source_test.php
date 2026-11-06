@@ -27,9 +27,9 @@ namespace local_ai_content;
 #[\PHPUnit\Framework\Attributes\CoversClass(\local_ai_content\source::class)]
 final class source_test extends \advanced_testcase {
     /**
-     * Ensure indexing tracking fields are persisted.
+     * Ensure the fields of external sources are persisted.
      */
-    public function test_store_persists_index_tracking_fields(): void {
+    public function test_store_persists_external_fields(): void {
         $this->resetAfterTest();
 
         $user = $this->getDataGenerator()->create_user();
@@ -37,20 +37,18 @@ final class source_test extends \advanced_testcase {
 
         $source = new source();
         $source->set_contextid(\core\context\system::instance()->id);
-        $source->set_sourcetype(source::TYPE_DOCUMENT);
-        $source->set_name('Test source');
-        $source->set_content('Some content');
+        $source->set_sourcetype(source::TYPE_EXTERNAL);
+        $source->set_name('External source');
         $source->set_enabled(true);
-        $source->set_allowindex(true);
-        $source->set_indexstatus(source::INDEXSTATUS_QUEUED);
-        $source->set_indextaskid(12345);
+        $source->set_externalcollection('external_collection');
+        $source->set_externalmodel('embedding-model');
         $source->store();
 
         $reloaded = source::get_record(['id' => $source->get_id()]);
 
         $this->assertNotNull($reloaded);
-        $this->assertEquals(source::INDEXSTATUS_QUEUED, $reloaded->get_indexstatus());
-        $this->assertEquals(12345, $reloaded->get_indextaskid());
+        $this->assertSame('external_collection', $reloaded->get_externalcollection());
+        $this->assertSame('embedding-model', $reloaded->get_externalmodel());
     }
 }
 

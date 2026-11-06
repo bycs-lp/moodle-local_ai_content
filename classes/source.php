@@ -16,7 +16,6 @@
 
 namespace local_ai_content;
 
-use core_course\modinfo;
 use local_ai_content\local\source_citation;
 
 /**
@@ -63,53 +62,23 @@ class source {
     /** @var ?string Optional JSON filter identifying the vectors of an external source. */
     protected ?string $externalfilter = null;
 
+    /** @var ?string Backend name of the collection holding the vectors of an external source. */
+    protected ?string $externalcollection = null;
+
+    /** @var ?string Name of the embedding model which created the vectors of an external source. */
+    protected ?string $externalmodel = null;
+
     /** @var ?source_citation Optional source-level citation metadata. */
     protected ?source_citation $citation = null;
 
     /** @var ?int Vector store instance id (local_ai_manager_vecstore.id) holding this source's vectors. */
     protected ?int $vecstoreid = null;
 
-    /** @var ?string Name of the embedding model used to index this source. */
-    protected ?string $embeddingmodel = null;
-
-    /** @var ?string SHA-256 of the last indexed content, used for change detection. */
-    protected ?string $contenthash = null;
-
     /** @var bool Whether this source participates in RAG retrieval. */
     protected bool $enabled = true;
 
     /** @var bool Whether this source can be indexed. */
     protected bool $allowindex = false;
-
-    /** @var int Last indexing timestamp. */
-    protected int $lastindexed = 0;
-
-    /** @var string Current indexing status for UI/task tracking. */
-    protected string $indexstatus = self::INDEXSTATUS_IDLE;
-
-    /** @var ?int Last queued adhoc indexing task id. */
-    protected ?int $indextaskid = null;
-
-    /** @var ?string Error message of the last failed indexing run. */
-    protected ?string $indexerror = null;
-
-    /** @var ?string Technical details of the last failed indexing run. */
-    protected ?string $indexdebuginfo = null;
-
-    /** @var string Source is currently not queued/running for indexing. */
-    public const INDEXSTATUS_IDLE = 'idle';
-
-    /** @var string Source indexing was queued as adhoc task. */
-    public const INDEXSTATUS_QUEUED = 'queued';
-
-    /** @var string Source is actively being indexed. */
-    public const INDEXSTATUS_RUNNING = 'running';
-
-    /** @var string Source indexing completed successfully. */
-    public const INDEXSTATUS_INDEXED = 'indexed';
-
-    /** @var string Source indexing failed. */
-    public const INDEXSTATUS_FAILED = 'failed';
 
     /** @var int User id that last modified this record. */
     protected int $usermodified = 0;
@@ -158,17 +127,12 @@ class source {
         $record->description = $this->description;
         $record->content = $this->content;
         $record->externalfilter = $this->externalfilter;
+        $record->externalcollection = $this->externalcollection;
+        $record->externalmodel = $this->externalmodel;
         $record->citation = $this->citation !== null ? $this->citation->to_json() : null;
         $record->vecstoreid = $this->vecstoreid;
-        $record->embeddingmodel = $this->embeddingmodel;
-        $record->contenthash = $this->contenthash;
         $record->enabled = $this->enabled ? 1 : 0;
         $record->allowindex = $this->allowindex ? 1 : 0;
-        $record->lastindexed = $this->lastindexed;
-        $record->indexstatus = $this->indexstatus;
-        $record->indextaskid = $this->indextaskid;
-        $record->indexerror = $this->indexerror;
-        $record->indexdebuginfo = $this->indexdebuginfo;
         $record->usermodified = $this->usermodified ?: (int)$USER->id;
         $record->timemodified = $clock->time();
 
@@ -220,26 +184,6 @@ class source {
             $instances[] = self::from_record($record);
         }
         return $instances;
-    }
-
-    /**
-     * Return module source wrappers for a course.
-     *
-     * @param \stdClass $course Course record.
-     * @return array{0: array, 1: self[]} [raw activities, source wrappers]
-     */
-    public static function get_module_sources_for_course(\stdClass $course): array {
-        global $CFG;
-
-        require_once($CFG->dirroot . '/course/lib.php');
-
-        $activities = modinfo::get_array_of_activities($course);
-        $cmids = array_keys($activities);
-        if (empty($cmids)) {
-            return [$activities, []];
-        }
-        $sources = self::get_records_by_cmids($cmids);
-        return [$activities, $sources];
     }
 
     /**
@@ -311,17 +255,12 @@ class source {
         $this->description = $record->description;
         $this->content = $record->content;
         $this->externalfilter = $record->externalfilter;
+        $this->externalcollection = $record->externalcollection;
+        $this->externalmodel = $record->externalmodel;
         $this->citation = source_citation::from_json($record->citation);
         $this->vecstoreid = $record->vecstoreid === null ? null : (int)$record->vecstoreid;
-        $this->embeddingmodel = $record->embeddingmodel;
-        $this->contenthash = $record->contenthash;
         $this->enabled = !empty($record->enabled);
         $this->allowindex = !empty($record->allowindex);
-        $this->lastindexed = (int)$record->lastindexed;
-        $this->indexstatus = $record->indexstatus;
-        $this->indextaskid = $record->indextaskid === null ? null : (int)$record->indextaskid;
-        $this->indexerror = $record->indexerror;
-        $this->indexdebuginfo = $record->indexdebuginfo;
         $this->usermodified = (int)$record->usermodified;
         $this->timecreated = (int)$record->timecreated;
         $this->timemodified = (int)$record->timemodified;
@@ -360,56 +299,6 @@ class source {
     /** @param bool $allowindex */
     public function set_allowindex(bool $allowindex): void {
         $this->allowindex = $allowindex;
-    }
-
-    /** @return int */
-    public function get_lastindexed(): int {
-        return $this->lastindexed;
-    }
-
-    /** @param int $lastindexed */
-    public function set_lastindexed(int $lastindexed): void {
-        $this->lastindexed = $lastindexed;
-    }
-
-    /** @return string */
-    public function get_indexstatus(): string {
-        return $this->indexstatus;
-    }
-
-    /** @param string $indexstatus */
-    public function set_indexstatus(string $indexstatus): void {
-        $this->indexstatus = $indexstatus;
-    }
-
-    /** @return ?int */
-    public function get_indextaskid(): ?int {
-        return $this->indextaskid;
-    }
-
-    /** @param ?int $indextaskid */
-    public function set_indextaskid(?int $indextaskid): void {
-        $this->indextaskid = $indextaskid;
-    }
-
-    /** @return ?string */
-    public function get_indexerror(): ?string {
-        return $this->indexerror;
-    }
-
-    /** @param ?string $indexerror */
-    public function set_indexerror(?string $indexerror): void {
-        $this->indexerror = $indexerror;
-    }
-
-    /** @return ?string */
-    public function get_indexdebuginfo(): ?string {
-        return $this->indexdebuginfo;
-    }
-
-    /** @param ?string $indexdebuginfo */
-    public function set_indexdebuginfo(?string $indexdebuginfo): void {
-        $this->indexdebuginfo = $indexdebuginfo;
     }
 
     /** @return string */
@@ -472,6 +361,26 @@ class source {
         $this->externalfilter = $externalfilter;
     }
 
+    /** @return ?string */
+    public function get_externalcollection(): ?string {
+        return $this->externalcollection;
+    }
+
+    /** @param ?string $externalcollection */
+    public function set_externalcollection(?string $externalcollection): void {
+        $this->externalcollection = $externalcollection;
+    }
+
+    /** @return ?string */
+    public function get_externalmodel(): ?string {
+        return $this->externalmodel;
+    }
+
+    /** @param ?string $externalmodel */
+    public function set_externalmodel(?string $externalmodel): void {
+        $this->externalmodel = $externalmodel;
+    }
+
     /** @return ?int */
     public function get_vecstoreid(): ?int {
         return $this->vecstoreid;
@@ -480,26 +389,6 @@ class source {
     /** @param ?int $vecstoreid */
     public function set_vecstoreid(?int $vecstoreid): void {
         $this->vecstoreid = $vecstoreid;
-    }
-
-    /** @return ?string */
-    public function get_embeddingmodel(): ?string {
-        return $this->embeddingmodel;
-    }
-
-    /** @param ?string $embeddingmodel */
-    public function set_embeddingmodel(?string $embeddingmodel): void {
-        $this->embeddingmodel = $embeddingmodel;
-    }
-
-    /** @return ?string */
-    public function get_contenthash(): ?string {
-        return $this->contenthash;
-    }
-
-    /** @param ?string $contenthash */
-    public function set_contenthash(?string $contenthash): void {
-        $this->contenthash = $contenthash;
     }
 
     /** @return ?source_citation */
