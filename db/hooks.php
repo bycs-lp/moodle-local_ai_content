@@ -39,6 +39,10 @@ $callbacks = [
         'callback' => \local_ai_content\local\hook_callbacks::class . '::before_vecstore_instance_deleted',
     ],
     [
+        'hook' => \local_ai_manager\hook\additional_prompt_context::class,
+        'callback' => \local_ai_content\local\hook_callbacks::class . '::additional_prompt_context',
+    ],
+    [
         'hook' => \core_course\hook\before_course_deleted::class,
         'callback' => \local_ai_content\local\hook_callbacks::class . '::before_course_deleted',
     ],

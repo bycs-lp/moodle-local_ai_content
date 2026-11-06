@@ -30,3 +30,7 @@ $plugin->supported = [500, 502];
 $plugin->release = '0.1.1';
 $plugin->component = 'local_ai_content';
 $plugin->maturity = MATURITY_BETA;
+// TODO MBS-10900 Set the minimum versions of the dependencies before the release.
+$plugin->dependencies = [
+    'local_ai_manager' => ANY_VERSION,
+];

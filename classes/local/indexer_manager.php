@@ -17,6 +17,7 @@
 namespace local_ai_content\local;
 
 use local_ai_content\source;
+use local_ai_manager\local\vector_record;
 
 /**
  * Manages the indexing of Moodle content into the vector store.
@@ -135,20 +136,19 @@ class indexer_manager {
         }
 
         $maxchunks = count($embeddedchunks);
-        $enrichedvectors = [];
+        $vectorrecords = [];
         $chunkcount = 1;
         foreach ($embeddedchunks as $embeddedchunk) {
-            $enrichedvectors[] = enriched_vector::create(
+            $vectorrecords[] = new vector_record(
                 $embeddedchunk['vector'],
                 $embeddedchunk['chunk'],
                 $sourceid,
-                $chunkcount,
-                $maxchunks
+                [rag_manager::PAYLOAD_CHUNK => $chunkcount, rag_manager::PAYLOAD_MAXCHUNKS => $maxchunks]
             );
             $chunkcount++;
         }
 
-        $response = $vecstore->insert_embeddings($index->get_embeddingmodel(), $enrichedvectors);
+        $response = $vecstore->insert_embeddings($index->get_embeddingmodel(), $vectorrecords);
         if ($response->get_code() !== 200) {
             throw new \moodle_exception('error_storeembeddingsfailed', 'local_ai_content', '',
                 $response->get_errormessage(), $response->get_debuginfo());
