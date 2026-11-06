@@ -46,7 +46,7 @@ use local_ai_manager\manager;
  */
 class rag_manager {
     /** @var int Default number of nearest neighbours to include in the assembled RAG content. */
-    private const DEFAULT_TOPK = 5;
+    private const DEFAULT_TOPK = 10;
 
     /**
      * Constructor.
@@ -186,8 +186,13 @@ class rag_manager {
             if ($content === '') {
                 continue;
             }
-            $chunks[] = $content;
             $reference = $this->build_source_reference($match, $sourcesbyid);
+            $chunks[] = $this->format_excerpt(
+                count($chunks) + 1,
+                $content,
+                $reference?->get_title() ?? '',
+                $this->format_location($match, $sourcesbyid[$match->get_sourceid()] ?? null)
+            );
             if ($reference !== null) {
                 $referencekey = implode('|', [
                     $reference->get_sourceid(),
@@ -207,7 +212,75 @@ class rag_manager {
             return new rag_result('', [], $unavailablesources);
         }
 
-        return new rag_result(implode("\n\n---\n\n", $chunks), array_values($references), $unavailablesources);
+        return new rag_result(implode("\n\n", $chunks), array_values($references), $unavailablesources);
+    }
+
+    /**
+     * Wraps a retrieved chunk into a tagged excerpt block for the prompt.
+     *
+     * Privacy: only the source title and the location inside the source are added as metadata. Fields that could contain
+     * personal data (author, publisher, date, license, urls, ids, user data) must never be added here.
+     *
+     * @param int $index the 1-based position of the excerpt in the relevance order
+     * @param string $content the chunk text
+     * @param string $title the source title, empty if unknown
+     * @param string $location the human-readable location inside the source, empty if unknown
+     * @return string the excerpt block
+     */
+    protected function format_excerpt(int $index, string $content, string $title, string $location): string {
+        $attributes = 'index="' . $index . '"';
+        if ($title !== '') {
+            $attributes .= ' source="' . self::clean_excerpt_attribute($title) . '"';
+        }
+        if ($location !== '') {
+            $attributes .= ' location="' . self::clean_excerpt_attribute($location) . '"';
+        }
+        return '<excerpt ' . $attributes . ">\n" . self::neutralize_excerpt_tags(trim($content)) . "\n</excerpt>";
+    }
+
+    /**
+     * Builds the human-readable location of a chunk inside its source from the locator and the locator type.
+     *
+     * @param enriched_vector $match the query match
+     * @param ?source $source the source of the match, null if it does not exist anymore
+     * @return string the location, empty if the chunk carries no usable locator
+     */
+    protected function format_location(enriched_vector $match, ?source $source): string {
+        $locator = trim($match->get_locator());
+        if ($locator === '') {
+            return '';
+        }
+        return match ($source?->get_citation()?->get_locatortype() ?? '') {
+            source_citation::LOCATOR_PAGE => 'page ' . $locator,
+            source_citation::LOCATOR_SECTION => 'section ' . $locator,
+            source_citation::LOCATOR_TIMESTAMP => 'timestamp ' . $locator,
+            // A character offset does not help the model to understand the context.
+            source_citation::LOCATOR_CHAR => '',
+            default => $locator,
+        };
+    }
+
+    /**
+     * Makes a value safe to be used as attribute value of an excerpt tag.
+     *
+     * @param string $value the raw value
+     * @return string the value on a single line without double quotes
+     */
+    private static function clean_excerpt_attribute(string $value): string {
+        return self::neutralize_excerpt_tags(trim(str_replace('"', "'", preg_replace('/\s+/u', ' ', $value))));
+    }
+
+    /**
+     * Neutralizes the tags framing the excerpts inside retrieved text.
+     *
+     * Retrieved content is untrusted: without this, it could close the excerpt block and place text outside of it, which
+     * the model would no longer treat as reference material (prompt injection).
+     *
+     * @param string $text the untrusted text
+     * @return string the text in which opening and closing excerpt tags cannot be recognized as such anymore
+     */
+    private static function neutralize_excerpt_tags(string $text): string {
+        return preg_replace('#<(\s*/?\s*)(excerpt|retrieved_excerpts)\b#iu', '‹$1$2', $text);
     }
 
     /**
