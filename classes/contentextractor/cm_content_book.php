@@ -33,6 +33,16 @@ class cm_content_book extends cm_content_extractor {
     }
 
     #[\Override]
+    public static function get_content_change_events(): array {
+        // Chapters are created, edited, moved, shown/hidden and deleted outside of the settings form.
+        return array_merge(parent::get_content_change_events(), [
+            \mod_book\event\chapter_created::class,
+            \mod_book\event\chapter_updated::class,
+            \mod_book\event\chapter_deleted::class,
+        ]);
+    }
+
+    #[\Override]
     public function extract(\core_course\cm_info $cm): string {
         global $CFG;
         require_once($CFG->dirroot . '/mod/book/locallib.php');

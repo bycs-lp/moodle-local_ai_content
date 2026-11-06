@@ -33,6 +33,8 @@ export type SourceOption = {
     cmid: number;
     name: string;
     sourcetype: string;
+    /** Whether the content changed since the source was indexed with the embedding model of the current user. */
+    outdated: boolean;
 };
 
 /** The available sources and the selected source ids of a context. */

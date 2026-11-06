@@ -30,6 +30,17 @@ use local_ai_content\source;
  */
 class source_selection_utils {
     /**
+     * Constructor.
+     *
+     * @param embedding_model_resolver $modelresolver Resolver of the embedding model of the current user.
+     */
+    public function __construct(
+        /** @var embedding_model_resolver Resolver of the embedding model of the current user. */
+        private readonly embedding_model_resolver $modelresolver,
+    ) {
+    }
+
+    /**
      * Return all sources selectable for this context.
      *
      * The available sources are:
@@ -44,6 +55,7 @@ class source_selection_utils {
      *  - cmid       (?int)    the course module ID for module sources, null otherwise
      *  - name       (string)  the source display name
      *  - sourcetype (string)  one of source::TYPE_*
+     *  - outdated   (bool)    whether the index for the embedding model of the current user is outdated
      *
      * @param int $contextid Any Moodle context ID.
      * @return array Array of associative arrays as described above.
@@ -76,11 +88,11 @@ class source_selection_utils {
         $globaldocuments = $this->get_global_document_sources($userid);
 
         if ($coursecontext === false) {
-            return [
+            return $this->add_outdated_flags([
                 'globaldocuments' => $globaldocuments,
                 'courseactivities' => [],
                 'externalsources' => [],
-            ];
+            ]);
         }
 
         $courseactivities = $this->get_course_activity_sources($coursecontext, $userid);
@@ -88,11 +100,11 @@ class source_selection_utils {
         $selectedsourceids = context_source::get_sourceids_for_context($contextid);
         $externalsources = $this->get_selected_external_sources($selectedsourceids, $coursecontext, $globaldocuments, $courseactivities, $userid);
 
-        return [
+        return $this->add_outdated_flags([
             'globaldocuments' => $globaldocuments,
             'courseactivities' => $courseactivities,
             'externalsources' => $externalsources,
-        ];
+        ]);
     }
 
     /**
@@ -207,10 +219,39 @@ class source_selection_utils {
         usort($courseactivities, static fn(array $a, array $b): int => strcmp((string)$a['name'], (string)$b['name']));
         usort($coursedocuments, static fn(array $a, array $b): int => strcmp((string)$a['name'], (string)$b['name']));
 
-        return [
+        return $this->add_outdated_flags([
             'courseactivities' => $courseactivities,
             'coursedocuments' => $coursedocuments,
-        ];
+        ]);
+    }
+
+    /**
+     * Add the flag "outdated" to grouped source entries.
+     *
+     * A source is outdated if its index for the embedding model of the current user is outdated, as this is the index
+     * searched on retrieval.
+     *
+     * @param array<string, array[]> $groups Source entries grouped by any key, each entry with the key "id".
+     * @return array<string, array[]> The groups with the key "outdated" added to every entry.
+     */
+    private function add_outdated_flags(array $groups): array {
+        $model = $this->modelresolver->get_current_model();
+        $sourceids = [];
+        foreach ($groups as $entries) {
+            foreach ($entries as $entry) {
+                $sourceids[] = (int) $entry['id'];
+            }
+        }
+        // Without an embedding model the user cannot search any source, so nothing is outdated for them.
+        $indexes = $model === null ? [] : model_index::get_for_sources($sourceids);
+
+        foreach ($groups as $key => $entries) {
+            foreach ($entries as $position => $entry) {
+                $index = $indexes[(int) $entry['id']][$model] ?? null;
+                $groups[$key][$position]['outdated'] = $index?->get_status() === model_index::STATUS_OUTDATED;
+            }
+        }
+        return $groups;
     }
 
     /**

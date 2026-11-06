@@ -41,6 +41,12 @@ class model_index {
     /** @var string Indexing has failed. */
     public const STATUS_FAILED = 'failed';
 
+    /** @var string The content of the source has changed since it was indexed, the old vectors are still searchable. */
+    public const STATUS_OUTDATED = 'outdated';
+
+    /** @var string[] Statuses of indexes whose vectors exist and can be searched. */
+    public const SEARCHABLE_STATUSES = [self::STATUS_INDEXED, self::STATUS_OUTDATED];
+
     /** @var ?\stdClass Raw DB record, null if not stored yet. */
     protected ?\stdClass $record = null;
 
@@ -170,15 +176,17 @@ class model_index {
     }
 
     /**
-     * Whether a source has been indexed successfully with at least one embedding model.
+     * Whether a source has searchable vectors of at least one embedding model.
      *
      * @param int $sourceid Id of the source.
-     * @return bool True if at least one index of the source is complete.
+     * @return bool True if at least one index of the source is searchable.
      */
     public static function is_source_indexed(int $sourceid): bool {
         global $DB;
 
-        return $DB->record_exists('local_ai_content_index', ['sourceid' => $sourceid, 'status' => self::STATUS_INDEXED]);
+        [$insql, $params] = $DB->get_in_or_equal(self::SEARCHABLE_STATUSES, SQL_PARAMS_NAMED, 'status');
+        return $DB->record_exists_select('local_ai_content_index', "sourceid = :sourceid AND status {$insql}",
+            ['sourceid' => $sourceid] + $params);
     }
 
     /**
@@ -220,6 +228,15 @@ class model_index {
      */
     public function is_active(): bool {
         return in_array($this->status, [self::STATUS_QUEUED, self::STATUS_RUNNING], true);
+    }
+
+    /**
+     * Whether the vectors of this index exist and can be searched.
+     *
+     * @return bool True if the index is searchable.
+     */
+    public function is_searchable(): bool {
+        return in_array($this->status, self::SEARCHABLE_STATUSES, true);
     }
 
     /** @return int Record id, 0 if not stored yet. */

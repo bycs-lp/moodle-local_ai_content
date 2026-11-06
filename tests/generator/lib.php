@@ -93,6 +93,7 @@ class local_ai_content_generator extends testing_module_generator {
      *   - embeddingmodel (string): Name of the embedding model, defaults to 'embedding-model'.
      *   - status (string): One of model_index::STATUS_*, defaults to indexed.
      *   - taskid (int): Id of the indexing task, defaults to null.
+     *   - contenthash (string): Hash of the indexed content, defaults to null.
      * @return \local_ai_content\local\model_index The stored index.
      */
     public function create_model_index(array $record): \local_ai_content\local\model_index {
@@ -102,6 +103,7 @@ class local_ai_content_generator extends testing_module_generator {
         );
         $index->set_status($record['status'] ?? \local_ai_content\local\model_index::STATUS_INDEXED);
         $index->set_taskid($record['taskid'] ?? null);
+        $index->set_contenthash($record['contenthash'] ?? null);
         $index->store();
         return $index;
     }

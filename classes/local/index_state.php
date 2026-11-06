@@ -27,8 +27,8 @@ use local_ai_content\task\index_source_adhoc;
  * when indexing is stopped and when the frontend polls for updates.
  *
  * A source can be indexed with several embedding models (see {@see model_index}). The state summarizes them: a failed
- * index outweighs a running one, a running one a queued one and a queued one a completed one. The state of every
- * single embedding model is listed additionally.
+ * index outweighs a running one, a running one a queued one, a queued one an outdated one and an outdated one a completed
+ * one. The state of every single embedding model is listed additionally.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
@@ -44,6 +44,7 @@ class index_state {
         model_index::STATUS_FAILED,
         model_index::STATUS_RUNNING,
         model_index::STATUS_QUEUED,
+        model_index::STATUS_OUTDATED,
         model_index::STATUS_INDEXED,
     ];
 
@@ -108,7 +109,8 @@ class index_state {
 
         $currentindex = $currentmodel === null ? null : ($indexes[$currentmodel] ?? null);
         $canindexcurrentmodel = $source->get_allowindex() && $currentmodel !== null
-            && ($currentindex === null || $currentindex->get_status() === model_index::STATUS_FAILED);
+            && ($currentindex === null
+                || in_array($currentindex->get_status(), [model_index::STATUS_FAILED, model_index::STATUS_OUTDATED], true));
 
         if ($summarizing === null) {
             return new self($source->get_id(), self::STATUS_IDLE, $source->get_allowindex(), 0.0, '', '', 0, [],

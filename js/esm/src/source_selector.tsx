@@ -24,6 +24,8 @@
 import {useState, useEffect, useRef} from 'react';
 import {createPortal} from 'react-dom';
 import Fetch from '@moodle/lms/core/fetch';
+import MoodleString from '@moodle/lms/core/String';
+import {getString} from '@moodle/lms/core/stringUtils';
 // @ts-ignore - path resolved via Moodle import map at runtime
 import {Checkbox} from '@moodlehq/design-system';
 import {
@@ -97,6 +99,20 @@ function getSourceMeta(source: SourceOption): string {
 }
 
 /**
+ * Render the badge marking a source whose content changed since it was indexed.
+ *
+ * @returns {JSX.Element} Badge UI.
+ */
+function OutdatedBadge() {
+    return (
+        <span className="badge bg-warning text-dark align-self-start">
+            <i className="icon fa fa-exclamation-triangle me-1" aria-hidden="true" />
+            <MoodleString identifier="sourceoutdated" component="local_ai_content" />
+        </span>
+    );
+}
+
+/**
  * Render one selectable source section.
  *
  * @param {SourceListSectionProps} props Section props.
@@ -132,6 +148,7 @@ function SourceListSection({
                                         supportingText={getSourceMeta(source)}
                                     />
                                 </div>
+                                {source.outdated && <OutdatedBadge />}
                                 {onRemove && !readOnly && (
                                     <button
                                         type="button"
@@ -175,13 +192,18 @@ function ImportListSection({
                 <ul className="source-selector__list list-unstyled mb-0">
                     {sources.map((source) => (
                         <li key={source.id} className="source-selector__item mb-1">
-                            <Checkbox
-                                id={`source-selector-import-source-${contextId}-${source.id}`}
-                                checked={stagedSelection.has(source.id)}
-                                onChange={() => onToggle(source.id)}
-                                label={source.name}
-                                supportingText={getSourceMeta(source)}
-                            />
+                            <div className="d-flex justify-content-between align-items-start gap-2">
+                                <div className="flex-grow-1">
+                                    <Checkbox
+                                        id={`source-selector-import-source-${contextId}-${source.id}`}
+                                        checked={stagedSelection.has(source.id)}
+                                        onChange={() => onToggle(source.id)}
+                                        label={source.name}
+                                        supportingText={getSourceMeta(source)}
+                                    />
+                                </div>
+                                {source.outdated && <OutdatedBadge />}
+                            </div>
                         </li>
                     ))}
                 </ul>
@@ -226,6 +248,19 @@ export default function SourceSelector({
     const [modalBodyRoot, setModalBodyRoot] = useState<HTMLElement | null>(null);
     const modalRef = useRef<MoodleModal | null>(null);
     const pendingSaves = useRef<number>(0);
+    const [outdatedWarning, setOutdatedWarning] = useState<string>('');
+
+    const listedSources = [...globalDocuments, ...courseActivities, ...externalSources];
+    const hasOutdatedSources = listedSources.some((source) => source.outdated);
+    // Chat requests use the selected sources, so warn if at least one of them is answered from outdated content.
+    const hasOutdatedSelection = listedSources.some((source) => source.outdated && selected.has(source.id));
+
+    useEffect(() => {
+        if (hasOutdatedSelection && outdatedWarning === '') {
+            getString('selectedsourcesoutdated', 'local_ai_content').then(setOutdatedWarning).catch(() => undefined);
+        }
+    }, [hasOutdatedSelection]);
+    const launcherTitle = hasOutdatedSelection && outdatedWarning !== '' ? `${buttonTitle} – ${outdatedWarning}` : buttonTitle;
 
     /**
      * Load the sources and the selection of the context into the component state.
@@ -545,6 +580,12 @@ export default function SourceSelector({
 
     const renderMainContent = () => (
         <div className="source-selector">
+            {hasOutdatedSources && (
+                <div className="alert alert-warning small py-2" role="status">
+                    <i className="icon fa fa-exclamation-triangle me-1" aria-hidden="true" />
+                    <MoodleString identifier="sourceoutdated_desc" component="local_ai_content" />
+                </div>
+            )}
             <SourceListSection
                 contextId={contextId}
                 sources={globalDocuments}
@@ -627,12 +668,18 @@ export default function SourceSelector({
         <>
             <button
                 type="button"
-                className="btn btn-icon icon-no-margin p-0"
-                title={buttonTitle}
-                aria-label={buttonTitle}
+                className="btn btn-icon icon-no-margin p-0 local_ai_content-source-selector-launcher"
+                title={launcherTitle}
+                aria-label={launcherTitle}
                 onClick={openModal}
             >
                 <i className="fa fa-paperclip" aria-hidden="true" />
+                {hasOutdatedSelection && (
+                    <i
+                        className="fa fa-exclamation-triangle local_ai_content-source-selector-outdated"
+                        aria-hidden="true"
+                    />
+                )}
             </button>
 
             {isModalOpen && modalBodyRoot && createPortal(renderSelectorContent(), modalBodyRoot)}

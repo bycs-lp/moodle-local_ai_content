@@ -30,7 +30,7 @@ import {Button, ProgressBar} from '@moodlehq/design-system';
 /** The indexing state of one source for one embedding model. */
 type ModelIndexState = {
     model: string;
-    status: 'queued' | 'running' | 'indexed' | 'failed';
+    status: 'queued' | 'running' | 'indexed' | 'failed' | 'outdated';
     statusLabel: string;
     lastIndexedAt: string | null;
 };
@@ -38,7 +38,7 @@ type ModelIndexState = {
 /** The complete indexing state of one source as delivered by the backend. */
 type IndexState = {
     sourceId: number;
-    status: 'idle' | 'queued' | 'running' | 'indexed' | 'failed';
+    status: 'idle' | 'queued' | 'running' | 'indexed' | 'failed' | 'outdated';
     statusLabel: string;
     allowIndex: boolean;
     percent: number;
@@ -155,10 +155,11 @@ function IndexStatusCell({state, disabled, onIndexCurrentModel}: {
 }) {
     const active = isActive(state);
     const failed = state.status === 'failed';
+    const badgeclass = failed ? 'badge-danger' : (state.status === 'outdated' ? 'bg-warning text-dark' : 'badge-light');
 
     return (
         <>
-            <span className={`badge ${failed ? 'badge-danger' : 'badge-light'}`}>{state.statusLabel}</span>
+            <span className={`badge ${badgeclass}`}>{state.statusLabel}</span>
             {active && (
                 <div className="mt-1">
                     <ProgressBar

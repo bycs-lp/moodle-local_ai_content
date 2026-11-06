@@ -48,6 +48,48 @@ abstract class cm_content_extractor {
     abstract public function extract(\core_course\cm_info $cm): string;
 
     /**
+     * Return the events signalling that content extracted by this extractor may have changed.
+     *
+     * Whenever one of these events is triggered for a course module with an indexed source, local_ai_content queues a
+     * check which extracts the current content, compares its hash with the one stored on the indexes of the source and
+     * marks differing indexes as outdated (see {@see \local_ai_content\local\index_service::check_source_changes()}).
+     *
+     * The default covers changes made in the settings form of the course module, which trigger
+     * {@see \core\event\course_module_updated}. Extractors reading content that can be changed elsewhere (e.g. book
+     * chapters, lesson pages, folder files edited on the view page) MUST override this method and add the events of the
+     * module signalling these changes, keeping the default events:
+     *
+     * <code>
+     * #[\Override]
+     * public static function get_content_change_events(): array {
+     *     return array_merge(parent::get_content_change_events(), [
+     *         \mod_book\event\chapter_updated::class,
+     *     ]);
+     * }
+     * </code>
+     *
+     * Requirements for the returned events:
+     * - They must be triggered in the context of the course module whose content changed, as the course module is
+     *   taken from the event context ({@see \core\event\base::$contextinstanceid}). Events in other contexts are ignored.
+     * - They should only signal changes of content this extractor reads: every event costs a cheap database query, and
+     *   for modules with an indexed source a re-extraction of the content (which may include AI text extraction of files).
+     *   Triggering an event for a module of another type is harmless, as only modules with a source are checked.
+     *
+     * The events are registered as observers in db/events.php, which Moodle only reads when it rebuilds its cached
+     * observer list (cache core/observers). A change of the returned events (or a new extractor) therefore only takes
+     * effect after the caches have been purged. When releasing such a change, bump the version of local_ai_content:
+     * admin/cli/upgrade.php only purges the caches if any version has changed, otherwise it exits without purging and
+     * the old observers stay registered.
+     *
+     * Changes that do not trigger any event (e.g. restored backups, direct database changes) are not detected.
+     *
+     * @return string[] Fully qualified class names of the events, i.e. subclasses of {@see \core\event\base}.
+     */
+    public static function get_content_change_events(): array {
+        return [\core\event\course_module_updated::class];
+    }
+
+    /**
      * Split extracted content into overlapping chunks for embedding.
      *
      * Splitting is done on characters, not on bytes. Byte-based splitting would cut multi-byte UTF-8
@@ -100,6 +142,7 @@ abstract class cm_content_extractor {
         return $extractor->extract_text_from_file($file, $contextid, $file->get_userid() ?: null, 'local_ai_content');
     }
 }
+
 
 
 

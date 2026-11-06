@@ -32,6 +32,7 @@ use local_ai_manager\local\vecstore_response;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[\PHPUnit\Framework\Attributes\CoversClass(index_service::class)]
+#[\PHPUnit\Framework\Attributes\CoversClass(observer::class)]
 final class index_service_test extends \advanced_testcase {
     /** @var int Id of the vector store instance the test sources are bound to. */
     private const VECSTOREID = 42;
@@ -192,5 +193,83 @@ final class index_service_test extends \advanced_testcase {
         $this->assertTrue($state['canIndexCurrentModel']);
         $this->assertSame('model-b', $state['currentModel']);
         $this->assertSame('model-a', $state['models'][0]['model']);
+    }
+
+    /**
+     * Only completed indexes whose indexed content differs from the current content are marked as outdated.
+     */
+    public function test_check_source_changes_marks_changed_indexes_outdated(): void {
+        $this->resetAfterTest();
+        /** @var \local_ai_content_generator $generator */
+        $generator = $this->getDataGenerator()->get_plugin_generator('local_ai_content');
+        $reader = \core\di::get(source_content_reader::class);
+        $source = $generator->create_source([
+            'contextid' => \context_system::instance()->id,
+            'content' => 'Current content',
+            'allowindex' => true,
+            'vecstoreid' => self::VECSTOREID,
+        ]);
+        $currenthash = $reader->hash_chunks($reader->get_chunks($source));
+        $oldhash = $reader->hash_chunks(['Old content']);
+        $indexes = [
+            'unchanged' => ['status' => model_index::STATUS_INDEXED, 'contenthash' => $currenthash],
+            'changed' => ['status' => model_index::STATUS_INDEXED, 'contenthash' => $oldhash],
+            'failed' => ['status' => model_index::STATUS_FAILED, 'contenthash' => $oldhash],
+        ];
+        foreach ($indexes as $model => $record) {
+            $generator->create_model_index(['sourceid' => $source->get_id(), 'embeddingmodel' => $model] + $record);
+        }
+
+        \core\di::get(index_service::class)->check_source_changes($source->get_id());
+
+        $indexes = model_index::get_for_sources([$source->get_id()])[$source->get_id()];
+        $this->assertSame(model_index::STATUS_INDEXED, $indexes['unchanged']->get_status());
+        $this->assertSame(model_index::STATUS_OUTDATED, $indexes['changed']->get_status());
+        $this->assertSame(model_index::STATUS_FAILED, $indexes['failed']->get_status());
+        $this->assertTrue($indexes['changed']->is_searchable());
+    }
+
+    /**
+     * Updating a course module with an indexed source queues the change check, which marks the index as outdated if the
+     * extracted content has changed.
+     */
+    public function test_course_module_update_marks_changed_module_source_outdated(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        /** @var \local_ai_content_generator $generator */
+        $generator = $this->getDataGenerator()->get_plugin_generator('local_ai_content');
+        $course = $this->getDataGenerator()->create_course();
+        $page = $this->getDataGenerator()->create_module('page', ['course' => $course->id, 'content' => 'Original content']);
+        $cm = get_fast_modinfo($course)->get_cm($page->cmid);
+        $source = $generator->create_source([
+            'contextid' => $cm->context->id,
+            'sourcetype' => source::TYPE_MODULE,
+            'cmid' => $cm->id,
+            'allowindex' => true,
+            'vecstoreid' => self::VECSTOREID,
+        ]);
+        $reader = \core\di::get(source_content_reader::class);
+        $index = $generator->create_model_index([
+            'sourceid' => $source->get_id(),
+            'contenthash' => $reader->hash_chunks($reader->get_chunks($source)),
+        ]);
+
+        // An update without content change keeps the index.
+        \core\event\course_module_updated::create_from_cm($cm)->trigger();
+        $this->runAdhocTasks(\local_ai_content\task\check_source_changes_adhoc::class);
+        $this->assertSame(model_index::STATUS_INDEXED, (new model_index($index->get_id()))->get_status());
+
+        $DB->set_field('page', 'content', 'Changed content', ['id' => $page->id]);
+        rebuild_course_cache($course->id, true);
+        \core\event\course_module_updated::create_from_cm($cm)->trigger();
+        $this->runAdhocTasks(\local_ai_content\task\check_source_changes_adhoc::class);
+        $this->assertSame(model_index::STATUS_OUTDATED, (new model_index($index->get_id()))->get_status());
+
+        // An outdated index is not checked again.
+        \core\event\course_module_updated::create_from_cm($cm)->trigger();
+        $this->assertSame(0, $DB->count_records('task_adhoc',
+            ['classname' => '\\' . \local_ai_content\task\check_source_changes_adhoc::class]));
     }
 }
