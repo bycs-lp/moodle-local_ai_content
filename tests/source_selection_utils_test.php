@@ -148,4 +148,56 @@ final class source_selection_utils_test extends \advanced_testcase {
 
         $this->assertSame($expected, in_array($globalsource->get_id(), $ids));
     }
+
+    /**
+     * Data provider for test_outdated_flag_follows_index_of_current_model.
+     *
+     * @return array Datasets with the statuses of the indexes per model and the expected outdated flag.
+     */
+    public static function outdated_flag_follows_index_of_current_model_provider(): array {
+        return [
+            'current_model_indexed' => [
+                'indexstatuses' => ['model-a' => model_index::STATUS_INDEXED],
+                'expected' => false,
+            ],
+            'current_model_outdated' => [
+                'indexstatuses' => ['model-a' => model_index::STATUS_OUTDATED],
+                'expected' => true,
+            ],
+            'only_other_model_outdated' => [
+                'indexstatuses' => ['model-a' => model_index::STATUS_INDEXED, 'model-b' => model_index::STATUS_OUTDATED],
+                'expected' => false,
+            ],
+        ];
+    }
+
+    /**
+     * Ensure a source is flagged as outdated if its index for the embedding model of the current user is outdated.
+     *
+     * @param string[] $indexstatuses The statuses of the indexes of the source by embedding model.
+     * @param bool $expected Whether the source is expected to be flagged as outdated.
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('outdated_flag_follows_index_of_current_model_provider')]
+    public function test_outdated_flag_follows_index_of_current_model(array $indexstatuses, bool $expected): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $resolver = $this->createMock(embedding_model_resolver::class);
+        $resolver->method('get_current_model')->willReturn('model-a');
+        \core\di::set(embedding_model_resolver::class, $resolver);
+        /** @var \local_ai_content_generator $generator */
+        $generator = $this->getDataGenerator()->get_plugin_generator('local_ai_content');
+        $globalsource = $generator->create_source(['contextid' => \context_system::instance()->id, 'allowindex' => true]);
+        foreach ($indexstatuses as $model => $status) {
+            $generator->create_model_index([
+                'sourceid' => $globalsource->get_id(),
+                'embeddingmodel' => $model,
+                'status' => $status,
+            ]);
+        }
+
+        $groups = \core\di::get(source_selection_utils::class)->get_grouped_sources_for_context(\context_system::instance()->id);
+
+        $this->assertCount(1, $groups['globaldocuments']);
+        $this->assertSame($expected, $groups['globaldocuments'][0]['outdated']);
+    }
 }

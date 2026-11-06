@@ -16,7 +16,6 @@
 
 namespace local_ai_content\local;
 
-use local_ai_content\cm_content_extractor;
 use local_ai_content\source;
 
 /**
@@ -67,26 +66,7 @@ class indexer_manager {
             return;
         }
 
-        if ($source->get_sourcetype() === source::TYPE_MODULE) {
-            $cmid = $source->get_cmid();
-            $rawcm = get_coursemodule_from_id('', $cmid, 0, false, IGNORE_MISSING);
-            if (!$rawcm) {
-                throw new \moodle_exception('indexingerror_sourcenotfound', 'local_ai_content');
-            }
-            $cm = get_fast_modinfo($rawcm->course)->get_cm($cmid);
-            $extractor = $this->get_cm_content_extractor($cm->modname, $cm);
-            if (!$extractor) {
-                throw new \moodle_exception('indexingerror_notsupported', 'local_ai_content');
-            }
-            $this->index_source($source, $index, $extractor->extract_as_chunks($cm));
-            return;
-        }
-
-        if ($source->get_sourcetype() !== source::TYPE_DOCUMENT) {
-            throw new \moodle_exception('indexingerror_notsupported', 'local_ai_content');
-        }
-
-        $this->index_source($source, $index, [(string) $source->get_content()]);
+        $this->index_source($source, $index, \core\di::get(source_content_reader::class)->get_chunks($source));
     }
 
     /**
@@ -96,11 +76,10 @@ class indexer_manager {
      *
      * @param source $source The source to index.
      * @param model_index $index The index of the source for the embedding model.
-     * @param string[] $chunks The content chunks to embed and store.
+     * @param string[] $chunks The content chunks to embed and store, as returned by {@see source_content_reader::get_chunks()}.
      * @throws \moodle_exception If there is no content to index or an embedding request fails.
      */
     protected function index_source(source $source, model_index $index, array $chunks): void {
-        $chunks = array_values(array_filter(array_map('trim', $chunks), static fn(string $c): bool => $c !== ''));
         if (empty($chunks)) {
             throw new \moodle_exception('indexingerror_nocontent', 'local_ai_content');
         }
@@ -111,8 +90,7 @@ class indexer_manager {
             throw new \moodle_exception('error_novecstore', 'local_ai_content');
         }
         $embeddedchunks = [];
-        $processedchunks = [];
-        $pendingchunks = array_values($chunks);
+        $pendingchunks = $chunks;
 
         while (!empty($pendingchunks)) {
             $chunk = array_shift($pendingchunks);
@@ -150,7 +128,6 @@ class indexer_manager {
                 throw $exception;
             }
 
-            $processedchunks[] = $chunk;
             $embeddedchunks[] = [
                 'vector' => $vectorrequest->get_content(),
                 'chunk' => $chunk,
@@ -177,9 +154,10 @@ class indexer_manager {
                 $response->get_errormessage(), $response->get_debuginfo());
         }
 
-        // Persist indexing metadata on the index record.
+        // Persist indexing metadata on the index record. The hash covers the extracted chunks (not the ones split for the
+        // embedding requests), so it can be compared with the current content of the source to detect changes.
         $clock = \core\di::get(\core\clock::class);
-        $index->set_contenthash(hash('sha256', implode("\n", $processedchunks)));
+        $index->set_contenthash(\core\di::get(source_content_reader::class)->hash_chunks($chunks));
         $index->set_lastindexed($clock->time());
         $index->store();
     }
@@ -245,25 +223,5 @@ class indexer_manager {
         }
         // A deleted vector store instance unbinds its sources beforehand, so a bound instance always exists.
         return \core\di::get(\local_ai_manager\local\vecstore_factory::class)->get_vecstore_by_id($vecstoreid);
-    }
-
-    /**
-     * Resolves and instantiates the content extractor for the given module type.
-     *
-     * @param string $modname The module name (e.g. 'resource', 'page').
-     * @param \core_course\cm_info $cm The course module info object.
-     * @return cm_content_extractor|null The extractor instance, or null if none is registered.
-     */
-    protected function get_cm_content_extractor(string $modname, \core_course\cm_info $cm): ?cm_content_extractor {
-        $classname = 'local_ai_content\contentextractor\cm_content_' . $modname;
-        if (!class_exists($classname)) {
-            return null;
-        }
-
-        $extractor = new $classname();
-        if (!$extractor->is_cm_supported($cm)) {
-            return null;
-        }
-        return $extractor;
     }
 }

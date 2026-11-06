@@ -30,5 +30,8 @@ $observers = [
         'eventname' => '\core\event\course_module_deleted',
         'callback' => '\local_ai_content\local\observer::course_module_deleted',
     ],
+    // The content change events are declared by the content extractors, see
+    // \local_ai_content\cm_content_extractor::get_content_change_events().
+    ...\local_ai_content\local\observer::get_content_change_observers(),
 ];
 

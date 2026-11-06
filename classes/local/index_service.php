@@ -17,6 +17,7 @@
 namespace local_ai_content\local;
 
 use local_ai_content\source;
+use local_ai_content\task\check_source_changes_adhoc;
 use local_ai_content\task\delete_vectors_adhoc;
 use local_ai_content\task\index_source_adhoc;
 use local_ai_manager\base_vecstore;
@@ -43,12 +44,15 @@ class index_service {
      *
      * @param source_management_access $access Access service for source management checks.
      * @param embedding_model_resolver $modelresolver Resolver of the embedding model of the current user.
+     * @param source_content_reader $contentreader Reader of the indexable content of sources.
      */
     public function __construct(
         /** @var source_management_access Access service for source management checks. */
         private readonly source_management_access $access,
         /** @var embedding_model_resolver Resolver of the embedding model of the current user. */
         private readonly embedding_model_resolver $modelresolver,
+        /** @var source_content_reader Reader of the indexable content of sources. */
+        private readonly source_content_reader $contentreader,
     ) {
     }
 
@@ -165,6 +169,74 @@ class index_service {
         }
 
         return $this->start($source);
+    }
+
+    /**
+     * Queue the check for content changes of the source of an updated course module.
+     *
+     * Only queues the check if the module has a source with a completed index, so updates of other modules stay cheap.
+     *
+     * @param int $cmid The id of the updated course module.
+     */
+    public function queue_module_change_check(int $cmid): void {
+        global $DB;
+
+        $sourceid = $DB->get_field_sql(
+            'SELECT s.id
+               FROM {local_ai_content_sources} s
+              WHERE s.cmid = :cmid AND s.sourcetype = :module AND s.allowindex = 1
+                    AND EXISTS (SELECT 1 FROM {local_ai_content_index} i WHERE i.sourceid = s.id AND i.status = :indexed)',
+            ['cmid' => $cmid, 'module' => source::TYPE_MODULE, 'indexed' => model_index::STATUS_INDEXED],
+            IGNORE_MULTIPLE
+        );
+        if ($sourceid) {
+            \core\task\manager::queue_adhoc_task(check_source_changes_adhoc::instance((int) $sourceid), true);
+        }
+    }
+
+    /**
+     * Mark the indexes of a source as outdated whose indexed content differs from the current content of the source.
+     *
+     * Only completed indexes are compared: queued and running indexes read the current content anyway, failed ones have no
+     * vectors. Outdated indexes stay searchable until a source manager re-indexes them with their embedding model.
+     *
+     * @param int $sourceid The source record id.
+     */
+    public function check_source_changes(int $sourceid): void {
+        global $DB;
+
+        $source = source::get_record(['id' => $sourceid]);
+        // The source may have been deleted or switched off since the check has been queued.
+        if ($source === null || !$source->get_allowindex()) {
+            return;
+        }
+        $indexes = array_filter(
+            model_index::get_for_sources([$sourceid])[$sourceid] ?? [],
+            static fn(model_index $index): bool => $index->get_status() === model_index::STATUS_INDEXED
+        );
+        if (empty($indexes)) {
+            return;
+        }
+
+        $contenthash = $this->contentreader->hash_chunks($this->contentreader->get_chunks($source));
+        $now = \core\di::get(\core\clock::class)->time();
+        foreach ($indexes as $index) {
+            if ($index->get_contenthash() === $contenthash) {
+                continue;
+            }
+            // Conditional update, so an indexing run started meanwhile is not overwritten.
+            $DB->execute(
+                'UPDATE {local_ai_content_index}
+                    SET status = :outdated, timemodified = :now
+                  WHERE id = :id AND status = :indexed',
+                [
+                    'outdated' => model_index::STATUS_OUTDATED,
+                    'now' => $now,
+                    'id' => $index->get_id(),
+                    'indexed' => model_index::STATUS_INDEXED,
+                ],
+            );
+        }
     }
 
     /**

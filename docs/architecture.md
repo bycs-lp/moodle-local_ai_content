@@ -106,7 +106,7 @@ management shows a summarized status (failed > running > queued > indexed) plus 
 | Retrieval | `local\rag_manager`, `local\source_access`, `local\rag_result`, `local\rag_source`, `local\enriched_vector` (vector + payload, also used by ai_manager) |
 | Selection/management | `local\source_selection_utils`, `local\source_management_access` |
 | Hooks | `local\hook_callbacks` (DI, `vecstore_usage`, `before_vecstore_instance_deleted`, `before_course_deleted`) |
-| Events | `local\observer` (`course_module_deleted`) |
+| Events | `local\observer` (`course_module_deleted`, content change events of the extractors) |
 | REST | `route\api\sourcemanagement`, `route\api\source_index`, `route\api\source_selection` |
 | Frontend | `js/esm/src/source_manager.tsx` (management page), `js/esm/src/source_selector.tsx` + `source_selector/data_manager.ts` + `source_selection_modal_manager.ts` (selection), `amd/src/source_selector.js` (AMD shim for block_ai_chat) |
 
@@ -117,11 +117,21 @@ management shows a summarized status (failed > running > queued > indexed) plus 
    user's model and deletes the indexes of other models.
 2. Task: stale tasks (taskid mismatch on the model index) abort, a changed embedding model of the user fails the run;
    otherwise `indexer_manager::index_single_source()`.
-3. Text: activity via `cm_content_{modname}` (files via `document_extractor`), `html_to_text`; document = stored text.
+3. Text (`local\source_content_reader`): activity via `cm_content_{modname}` (files via `document_extractor`),
+   `html_to_text`; document = stored text.
 4. Chunking: 1000 characters, 100 overlap; on HTTP 400 (context length) the chunk is halved and retried.
 5. One embedding request per chunk, then `insert_embeddings(model, …)` into the model collection of the source vecstore;
-   the model index gets `contenthash`, `lastindexed`.
+   the model index gets `contenthash` (SHA-256 of the extracted chunks, before any halving) and `lastindexed`.
 6. Errors → model index `failed`, `error` (debug info only with developer debugging).
+7. Change detection of activities: every extractor declares the events signalling a change of its content
+   (`cm_content_extractor::get_content_change_events()`, default `course_module_updated`; book: chapter events, lesson:
+   page events, folder: `folder_updated`). `db/events.php` registers them via `observer::get_content_change_observers()`
+   (changes need a version bump). `observer::module_content_changed()` takes the cmid from the event context and calls
+   `index_service::queue_module_change_check()`, which queues `check_source_changes_adhoc` (deduplicated) if the module
+   has a source with an `indexed` index. The task extracts the current content and marks every `indexed` index whose
+   `contenthash` differs as `outdated`. Outdated indexes stay searchable (old vectors) until a source manager re-indexes
+   them ("Index with my embedding model"). Changes without any event (restored backups, direct database changes) are
+   not detected.
 
 ### 3.4 Retrieval (`rag_manager::get_rag_content(prompt, sourceids, component, contextid, topk = 10)`)
 1. Embed prompt (purpose `embedding`).

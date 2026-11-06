@@ -1,6 +1,7 @@
 # Parallel indexes per embedding model
 
-Status: implemented (see `issues.md` A10). Re-indexing on content change of module sources (A6) is still open.
+Status: implemented (see `issues.md` A10). Content changes of module sources mark their indexes as `outdated` (see
+`architecture.md` 3.3, `issues.md` A6).
 
 ## Problem
 - Vectors of different embedding models must never be compared: with a different dimension RAG fails, with the same
@@ -65,6 +66,8 @@ instance, one collection per model. External sources get `externalcollection` an
   user and adds or restarts this model's index. Indexes of other models stay.
 - **Content change** (document sources): the source is re-indexed with the model of the editing user; indexes of other
   models are outdated and get deleted. Managers with these models have to index the source again.
+- **Content change** (module sources, `course_module_updated`): indexes whose `contenthash` differs from the current
+  content are marked `outdated`; they stay searchable until a manager re-indexes them with their model.
 - **Stop** (switch off): vectors and indexes of all models are deleted, the source is unbound from its vecstore.
 - The task fails if the user's embedding model changed between queuing and running.
 

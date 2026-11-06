@@ -19,6 +19,10 @@
 2. Activities: "active for AI access" creates the source, "index" queues the adhoc task (cron required). Status is polled.
    Indexing uses your embedding model and quota. The status shows each embedding model the source is indexed with; if
    the source is not indexed with your model yet, "Index with my embedding model" adds an index for it.
+   If the content of an indexed activity changes (e.g. settings form, book chapters, lesson pages, folder files; checked
+   by cron), the status shows "Content
+   changed, re-indexing required"; the old content stays searchable until you re-index it with "Index with my embedding
+   model".
 3. Documents: create, edit, delete text documents in the course or globally (only with `managesources` in the system context).
    Changed text is re-indexed automatically with your embedding model; indexes of other models are deleted.
 
@@ -26,6 +30,8 @@
 1. Select sources via the sources button in the chat header (indexed, enabled sources; sources from other courses can be imported).
    The selection currently applies to the whole context, not per user.
    Selected sources not indexed with the user's embedding model are skipped; the answer lists them after the sources.
+   Sources whose content changed since indexing are marked "Outdated" in the selection; if at least one selected source
+   is outdated, a small warning triangle is shown at the sources button (answers may be based on the old content).
 2. Every chat request uses the selected sources; the source list with links is shown below the answer.
 
 ## 4. Developer tools (not for production)

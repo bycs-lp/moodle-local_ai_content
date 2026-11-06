@@ -1,0 +1,14 @@
+/* Launcher button of the source selector: marks a selection containing outdated sources. */
+.local_ai_content-source-selector-launcher {
+    position: relative;
+}
+
+.local_ai_content-source-selector-outdated {
+    position: absolute;
+    right: -0.5em;
+    bottom: -0.25em;
+    font-size: 0.65em;
+    color: var(--bs-warning, #f0ad4e);
+    -webkit-text-stroke: 0.5px #343a40;
+}
+

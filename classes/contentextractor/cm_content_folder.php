@@ -33,6 +33,14 @@ class cm_content_folder extends cm_content_extractor {
     }
 
     #[\Override]
+    public static function get_content_change_events(): array {
+        // Files can be edited on the view page of the folder outside of the settings form.
+        return array_merge(parent::get_content_change_events(), [
+            \mod_folder\event\folder_updated::class,
+        ]);
+    }
+
+    #[\Override]
     public function extract(\core_course\cm_info $cm): string {
         $context = \context_module::instance($cm->id);
         $fs = get_file_storage();

@@ -57,7 +57,7 @@
               <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
               <FIELD NAME="sourceid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Foreign key to local_ai_content_sources.id"/>
               <FIELD NAME="embeddingmodel" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Name of the embedding model the source is indexed with"/>
-              <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" SEQUENCE="false" COMMENT="Indexing status (queued, running, indexed, failed)"/>
+              <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" SEQUENCE="false" COMMENT="Indexing status (queued, running, indexed, failed, outdated)"/>
               <FIELD NAME="taskid" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Last queued adhoc task ID used to index the source with this model"/>
               <FIELD NAME="error" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Error message of the last failed indexing run"/>
               <FIELD NAME="debuginfo" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Technical details of the last failed indexing run, only filled while developer debugging is enabled"/>

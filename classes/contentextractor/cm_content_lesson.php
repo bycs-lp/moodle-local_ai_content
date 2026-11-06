@@ -33,6 +33,17 @@ class cm_content_lesson extends cm_content_extractor {
     }
 
     #[\Override]
+    public static function get_content_change_events(): array {
+        // Pages are created, edited, moved and deleted outside of the settings form.
+        return array_merge(parent::get_content_change_events(), [
+            \mod_lesson\event\page_created::class,
+            \mod_lesson\event\page_updated::class,
+            \mod_lesson\event\page_moved::class,
+            \mod_lesson\event\page_deleted::class,
+        ]);
+    }
+
+    #[\Override]
     public function extract(\core_course\cm_info $cm): string {
         global $CFG;
         require_once($CFG->dirroot . '/mod/lesson/locallib.php');

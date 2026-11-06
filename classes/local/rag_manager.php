@@ -303,7 +303,7 @@ class rag_manager {
                 }
             } else {
                 $index = $model === null ? null : ($indexes[$sourceid][$model] ?? null);
-                if ($index?->get_status() === model_index::STATUS_INDEXED) {
+                if ($index?->is_searchable()) {
                     $reason = null;
                 } else if ($index?->is_active()) {
                     $reason = rag_result::UNAVAILABLE_INDEXING;
