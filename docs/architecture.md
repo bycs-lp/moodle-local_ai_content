@@ -141,8 +141,8 @@ management shows a summarized status (failed > running > queued > indexed) plus 
    `index_service::queue_module_change_check()`, which queues `check_source_changes_adhoc` (deduplicated) if the module
    has a source with an `indexed` index. The task extracts the current content and marks every `indexed` index whose
    `contenthash` differs as `outdated`. Outdated indexes stay searchable (old vectors) until a source manager re-indexes
-   them ("Index with my embedding model"). Changes without any event (restored backups, direct database changes) are
-   not detected.
+   them ("Index with my embedding model"). Changes without any event (e.g. direct database changes) are not detected.
+   Restoring or importing a backup always creates new course modules without a source, so it does not affect indexes.
 
 ### 3.4 Retrieval (`rag_manager::get_rag_content(prompt, sourceids, component, contextid, topk = 10)`)
 1. Embed prompt (purpose `embedding`).

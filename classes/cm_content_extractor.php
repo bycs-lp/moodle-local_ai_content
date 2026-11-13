@@ -81,7 +81,7 @@ abstract class cm_content_extractor {
      * admin/cli/upgrade.php only purges the caches if any version has changed, otherwise it exits without purging and
      * the old observers stay registered.
      *
-     * Changes that do not trigger any event (e.g. restored backups, direct database changes) are not detected.
+     * Changes that do not trigger any event (e.g. direct database changes) are not detected.
      *
      * @return string[] Fully qualified class names of the events, i.e. subclasses of {@see \core\event\base}.
      */
