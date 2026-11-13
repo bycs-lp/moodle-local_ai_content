@@ -32,7 +32,7 @@ use local_ai_content\source;
  */
 class source_content_reader {
     /** @var int Number of characters per embedding chunk. */
-    protected const CHUNK_SIZE = 1000;
+    public const CHUNK_SIZE = 1000;
 
     /** @var int Number of characters each chunk repeats from its predecessor to preserve context. */
     protected const CHUNK_OVERLAP = 100;

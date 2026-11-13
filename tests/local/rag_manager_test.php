@@ -16,8 +16,10 @@
 
 namespace local_ai_content\local;
 
+use local_ai_manager\local\vector_record;
+
 /**
- * Tests for the excerpt formatting of the rag_manager.
+ * Tests for the excerpt formatting and the ranking of the rag_manager.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
@@ -64,6 +66,45 @@ final class rag_manager_test extends \advanced_testcase {
         $this->assertSame(1, substr_count($excerpt, '</excerpt'));
         $this->assertStringNotContainsStringIgnoringCase('</ retrieved_excerpts', $excerpt);
         $this->assertStringContainsString('‹/excerpt>', $excerpt);
+    }
+
+    /**
+     * Call the protected ranking of the matches.
+     *
+     * @param vector_record[] $matches The matches of all queries.
+     * @param float $minsimilarity The minimum cosine similarity a match must have.
+     * @return string[] The contents of the ranked matches.
+     */
+    private function rank_matches(array $matches, float $minsimilarity): array {
+        $method = new \ReflectionMethod(rag_manager::class, 'rank_matches');
+        $matches = $method->invoke(\core\di::get(rag_manager::class), $matches, $minsimilarity);
+        return array_map(fn(vector_record $match): string => $match->get_content(), $matches);
+    }
+
+    /**
+     * Creates a search match.
+     *
+     * @param string $content The content of the match.
+     * @param float $score The score of the match.
+     * @return vector_record The match.
+     */
+    private function match(string $content, float $score): vector_record {
+        return new vector_record('[]', $content, 1, [], $score);
+    }
+
+    /**
+     * Matches of all queries are ranked globally by score, too dissimilar matches are dropped.
+     */
+    public function test_rank_matches(): void {
+        // Matches of two queries, each ordered by descending score.
+        $ranked = $this->rank_matches([
+            $this->match('a1', 0.5),
+            $this->match('a2', 0.2),
+            $this->match('b1', 0.9),
+            $this->match('b2', 0.4),
+        ], 0.3);
+
+        $this->assertSame(['b1', 'a1', 'b2'], $ranked);
     }
 }
 

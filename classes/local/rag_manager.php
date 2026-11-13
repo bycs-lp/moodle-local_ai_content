@@ -48,8 +48,8 @@ use local_ai_manager\manager;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class rag_manager {
-    /** @var int Default number of nearest neighbours to include in the assembled RAG content. */
-    private const DEFAULT_TOPK = 10;
+    /** @var int Minimum number of nearest neighbours fetched per vector store query as candidates for the RAG content. */
+    private const CANDIDATES_PER_QUERY = 30;
 
     /** @var string Payload key of the 1-based index of the chunk within its source. */
     const PAYLOAD_CHUNK = 'chunk';
@@ -101,7 +101,8 @@ EOF;
      * Adds the RAG content for the selected sources of a request as context to the request.
      *
      * Does nothing if the request has no selected sources. The RAG result (sources used and unavailable sources) is added as
-     * result data, so the calling component can show it next to the response.
+     * result data, so the calling component can show it next to the response. The general request options 'minsimilarity'
+     * and 'maxretrievedchars' override the admin settings for this request.
      *
      * @param additional_prompt_context $hook The hook of the AI request.
      * @throws \moodle_exception if the selected sources cannot be searched
@@ -116,11 +117,14 @@ EOF;
             return;
         }
 
+        // The retrieval options are optional, without them the admin settings apply.
         $ragresult = $this->get_rag_content(
             $hook->prompttext,
             $sourceids,
             $hook->requestoptions->get_component(),
-            $hook->requestoptions->get_context()->id
+            $hook->requestoptions->get_context()->id,
+            array_key_exists('minsimilarity', $options) ? (float) $options['minsimilarity'] : null,
+            array_key_exists('maxretrievedchars', $options) ? (int) $options['maxretrievedchars'] : null
         );
         $ragcontent = $ragresult->get_retrieved_text();
         if ($ragcontent !== '') {
@@ -145,7 +149,9 @@ EOF;
      * @param string $component the component from which the (embedding) request is being performed
      * @param int $contextid the context id from which the (embedding) request is being performed and whose stored
      *  source selection applies
-     * @param int $topk the maximum number of chunks to include in the assembled RAG content
+     * @param ?float $minsimilarity the minimum cosine similarity of a chunk to the prompt, null for the admin setting
+     * @param ?int $maxchars the maximum number of characters of the included chunk texts, null for the admin setting. Only the
+     *  retrieved chunk texts count, not the pre-prompt, the excerpt tags or the rest of the prompt.
      * @return rag_result the assembled RAG result
      * @throws \moodle_exception if the selected sources cannot be searched, for example because the embedding request or a
      *  vector store query failed
@@ -155,8 +161,14 @@ EOF;
         array $sourceids,
         string $component,
         int $contextid,
-        int $topk = self::DEFAULT_TOPK
+        ?float $minsimilarity = null,
+        ?int $maxchars = null
     ): rag_result {
+        $minsimilarity ??= (float) get_config('local_ai_content', 'ragminsimilarity');
+        $maxchars ??= (int) get_config('local_ai_content', 'ragmaxretrievedchars');
+        // Fetch enough candidates per query to fill the maximum length with chunks of the usual size.
+        $candidates = max(self::CANDIDATES_PER_QUERY, (int) ceil($maxchars / source_content_reader::CHUNK_SIZE));
+
         // Security: the source ids come from the client, so only those stored as selection for the context are used.
         $sourceids = array_intersect(
             array_map('intval', $sourceids),
@@ -207,6 +219,7 @@ EOF;
             throw new \moodle_exception('error_ragembeddinginvalid', 'local_ai_content', '', null, $response->get_content());
         }
 
+        // The matches of all vector store queries.
         $matches = [];
 
         // Moodle sources (module/document): grouped by their target vector store instance.
@@ -223,7 +236,7 @@ EOF;
                 continue;
             }
             $filters = [vector_record::PAYLOAD_DOCUMENTID => $groupsourceids];
-            $queryresponse = $vecstore->query($model, $embedding, $topk, $filters);
+            $queryresponse = $vecstore->query($model, $embedding, $candidates, $filters);
             $matches = array_merge($matches, $this->get_matches($queryresponse));
         }
 
@@ -241,15 +254,18 @@ EOF;
             if (!empty($externalfilter)) {
                 $filters = json_decode($externalfilter, true, flags: JSON_THROW_ON_ERROR);
             }
-            $queryresponse = $vecstore->query_collection((string) $source->get_externalcollection(), $embedding, $topk, $filters);
+            $queryresponse = $vecstore->query_collection((string) $source->get_externalcollection(), $embedding,
+                $candidates, $filters);
             $matches = array_merge($matches, $this->get_matches($queryresponse));
         }
 
+        $matches = $this->rank_matches($matches, $minsimilarity);
         if (empty($matches)) {
             return new rag_result('', [], $unavailablesources);
         }
 
-        // Keep backend relevance order and cap to topk chunks.
+        // Take the matches in ranking order as long as they fit into the maximum length of the RAG content.
+        $usedchars = 0;
         $sourcesbyid = $this->load_sources_by_id($matches, $sources);
         $chunks = [];
         $references = [];
@@ -258,6 +274,12 @@ EOF;
             if ($content === '') {
                 continue;
             }
+            // Stop at the first chunk exceeding the remaining length, so no less relevant chunk is preferred over it.
+            $length = \core_text::strlen($content);
+            if ($usedchars + $length > $maxchars) {
+                break;
+            }
+            $usedchars += $length;
             $reference = $this->build_source_reference($match, $sourcesbyid);
             $chunks[] = $this->format_excerpt(
                 count($chunks) + 1,
@@ -276,15 +298,28 @@ EOF;
                     $references[$referencekey] = $reference;
                 }
             }
-            if (count($chunks) >= $topk) {
-                break;
-            }
         }
         if (empty($chunks)) {
             return new rag_result('', [], $unavailablesources);
         }
 
         return new rag_result(implode("\n\n", $chunks), array_values($references), $unavailablesources);
+    }
+
+    /**
+     * Ranks the matches of several vector store queries by their relevance.
+     *
+     * All vector stores score by cosine similarity and all searched sources are indexed with the same embedding model, so
+     * the scores of all queries are comparable. Matches below the minimum similarity are dropped.
+     *
+     * @param vector_record[] $matches the matches of all queries
+     * @param float $minsimilarity the minimum cosine similarity a match must have
+     * @return vector_record[] the remaining matches ordered by descending similarity
+     */
+    protected function rank_matches(array $matches, float $minsimilarity): array {
+        $matches = array_filter($matches, fn(vector_record $match): bool => $match->get_score() >= $minsimilarity);
+        usort($matches, fn(vector_record $a, vector_record $b): int => $b->get_score() <=> $a->get_score());
+        return $matches;
     }
 
     /**

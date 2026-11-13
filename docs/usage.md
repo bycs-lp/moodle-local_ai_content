@@ -8,7 +8,7 @@
    model they were indexed with (see [concept-multi-model-index.md](concept-multi-model-index.md)); several models
    become possible once several models per purpose can be configured.
 2. Enable a vecstore subplugin (`qdrant` or `postgres`).
-3. Tenant configuration → vector databases: create an instance (endpoint/API key or DSN, collection prefix, distance metric).
+3. Tenant configuration → vector databases: create an instance (endpoint/API key or DSN, collection prefix).
    One collection per embedding model is created automatically, its dimensions are taken from the first vectors.
    Global instances require `local/ai_manager:manageglobalvecstores`.
 4. "Test" checks the connection; "Set as primary" defines the vecstore for new indexing runs.

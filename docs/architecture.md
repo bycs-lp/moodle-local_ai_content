@@ -42,7 +42,7 @@ local_ai_manager (infrastructure): embedding purpose/tool, vecstore subplugins (
   `chunk`, `maxchunks` as metadata; `locator`, `url` are read from the metadata if present (external sources). Qdrant
   creates an integer payload index on `documentid` for every collection.
 - Table `local_ai_manager_vecstore`: `name`, `tenant`, `vecstore`, `isglobal`, `endpoint`, `apikey`, `useglobalapikey`,
-  `collection` (prefix of the collection names), `distancemetric`, `timecreated`, `timemodified`.
+  `collection` (prefix of the collection names), `timecreated`, `timemodified`.
 - One collection per embedding model and instance (`{collection}_{model slug}`), registered in `local_ai_manager_collection`
   (`vecstoreid`, `embeddingmodel`, `collection`, `dimensions` from the first stored vector), see
   [concept-multi-model-index.md](concept-multi-model-index.md).
@@ -60,6 +60,24 @@ local_ai_manager (infrastructure): embedding purpose/tool, vecstore subplugins (
 | `vecstore_factory` | Load/create instances, `get_primary_vecstore()`, `set_primary()`, `delete_instance()` (dispatches hooks) |
 
 - Responses: `local\vecstore_response` (code, errormessage, debuginfo, optional `vecstore_query_response` with `vector_record[]`).
+  Search matches carry their score (`vector_record::get_score()`, cosine similarity), `null` for other reads (`get_all()`).
+- **Similarity metric: cosine only.** All backends measure similarity as cosine similarity, there is no metric setting
+  (Postgres: operator `<=>`, score `1 - distance`; Qdrant: collections created with `Cosine`, score = similarity).
+  Cosine similarity of the query vector a and a chunk vector b is cos θ = (a·b) / (‖a‖·‖b‖): only the direction of the
+  vectors counts, not their length (1 = same direction/meaning, 0 = unrelated). Reasons for not offering dot product or
+  euclidean distance:
+  - Common embedding models return normalised vectors (length 1). Then dot product = cos θ and
+    euclidean distance² = 2 − 2·cos θ, so all three metrics give exactly the same ranking. A choice adds no value.
+  - Cosine has a fixed scale (−1 to 1) independent of the vector length, so a minimum similarity
+    (`local_ai_content/ragminsimilarity`) can be defined at all. Dot product and euclidean distance depend on the vector
+    length as soon as a model does not normalise.
+  - One metric makes the scores of all vector stores comparable, so matches of several stores can be ranked globally.
+    Mixed metrics would need a re-ranking in PHP.
+  - Cosine stays meaningful for non-normalised vectors, is the metric recommended by embedding providers and the default of
+    pgvector and Qdrant.
+
+  External collections in Qdrant have to use the `Cosine` distance (Qdrant fixes the metric per collection, other metrics
+  return scores with another meaning). pgvector chooses the metric per query, so external tables need nothing.
 - Hooks (listeners in `local_ai_content`):
   - `hook\vecstore_usage` – before deletion: collect usage descriptions (number of sources).
   - `hook\before_vecstore_instance_deleted` – detach sources, optionally delete vectors, disable external sources.
@@ -76,6 +94,14 @@ local_ai_manager (infrastructure): embedding purpose/tool, vecstore subplugins (
 
 ### 2.3 Adding context to AI requests (hook `hook\additional_prompt_context`)
 - Generic option `sourceids` (PARAM_SEQUENCE) for all purposes (`base_purpose`), only evaluated by hook listeners.
+- Generic retrieval options `minsimilarity` (PARAM_FLOAT) and `maxretrievedchars` (PARAM_INT) for all purposes, also only
+  evaluated by hook listeners. local_ai_content uses them instead of its admin settings `ragminsimilarity` /
+  `ragmaxretrievedchars` (pure defaults, no upper limit): plugin developers can set them per request, e.g. a higher length for a
+  model with a large context window. block_ai_chat does not send them.
+  **`maxretrievedchars` only limits the content retrieved from the selected sources** (the chunk texts of the excerpts),
+  not the whole context of the request: the user prompt, the conversation history, the system message, the RAG
+  pre-prompt, the excerpt tags and contexts added by other listeners come on top. The total size sent to the model is
+  therefore larger; plugins have to keep the context window of their model in mind themselves.
 - `manager::perform_request()` dispatches `hook\additional_prompt_context` (prompt + sanitized `request_options`) before
   `format_prompt_text()`. Listeners call `add_context(text)` and `set_result_data(key, array)`.
 - Contexts are passed to `base_purpose::add_prompt_contexts()`: default = put them in front of the prompt text; the chat
@@ -144,14 +170,20 @@ management shows a summarized status (failed > running > queued > indexed) plus 
    them ("Index with my embedding model"). Changes without any event (e.g. direct database changes) are not detected.
    Restoring or importing a backup always creates new course modules without a source, so it does not affect indexes.
 
-### 3.4 Retrieval (`rag_manager::get_rag_content(prompt, sourceids, component, contextid, topk = 10)`)
+### 3.4 Retrieval (`rag_manager::get_rag_content(prompt, sourceids, component, contextid, ?minsimilarity, ?maxchars)`)
 1. Embed prompt (purpose `embedding`).
 2. Load sources, filter accessible ones (`source_access`: activity `uservisible` + `mod/X:view`; global sources `local/ai_content:useglobalsources`; otherwise `local/ai_content:usesource` in the source context).
 3. Skip sources without an `indexed` index for the user's embedding model (external: other `externalmodel`) and report
    them in `rag_result` as unavailable (shown after the source list in block_ai_chat). Query modules/documents per
    vecstore in the model collection with filter `documentid IN (...)`, external sources in their collection with their own
-   filter. Without usable sources the request continues without RAG.
-4. Merge matches in query order, cap at `topk`, wrap every chunk into an excerpt block and join them; deduplicate source
+   filter. Each query returns up to max(30, maximum length / 1000) candidates (`CANDIDATES_PER_QUERY`, chunk size), so
+   a large maximum length can be filled. Without usable sources the request continues without RAG.
+4. Rank (`rank_matches()`): drop matches below the minimum cosine similarity (request option `minsimilarity`, otherwise
+   setting `ragminsimilarity`, default 0.3, 0 = off) and sort the matches of all queries globally by score (comparable,
+   see 2.1). Take them in this order until the next chunk would exceed the maximum length (request option
+   `maxretrievedchars`, otherwise setting `ragmaxretrievedchars`, default 10000 characters of chunk text, see 2.3); the selection stops
+   there, shorter less relevant chunks are not taken instead. Wrap every chunk into an excerpt block and join them;
+   deduplicate source
    references (`rag_source`: sourceId, title, url, locator).
    ```
    <excerpt index="1" source="Script photosynthesis" location="page 4">

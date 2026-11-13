@@ -69,6 +69,22 @@ if ($hassiteconfig) {
         PARAM_BOOL
     ));
 
+    // Minimum similarity and maximum length of the content retrieved for RAG.
+    $settings->add(new admin_setting_configtext(
+        'local_ai_content/ragminsimilarity',
+        get_string('ragminsimilarity', 'local_ai_content'),
+        get_string('ragminsimilarity_desc', 'local_ai_content'),
+        '0.3',
+        PARAM_FLOAT
+    ));
+    $settings->add(new admin_setting_configtext(
+        'local_ai_content/ragmaxretrievedchars',
+        get_string('ragmaxretrievedchars', 'local_ai_content'),
+        get_string('ragmaxretrievedchars_desc', 'local_ai_content'),
+        '10000',
+        PARAM_INT
+    ));
+
     $ADMIN->add('local_ai_content_category', $settings);
 
     // Test extraction admin page.

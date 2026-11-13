@@ -62,6 +62,10 @@ $string['privacy:metadata:cache'] = 'Text extracted from files processed by AI f
 $string['privacy:metadata:cache:contenthash'] = 'The SHA1 content hash of the file the text was extracted from.';
 $string['privacy:metadata:cache:extractedcontent'] = 'The full text extracted from the file, which may contain personal data.';
 $string['privacy:metadata:cache:timecreated'] = 'The time the cache entry was created.';
+$string['ragmaxretrievedchars'] = 'Maximum length of retrieved content';
+$string['ragmaxretrievedchars_desc'] = 'Default maximum number of characters of the source excerpts added to an AI request. The most relevant excerpts are added until this length is reached. Only the text of the excerpts retrieved from the selected sources counts, not the whole prompt (user prompt, conversation history and instructions come on top). Larger values give the AI more context, but make requests more expensive and slower. Plugins can override this value per request (request option "maxretrievedchars").';
+$string['ragminsimilarity'] = 'Minimum similarity of retrieved content';
+$string['ragminsimilarity_desc'] = 'Default minimum cosine similarity (between -1 and 1) a source excerpt must have to the user prompt to be added to an AI request. Typical values depend on the embedding model; 0 disables the filter. Plugins can override this value per request (request option "minsimilarity").';
 $string['sourceselection'] = 'Context source selection';
 $string['sourceselection_help'] = 'Select which sources should be used for this context when generating AI content.
 
