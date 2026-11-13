@@ -33,10 +33,14 @@ local_ai_manager (infrastructure): embedding purpose/tool, vecstore subplugins (
   - `aivecstore_X\vecstore` extends `base_vecstore` – operations against the database.
 - Implementations:
   - `qdrant`: REST via `core\http_client`, collection = Qdrant collection, search via `/points/search`.
-  - `postgres`: external PostgreSQL with pgvector via `pg_connect`; the DSN is stored in field `apikey`; table `(id, embedding vector(N), payload jsonb)`.
+  - `postgres`: external PostgreSQL with pgvector via `pg_connect`; the DSN is stored in field `apikey`; table
+    `(id, documentid bigint, embedding vector(N), payload jsonb)` with a B-tree index on `documentid`. The document id is
+    stored in its own column (not in the payload) in tables created by Moodle; tables of external sources keep it in the
+    payload.
 - Payload per vector (from `local\vector_record`): `content`, `documentid` (key chosen by the caller, used for replace/delete
   and filters) plus the caller's metadata as flat keys. local_ai_content stores the source id as `documentid` and
-  `chunk`, `maxchunks` as metadata; `locator`, `url` are read from the metadata if present (external sources).
+  `chunk`, `maxchunks` as metadata; `locator`, `url` are read from the metadata if present (external sources). Qdrant
+  creates an integer payload index on `documentid` for every collection.
 - Table `local_ai_manager_vecstore`: `name`, `tenant`, `vecstore`, `isglobal`, `endpoint`, `apikey`, `useglobalapikey`,
   `collection` (prefix of the collection names), `distancemetric`, `timecreated`, `timemodified`.
 - One collection per embedding model and instance (`{collection}_{model slug}`), registered in `local_ai_manager_collection`
