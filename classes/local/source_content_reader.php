@@ -31,6 +31,12 @@ use local_ai_content\source;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class source_content_reader {
+    /** @var int Number of characters per embedding chunk. */
+    protected const CHUNK_SIZE = 1000;
+
+    /** @var int Number of characters each chunk repeats from its predecessor to preserve context. */
+    protected const CHUNK_OVERLAP = 100;
+
     /**
      * Read the current content of a module or document source as chunks.
      *
@@ -50,9 +56,9 @@ class source_content_reader {
             if ($extractor === null) {
                 throw new \moodle_exception('indexingerror_notsupported', 'local_ai_content');
             }
-            $chunks = $extractor->extract_as_chunks($cm);
+            $chunks = $this->split_into_chunks($extractor->extract($cm));
         } else if ($source->get_sourcetype() === source::TYPE_DOCUMENT) {
-            $chunks = [(string) $source->get_content()];
+            $chunks = $this->split_into_chunks((string) $source->get_content());
         } else {
             throw new \moodle_exception('indexingerror_notsupported', 'local_ai_content');
         }
@@ -68,6 +74,27 @@ class source_content_reader {
      */
     public function hash_chunks(array $chunks): string {
         return hash('sha256', implode("\n", $chunks));
+    }
+
+    /**
+     * Split content into overlapping chunks for embedding.
+     *
+     * Splitting is done on characters, not on bytes. Byte-based splitting would cut multi-byte UTF-8
+     * sequences in half, which produces strings that cannot be JSON encoded for the embedding request.
+     *
+     * @param string $content The plain-text content.
+     * @return string[] The chunks in content order.
+     */
+    private function split_into_chunks(string $content): array {
+        $chunks = [];
+        $start = 0;
+        $contentlength = \core_text::strlen($content);
+        while ($start < $contentlength) {
+            $chunks[] = \core_text::substr($content, $start, self::CHUNK_SIZE);
+            $start += self::CHUNK_SIZE - self::CHUNK_OVERLAP;
+        }
+
+        return $chunks;
     }
 
     /**

@@ -25,12 +25,6 @@ namespace local_ai_content;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 abstract class cm_content_extractor {
-    /** @var int Number of characters per embedding chunk. */
-    protected const CHUNK_SIZE = 1000;
-
-    /** @var int Number of characters each chunk repeats from its predecessor to preserve context. */
-    protected const CHUNK_OVERLAP = 100;
-
     /**
      * Check whether this extractor supports the given course module.
      *
@@ -87,29 +81,6 @@ abstract class cm_content_extractor {
      */
     public static function get_content_change_events(): array {
         return [\core\event\course_module_updated::class];
-    }
-
-    /**
-     * Split extracted content into overlapping chunks for embedding.
-     *
-     * Splitting is done on characters, not on bytes. Byte-based splitting would cut multi-byte UTF-8
-     * sequences in half, which produces strings that cannot be JSON encoded for the embedding request.
-     *
-     * @param \core_course\cm_info $cm The course module info object.
-     * @return string[]
-     */
-    public function extract_as_chunks(\core_course\cm_info $cm): array {
-        $content = $this->extract($cm);
-
-        $chunks = [];
-        $start = 0;
-        $contentlength = \core_text::strlen($content);
-        while ($start < $contentlength) {
-            $chunks[] = \core_text::substr($content, $start, self::CHUNK_SIZE);
-            $start += self::CHUNK_SIZE - self::CHUNK_OVERLAP;
-        }
-
-        return $chunks;
     }
 
     /**
