@@ -34,8 +34,7 @@ class cm_content_label extends cm_content_extractor {
 
     #[\Override]
     public function extract(\core_course\cm_info $cm): string {
-        $instance = $cm->get_instance_record();
-        $content = (string)$instance->intro;
-        return $this->format_extracted_cm_content($content);
+        // The content of a label is its description.
+        return $this->format_with_intro($cm, []);
     }
 }

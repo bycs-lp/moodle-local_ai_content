@@ -54,11 +54,11 @@ class cm_content_lesson extends cm_content_extractor {
         $pagescontents = [];
         foreach ($pages as $page) {
             // Do not call get_contents(): it requires PAGE state for lesson rendering.
-            $pagescontents[] = trim($page->properties()->contents);
+            $properties = $page->properties();
+            $pagescontents[] = $this->format_module_text($properties->contents, $properties->contentsformat, $cm);
         }
 
-        $content = implode('<br/><br/>', $pagescontents);
-        return $this->format_extracted_cm_content($content);
+        return $this->format_with_intro($cm, $pagescontents);
     }
 }
 

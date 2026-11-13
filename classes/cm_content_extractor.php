@@ -113,6 +113,53 @@ abstract class cm_content_extractor {
     }
 
     /**
+     * Convert a module text field (intro, page content, chapter, ...) from its stored format to HTML.
+     *
+     * Filters are not applied: their output depends on the viewing user, page and time (e.g. multilang, glossary,
+     * dynamic content), which would make the extracted content and its hash unstable. Links and their URLs are dropped
+     * by {@see self::format_extracted_cm_content()}, so @@PLUGINFILE@@ placeholders do not need to be rewritten.
+     *
+     * @param string $text The stored text.
+     * @param string $format The stored format of the text (FORMAT_*).
+     * @param \core_course\cm_info $cm The course module the text belongs to.
+     * @return string The text as HTML.
+     */
+    protected function format_module_text(string $text, string $format, \core_course\cm_info $cm): string {
+        return \core\di::get(\core\formatting::class)->format_text(
+            text: $text,
+            format: $format,
+            context: $cm->context,
+            filter: false,
+        );
+    }
+
+    /**
+     * Return the description (intro) of the course module as HTML.
+     *
+     * @param \core_course\cm_info $cm The course module info object.
+     * @return string The formatted description, empty if the module has none.
+     */
+    protected function get_intro(\core_course\cm_info $cm): string {
+        $instance = $cm->get_instance_record();
+        return trim($this->format_module_text((string) $instance->intro, (string) $instance->introformat, $cm));
+    }
+
+    /**
+     * Join the description of the course module and the given content parts and normalize them to plain text.
+     *
+     * @param \core_course\cm_info $cm The course module info object.
+     * @param string[] $parts HTML content parts of the module (empty parts are skipped).
+     * @return string
+     */
+    protected function format_with_intro(\core_course\cm_info $cm, array $parts): string {
+        $parts = array_filter(
+            array_map('trim', [$this->get_intro($cm), ...$parts]),
+            fn(string $part): bool => $part !== '',
+        );
+        return $this->format_extracted_cm_content(implode('<br/><br/>', $parts));
+    }
+
+    /**
      * Normalize extracted module content to plain text.
      *
      * @param string $content Extracted content.

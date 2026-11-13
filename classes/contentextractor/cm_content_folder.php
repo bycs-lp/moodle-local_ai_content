@@ -48,13 +48,9 @@ class cm_content_folder extends cm_content_extractor {
 
         $filecontents = [];
         foreach ($files as $file) {
-            $filecontent = trim($this->extract_content_from_file($file, $context->id));
-            if ($filecontent !== '') {
-                $filecontents[] = $filecontent;
-            }
+            $filecontents[] = $this->extract_content_from_file($file, $context->id);
         }
 
-        $content = implode('<br/><br/>', $filecontents);
-        return $this->format_extracted_cm_content($content);
+        return $this->format_with_intro($cm, $filecontents);
     }
 }

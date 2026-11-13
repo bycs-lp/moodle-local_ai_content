@@ -50,11 +50,15 @@ class cm_content_book extends cm_content_extractor {
         $chapters = book_preload_chapters($cm->get_instance_record());
         $chaptercontents = [];
         foreach ($chapters as $chapter) {
-            $chaptercontents[] = $chapter->title . '<br/>' . $chapter->content;
+            // Subchapters of hidden chapters are marked as hidden by book_preload_chapters() as well.
+            if ($chapter->hidden) {
+                continue;
+            }
+            $chaptercontents[] = s($chapter->title) . '<br/>'
+                . $this->format_module_text($chapter->content, $chapter->contentformat, $cm);
         }
 
-        $content = implode('<br/><br/>', $chaptercontents);
-        return $this->format_extracted_cm_content($content);
+        return $this->format_with_intro($cm, $chaptercontents);
     }
 }
 

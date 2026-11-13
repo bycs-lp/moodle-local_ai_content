@@ -56,6 +56,6 @@ class cm_content_resource extends cm_content_extractor {
         }
 
         $content = $this->extract_content_from_file($file, $context->id);
-        return $this->format_extracted_cm_content($content);
+        return $this->format_with_intro($cm, [$content]);
     }
 }
