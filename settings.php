@@ -60,15 +60,6 @@ if ($hassiteconfig) {
         get_string('extractionprompt_default', 'local_ai_content')
     ));
 
-    // Setting: Show empty sections in RAG contexts selector
-    $settings->add(new admin_setting_configcheckbox(
-        'local_ai_content/showemptysections',
-        get_string('showemptysections', 'local_ai_content'),
-        get_string('showemptysections_desc', 'local_ai_content'),
-        0, // Default value: false (don't show empty sections)
-        PARAM_BOOL
-    ));
-
     // Minimum similarity and maximum length of the content retrieved for RAG.
     $settings->add(new admin_setting_configtext(
         'local_ai_content/ragminsimilarity',
