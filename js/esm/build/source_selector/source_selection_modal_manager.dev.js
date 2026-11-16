@@ -11,13 +11,13 @@ import { requireAsync } from "@moodle/lms/core/amd";
 const openSourceSelectorModal = /* @__PURE__ */ __name(async (options) => {
   const modalCancel = await requireAsync("core/modal_cancel");
   const modalEvents = await requireAsync("core/modal_events");
-  const str = await requireAsync("core/str");
+  const string_ = await requireAsync("core/str");
   const modal = await modalCancel.create({
     title: options.title,
     body: "",
     large: true,
     removeOnClose: true,
-    buttons: { cancel: await str.getString("closebuttontitle", "core") }
+    buttons: { cancel: await string_.getString("closebuttontitle", "core") }
   });
   const root = modal.getRoot();
   modal.setBody('<div data-local_ai_content-region="source-selector-modal-body"></div>');

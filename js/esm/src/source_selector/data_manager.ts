@@ -69,27 +69,29 @@ const listeners = new Map<number, Set<SelectionListener>>();
 /**
  * Normalise source ids given as array or comma-separated string.
  *
- * @param {number[]|string} sourceIds The source ids.
- * @returns {number[]} Unique positive integer ids.
+ * @param sourceIds Ids as array or comma-separated string.
+ * @returns Unique positive integer ids.
  */
 export const parseSourceIds = (sourceIds: Array<number | string> | string): number[] => {
     const values = typeof sourceIds === 'string' ? sourceIds.split(',') : sourceIds;
     const ids = values
-        .map((id) => parseInt(String(id).trim(), 10))
-        .filter((id) => !isNaN(id) && id > 0);
+        .map(id => Number(String(id).trim()))
+        .filter(id => Number.isSafeInteger(id) && id > 0);
     return [...new Set(ids)];
 };
 
 /**
  * Set the selected source ids of a context and notify all listeners.
  *
- * @param {number} contextId The context id.
- * @param {number[]|string} sourceIds The selected source ids.
+ * @param contextId Id of the context the selection belongs to.
+ * @param sourceIds Ids of the selected sources, as array or comma-separated string.
  */
 const setSelectedSourceIds = (contextId: number, sourceIds: Array<number | string> | string): void => {
     const ids = parseSourceIds(sourceIds);
     selections.set(contextId, ids);
-    listeners.get(contextId)?.forEach((listener) => listener([...ids]));
+    for (const listener of listeners.get(contextId) ?? []) {
+        listener([...ids]);
+    }
 };
 
 /**
@@ -97,18 +99,18 @@ const setSelectedSourceIds = (contextId: number, sourceIds: Array<number | strin
  *
  * The request is only sent once per context, subsequent calls return the cached promise.
  *
- * @param {number} contextId The context id.
- * @param {boolean} reload Whether to bypass the cache.
- * @returns {Promise<ContextSourceSelection>} The source selection of the context.
+ * @param contextId Id of the context to load the selection for.
+ * @param reload Whether to bypass the cache.
+ * @returns The source selection of the context.
  */
-export const loadSourceSelection = (contextId: number, reload = false): Promise<ContextSourceSelection> => {
+export const loadSourceSelection = async (contextId: number, reload = false): Promise<ContextSourceSelection> => {
     const cached = loadPromises.get(contextId);
     if (cached && !reload) {
         return cached;
     }
 
     const promise = Fetch.performGet('local_ai_content', `contexts/${contextId}/source-selections`)
-        .then((response: Response) => response.json() as Promise<ContextSourceSelectionResponse>)
+        .then(async (response: Response) => response.json() as Promise<ContextSourceSelectionResponse>)
         .then((data: ContextSourceSelectionResponse) => {
             const item = data.items[0];
             const selection: ContextSourceSelection = {
@@ -133,13 +135,14 @@ export const loadSourceSelection = (contextId: number, reload = false): Promise<
 /**
  * Get the currently selected source ids of a context, loading them first if necessary.
  *
- * @param {number} contextId The context id.
- * @returns {Promise<number[]>} The selected source ids, empty if they could not be loaded.
+ * @param contextId Id of the context to get the selection for.
+ * @returns The selected source ids, empty if they could not be loaded.
  */
-export const getSelectedSourceIds = async(contextId: number): Promise<number[]> => {
+export const getSelectedSourceIds = async (contextId: number): Promise<number[]> => {
     if (!selections.has(contextId)) {
         await loadSourceSelection(contextId);
     }
+
     return [...selections.get(contextId)!];
 };
 
@@ -149,11 +152,11 @@ export const getSelectedSourceIds = async(contextId: number): Promise<number[]> 
  * The new selection is applied immediately. Saves of the same context are sent one after another,
  * so the last selection always wins on the server.
  *
- * @param {number} contextId The context id.
- * @param {number[]} sourceIds The selected source ids.
- * @returns {Promise<void>} Resolves when saved, rejects on failure.
+ * @param contextId Id of the context to store the selection for.
+ * @param sourceIds Ids of the sources to select.
+ * @returns Resolves when saved, rejects on failure.
  */
-export const saveSelectedSourceIds = (contextId: number, sourceIds: number[]): Promise<void> => {
+export const saveSelectedSourceIds = async (contextId: number, sourceIds: number[]): Promise<void> => {
     const ids = parseSourceIds(sourceIds);
     setSelectedSourceIds(contextId, ids);
 
@@ -161,7 +164,7 @@ export const saveSelectedSourceIds = (contextId: number, sourceIds: number[]): P
     const promise = previous
         // A failed previous save must not prevent this one.
         .catch(() => undefined)
-        .then(() => Fetch.performPut('local_ai_content', `contexts/${contextId}/source-selections`, {
+        .then(async () => Fetch.performPut('local_ai_content', `contexts/${contextId}/source-selections`, {
             body: {selectedSourceIds: ids.join(',')},
         }))
         .then(() => {
@@ -175,9 +178,9 @@ export const saveSelectedSourceIds = (contextId: number, sourceIds: number[]): P
 /**
  * Subscribe to changes of the selected source ids of a context.
  *
- * @param {number} contextId The context id.
- * @param {SelectionListener} listener The callback.
- * @returns {() => void} Function to unsubscribe.
+ * @param contextId Id of the context to watch.
+ * @param listener Called with the selected source ids on every change.
+ * @returns Function to unsubscribe.
  */
 export const subscribe = (contextId: number, listener: SelectionListener): (() => void) => {
     const contextListeners = listeners.get(contextId) ?? new Set<SelectionListener>();

@@ -21,11 +21,16 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-import {useEffect, useMemo, useRef, useState} from 'react';
+import {
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from 'react';
+import {Button, ProgressBar} from '@moodlehq/design-system';
 import Fetch from '@moodle/lms/core/fetch';
 import Log from '@moodle/lms/core/log';
 import MoodleString from '@moodle/lms/core/String';
-import {Button, ProgressBar} from '@moodlehq/design-system';
 
 /** The indexing state of one source for one embedding model. */
 type ModelIndexState = {
@@ -120,9 +125,10 @@ function isActive(state: IndexState): boolean {
 }
 
 function formatTimestamp(timestamp: string | null): string {
-    if (!timestamp) {
+    if (timestamp === null) {
         return '-';
     }
+
     return new Date(timestamp).toLocaleString();
 }
 
@@ -143,37 +149,37 @@ function IndexStatusCell({state, disabled, onIndexCurrentModel}: {
         <>
             <span className={`badge ${badgeclass}`}>{state.statusLabel}</span>
             {active && (
-                <div className="mt-1">
+                <div className='mt-1'>
                     <ProgressBar
                         value={Math.max(2, state.percent)}
                         min={0}
                         max={100}
-                        status="loading"
-                        labelVariant="none"
-                        title={state.message || state.statusLabel}
+                        status='loading'
+                        labelVariant='none'
+                        title={state.message === '' ? state.statusLabel : state.message}
                         count={`${Math.round(state.percent)}%`}
                         animated
                     />
                 </div>
             )}
-            {failed && state.message && (
-                <div className="small text-danger mt-1">{state.message}</div>
+            {failed && state.message !== '' && (
+                <div className='small text-danger mt-1'>{state.message}</div>
             )}
             {state.models.length > 0 && (
-                <ul className="list-unstyled small text-muted mt-1 mb-0">
-                    {state.models.map((modelstate) => (
+                <ul className='list-unstyled small text-muted mt-1 mb-0'>
+                    {state.models.map(modelstate => (
                         <li key={modelstate.model}>{modelstate.model}: {modelstate.statusLabel}</li>
                     ))}
                 </ul>
             )}
-            {state.canIndexCurrentModel && state.currentModel && (
+            {state.canIndexCurrentModel && state.currentModel !== null && (
                 <button
-                    type="button"
-                    className="btn btn-link btn-sm p-0 mt-1"
+                    type='button'
+                    className='btn btn-link btn-sm p-0 mt-1'
                     disabled={disabled || active}
                     onClick={onIndexCurrentModel}
                 >
-                    <MoodleString identifier="indexwithmymodel" component="local_ai_content" params={state.currentModel}/>
+                    <MoodleString identifier='indexwithmymodel' component='local_ai_content' params={state.currentModel}/>
                 </button>
             )}
         </>
@@ -188,20 +194,23 @@ export default function SourceManager({contextid}: Props) {
     const [pollIntervalMs, setPollIntervalMs] = useState<number>(5000);
 
     const [editingDocument, setEditingDocument] = useState<EditableDocument | null>(null);
-    const [deleteCandidate, setDeleteCandidate] = useState<DocumentTableRow | null>(null);
-    const [createScope, setCreateScope] = useState<'global' | 'course' | null>(null);
-    const [newDocument, setNewDocument] = useState<EditableDocument>({id: 0, name: '', description: '', content: ''});
+    const [documentToDelete, setDocumentToDelete] = useState<DocumentTableRow | null>(null);
+    const [newDocumentScope, setNewDocumentScope] = useState<'global' | 'course' | null>(null);
+    const [newDocument, setNewDocument] = useState<EditableDocument>({
+        id: 0, name: '', description: '', content: '',
+    });
 
-    const plusIcon = <i className="icon fa fa-plus" aria-hidden="true"/>;
-    const loggedDebugInfoRef = useRef<Record<number, string>>({});
+    const plusIcon = <i className='icon fa fa-plus' aria-hidden='true'/>;
+    const loggedDebugInfoReference = useRef<Record<number, string>>({});
 
     const documentRows = useMemo<DocumentTableRow[]>(() => {
         if (!payload) {
             return [];
         }
+
         return [
-            ...payload.items.globaldocuments.map((row) => ({...row, scope: 'global' as const})),
-            ...payload.items.coursedocuments.map((row) => ({...row, scope: 'course' as const})),
+            ...payload.items.globaldocuments.map(row => ({...row, scope: 'global' as const})),
+            ...payload.items.coursedocuments.map(row => ({...row, scope: 'course' as const})),
         ].sort((a, b) => a.name.localeCompare(b.name));
     }, [payload]);
 
@@ -209,11 +218,12 @@ export default function SourceManager({contextid}: Props) {
         if (!payload) {
             return false;
         }
+
         return [
             ...payload.items.modules,
             ...payload.items.globaldocuments,
             ...payload.items.coursedocuments,
-        ].some((row) => isActive(row.indexState));
+        ].some(row => isActive(row.indexState));
     }, [payload]);
 
     /**
@@ -222,12 +232,14 @@ export default function SourceManager({contextid}: Props) {
      * The backend only fills them while developer debugging is enabled.
      */
     const logDebugInfo = (states: IndexState[]) => {
-        states.forEach((state) => {
-            if (state.debugInfo && loggedDebugInfoRef.current[state.sourceId] !== state.debugInfo) {
-                loggedDebugInfoRef.current[state.sourceId] = state.debugInfo;
-                Log.debug(`Indexing failed for source ${state.sourceId}:\n${state.debugInfo}`, 'local_ai_content');
+        for (const state of states) {
+            if (state.debugInfo === '' || loggedDebugInfoReference.current[state.sourceId] === state.debugInfo) {
+                continue;
             }
-        });
+
+            loggedDebugInfoReference.current[state.sourceId] = state.debugInfo;
+            Log.debug(`Indexing failed for source ${state.sourceId}:\n${state.debugInfo}`, 'local_ai_content');
+        }
     };
 
     /** Replace the whole source list. */
@@ -236,7 +248,7 @@ export default function SourceManager({contextid}: Props) {
             ...data.items.modules,
             ...data.items.globaldocuments,
             ...data.items.coursedocuments,
-        ].map((row) => row.indexState));
+        ].map(row => row.indexState));
         setPayload(data);
     };
 
@@ -246,48 +258,50 @@ export default function SourceManager({contextid}: Props) {
     const applyIndexStates = (states: IndexState[]) => {
         logDebugInfo(states);
 
-        const byid = new Map(states.map((state) => [state.sourceId, state]));
-        setPayload((current) => {
+        const byid = new Map(states.map(state => [state.sourceId, state]));
+        setPayload(current => {
             if (!current) {
                 return current;
             }
+
             const merge = <T extends {indexState: IndexState}>(row: T, sourceid: number): T => {
                 const state = byid.get(sourceid);
                 return state ? {...row, indexState: state} : row;
             };
+
             return {
                 ...current,
                 items: {
-                    modules: current.items.modules.map((row) => merge(row, row.sourceid)),
-                    globaldocuments: current.items.globaldocuments.map((row) => merge(row, row.id)),
-                    coursedocuments: current.items.coursedocuments.map((row) => merge(row, row.id)),
+                    modules: current.items.modules.map(row => merge(row, row.sourceid)),
+                    globaldocuments: current.items.globaldocuments.map(row => merge(row, row.id)),
+                    coursedocuments: current.items.coursedocuments.map(row => merge(row, row.id)),
                 },
             };
         });
     };
 
-    const loadPayload = async() => {
+    const loadPayload = async () => {
         setLoading(true);
         setError(null);
         try {
             applyPayload(await apiRequest<SourceManagementResponse>('GET', `contexts/${contextid}/sources`));
-        } catch (caught) {
-            setError(`Die Quellen konnten nicht geladen werden: ${getErrorMessage(caught)}`);
+        } catch (error_) {
+            setError(`Die Quellen konnten nicht geladen werden: ${getErrorMessage(error_)}`);
         } finally {
             setLoading(false);
         }
     };
 
     /** Perform a write request and reload the full source list afterwards. */
-    const performWrite = async(method: string, path: string, body?: Record<string, unknown>): Promise<boolean> => {
+    const performWrite = async (method: string, path: string, body?: Record<string, unknown>): Promise<boolean> => {
         setSaving(true);
         setError(null);
         try {
             await apiRequest(method, path, body);
             applyPayload(await apiRequest<SourceManagementResponse>('GET', `contexts/${contextid}/sources`));
             return true;
-        } catch (caught) {
-            setError(`Die Aktion konnte nicht ausgeführt werden: ${getErrorMessage(caught)}`);
+        } catch (error_) {
+            setError(`Die Aktion konnte nicht ausgeführt werden: ${getErrorMessage(error_)}`);
             return false;
         } finally {
             setSaving(false);
@@ -295,13 +309,13 @@ export default function SourceManager({contextid}: Props) {
     };
 
     /** Start or stop indexing; the response is the new index state of that source. */
-    const handleAllowIndexToggle = async(sourceid: number, allowIndex: boolean) => {
+    const handleAllowIndexToggle = async (sourceid: number, allowIndex: boolean) => {
         setSaving(true);
         setError(null);
         try {
             applyIndexStates([await apiRequest<IndexState>('PUT', `sources/${sourceid}/index-state`, {allowIndex})]);
-        } catch (caught) {
-            setError(`Der Indizierungsstatus konnte nicht geändert werden: ${getErrorMessage(caught)}`);
+        } catch (error_) {
+            setError(`Der Indizierungsstatus konnte nicht geändert werden: ${getErrorMessage(error_)}`);
         } finally {
             setSaving(false);
         }
@@ -315,48 +329,73 @@ export default function SourceManager({contextid}: Props) {
         if (!hasActiveTasks) {
             return undefined;
         }
-        const timer = window.setInterval(async() => {
-            const data = await apiRequest<IndexStatesResponse>('GET', `contexts/${contextid}/index-states`);
-            setPollIntervalMs(data.pollIntervalSeconds * 1000);
-            applyIndexStates(data.items);
+
+        const timer = setInterval(() => {
+            void apiRequest<IndexStatesResponse>('GET', `contexts/${contextid}/index-states`).then(data => {
+                setPollIntervalMs(data.pollIntervalSeconds * 1000);
+                applyIndexStates(data.items);
+            });
         }, pollIntervalMs);
 
-        return () => window.clearInterval(timer);
+        return () => {
+            clearInterval(timer);
+        };
     }, [hasActiveTasks, contextid, pollIntervalMs]);
+
+    if (loading) {
+        return <div className='local-ai-content-source-manager local-ai-content-source-manager--loading'>Lade Quellen...</div>;
+    }
+
+    if (!payload) {
+        return <div className='text-danger small mt-2'>{error}</div>;
+    }
 
     const openCreateModal = () => {
         setError(null);
-        setCreateScope('course');
-        setNewDocument({id: 0, name: '', description: '', content: ''});
+        setNewDocumentScope('course');
+        setNewDocument({
+            id: 0, name: '', description: '', content: '',
+        });
     };
 
     const closeCreateModal = () => {
-        setCreateScope(null);
+        setNewDocumentScope(null);
     };
 
-    const handleCreateDocument = async() => {
-        if (!createScope) {
+    const closeEditModal = () => {
+        setEditingDocument(null);
+    };
+
+    const closeDeleteModal = () => {
+        setDocumentToDelete(null);
+    };
+
+    const handleCreateDocument = async () => {
+        if (newDocumentScope === null) {
             return;
         }
-        if (!newDocument.name.trim()) {
+
+        if (newDocument.name.trim() === '') {
             setError('Bitte einen Namen für das Dokument angeben.');
             return;
         }
+
         const saved = await performWrite('POST', `contexts/${contextid}/document-sources`, {
-            scope: createScope,
+            scope: newDocumentScope,
             name: newDocument.name,
             description: newDocument.description,
             content: newDocument.content,
         });
         if (saved) {
-            setCreateScope(null);
+            setNewDocumentScope(null);
         }
     };
 
-    const handleUpdateDocument = async() => {
+    const handleUpdateDocument = async () => {
         if (!editingDocument) {
             return;
         }
+
         const saved = await performWrite('PATCH', `contexts/${contextid}/document-sources/${editingDocument.id}`, {
             name: editingDocument.name,
             description: editingDocument.description,
@@ -367,428 +406,453 @@ export default function SourceManager({contextid}: Props) {
         }
     };
 
-    const handleDeleteDocument = async() => {
-        if (!deleteCandidate) {
+    const handleDeleteDocument = async () => {
+        if (documentToDelete === null) {
             return;
         }
-        const deleted = await performWrite('DELETE', `contexts/${contextid}/document-sources/${deleteCandidate.id}`);
+
+        const deleted = await performWrite('DELETE', `contexts/${contextid}/document-sources/${documentToDelete.id}`);
         if (deleted) {
-            setDeleteCandidate(null);
+            setDocumentToDelete(null);
         }
     };
 
-    if (loading) {
-        return <div className="local-ai-content-source-manager local-ai-content-source-manager--loading">Lade Quellen...</div>;
-    }
-
-    if (!payload) {
-        return <div className="text-danger small mt-2">{error}</div>;
-    }
-
     return (
-        <div className="local-ai-content-source-manager">
-            <section className="mb-4">
-                <div className="d-flex justify-content-between align-items-center mb-2">
-                    <h5 className="mb-0">Dokumente</h5>
+        <div className='local-ai-content-source-manager'>
+            <section className='mb-4'>
+                <div className='d-flex justify-content-between align-items-center mb-2'>
+                    <h5 className='mb-0'>Dokumente</h5>
                     <Button
-                        type="button"
-                        variant="primary"
+                        type='button'
+                        variant='primary'
                         disabled={saving}
                         onClick={openCreateModal}
                         startIcon={plusIcon}
-                        label="Dokument anlegen"
+                        label='Dokument anlegen'
                     />
                 </div>
-                <table className="table table-sm table-striped">
+                <table className='table table-sm table-striped'>
                     <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Beschreibung</th>
-                        <th>Geltungsbereich</th>
-                        <th>Für KI-Zugriff aktiv</th>
-                        <th>In Vektorstore indizieren</th>
-                        <th>Status</th>
-                        <th>Last indexed</th>
-                        <th>Aktionen</th>
-                    </tr>
+                        <tr>
+                            <th>Name</th>
+                            <th>Beschreibung</th>
+                            <th>Geltungsbereich</th>
+                            <th>Für KI-Zugriff aktiv</th>
+                            <th>In Vektorstore indizieren</th>
+                            <th>Status</th>
+                            <th>Last indexed</th>
+                            <th>Aktionen</th>
+                        </tr>
                     </thead>
                     <tbody>
-                    {documentRows.map((row) => (
-                        <tr key={row.id}>
-                            <td>{row.name}</td>
-                            <td>{row.description || '-'}</td>
-                            <td>
-                                {row.scope === 'global' ? (
-                                    <i className="icon fa fa-globe" aria-label="Globale Quelle" title="Globale Quelle"/>
-                                ) : (
-                                    <i className="icon fa fa-graduation-cap" aria-label="Kursquelle" title="Kursquelle"/>
-                                )}
-                            </td>
-                            <td>
-                                <div className="form-check form-switch m-0">
-                                    <input
-                                        id={`document-enabled-${row.id}`}
-                                        className="form-check-input"
-                                        type="checkbox"
-                                        role="switch"
-                                        checked={row.enabled}
-                                        disabled={saving || !row.canedit}
-                                        onChange={() => performWrite(
-                                            'PATCH',
-                                            `contexts/${contextid}/document-sources/${row.id}`,
-                                            {enabled: !row.enabled},
+                        {documentRows.map(row => (
+                            <tr key={row.id}>
+                                <td>{row.name}</td>
+                                <td>{row.description === '' ? '-' : row.description}</td>
+                                <td>
+                                    {row.scope === 'global'
+                                        ? (
+                                            <i className='icon fa fa-globe' aria-label='Globale Quelle' title='Globale Quelle'/>
+                                        )
+                                        : (
+                                            <i className='icon fa fa-graduation-cap' aria-label='Kursquelle' title='Kursquelle'/>
                                         )}
-                                        aria-label={`Dokument ${row.name} für KI-Zugriff aktivieren`}
-                                    />
-                                </div>
-                            </td>
-                            <td>
-                                {row.enabled && (
-                                    <div className="form-check form-switch m-0">
+                                </td>
+                                <td>
+                                    <div className='form-check form-switch m-0'>
                                         <input
-                                            id={`document-index-${row.id}`}
-                                            className="form-check-input"
-                                            type="checkbox"
-                                            role="switch"
-                                            checked={row.indexState.allowIndex}
-                                            disabled={saving || !row.canedit || isActive(row.indexState)}
-                                            onChange={() => handleAllowIndexToggle(row.id, !row.indexState.allowIndex)}
-                                            aria-label={`Dokument ${row.name} in Vektorstore indizieren`}
+                                            id={`document-enabled-${row.id}`}
+                                            className='form-check-input'
+                                            type='checkbox'
+                                            role='switch'
+                                            checked={row.enabled}
+                                            disabled={saving || !row.canedit}
+                                            onChange={() => {
+                                                void performWrite(
+                                                    'PATCH',
+                                                    `contexts/${contextid}/document-sources/${row.id}`,
+                                                    {enabled: !row.enabled},
+                                                );
+                                            }}
+                                            aria-label={`Dokument ${row.name} für KI-Zugriff aktivieren`}
                                         />
                                     </div>
-                                )}
-                            </td>
-                            <td>{row.enabled && (
-                                <IndexStatusCell
-                                    state={row.indexState}
-                                    disabled={saving || !row.canedit}
-                                    onIndexCurrentModel={() => handleAllowIndexToggle(row.id, true)}
-                                />
-                            )}</td>
-                            <td>{row.enabled && formatTimestamp(row.indexState.lastIndexedAt)}</td>
-                            <td>
-                                {row.canedit && (
-                                    <div className="d-flex gap-1">
-                                        <button
-                                            type="button"
-                                            className="btn btn-link p-0"
-                                            disabled={saving}
-                                            onClick={() => setEditingDocument({
-                                                id: row.id,
-                                                name: row.name,
-                                                description: row.description,
-                                                content: row.content,
-                                            })}
-                                            aria-label={`Dokument ${row.name} bearbeiten`}
-                                            title="Bearbeiten"
-                                        >
-                                            <i className="icon fa fa-pencil" aria-hidden="true"/>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="btn btn-link text-danger p-0"
-                                            disabled={saving}
-                                            onClick={() => setDeleteCandidate(row)}
-                                            aria-label={`Dokument ${row.name} löschen`}
-                                            title="Löschen"
-                                        >
-                                            <i className="icon fa fa-trash" aria-hidden="true"/>
-                                        </button>
-                                    </div>
-                                )}
-                            </td>
-                        </tr>
-                    ))}
-                    {documentRows.length === 0 && (
-                        <tr>
-                            <td colSpan={8} className="text-muted">Keine Dokumente vorhanden.</td>
-                        </tr>
-                    )}
+                                </td>
+                                <td>
+                                    {row.enabled && (
+                                        <div className='form-check form-switch m-0'>
+                                            <input
+                                                id={`document-index-${row.id}`}
+                                                className='form-check-input'
+                                                type='checkbox'
+                                                role='switch'
+                                                checked={row.indexState.allowIndex}
+                                                disabled={saving || !row.canedit || isActive(row.indexState)}
+                                                onChange={() => {
+                                                    void handleAllowIndexToggle(row.id, !row.indexState.allowIndex);
+                                                }}
+                                                aria-label={`Dokument ${row.name} in Vektorstore indizieren`}
+                                            />
+                                        </div>
+                                    )}
+                                </td>
+                                <td>{row.enabled && (
+                                    <IndexStatusCell
+                                        state={row.indexState}
+                                        disabled={saving || !row.canedit}
+                                        onIndexCurrentModel={() => {
+                                            void handleAllowIndexToggle(row.id, true);
+                                        }}
+                                    />
+                                )}</td>
+                                <td>{row.enabled && formatTimestamp(row.indexState.lastIndexedAt)}</td>
+                                <td>
+                                    {row.canedit && (
+                                        <div className='d-flex gap-1'>
+                                            <button
+                                                type='button'
+                                                className='btn btn-link p-0'
+                                                disabled={saving}
+                                                onClick={() => {
+                                                    setEditingDocument({
+                                                        id: row.id,
+                                                        name: row.name,
+                                                        description: row.description,
+                                                        content: row.content,
+                                                    });
+                                                }}
+                                                aria-label={`Dokument ${row.name} bearbeiten`}
+                                                title='Bearbeiten'
+                                            >
+                                                <i className='icon fa fa-pencil' aria-hidden='true'/>
+                                            </button>
+                                            <button
+                                                type='button'
+                                                className='btn btn-link text-danger p-0'
+                                                disabled={saving}
+                                                onClick={() => {
+                                                    setDocumentToDelete(row);
+                                                }}
+                                                aria-label={`Dokument ${row.name} löschen`}
+                                                title='Löschen'
+                                            >
+                                                <i className='icon fa fa-trash' aria-hidden='true'/>
+                                            </button>
+                                        </div>
+                                    )}
+                                </td>
+                            </tr>
+                        ))}
+                        {documentRows.length === 0 && (
+                            <tr>
+                                <td colSpan={8} className='text-muted'>Keine Dokumente vorhanden.</td>
+                            </tr>
+                        )}
                     </tbody>
                 </table>
             </section>
 
-            <section className="mb-4">
+            <section className='mb-4'>
                 <h5>Aktivitäten dieses Kurses</h5>
-                <table className="table table-sm table-hover">
+                <table className='table table-sm table-hover'>
                     <thead>
-                    <tr>
-                        <th>Aktivität</th>
-                        <th>Typ</th>
-                        <th>Für KI-Zugriff aktiv</th>
-                        <th>In Vektorstore indizieren</th>
-                        <th>Status</th>
-                        <th>Last indexed</th>
-                    </tr>
+                        <tr>
+                            <th>Aktivität</th>
+                            <th>Typ</th>
+                            <th>Für KI-Zugriff aktiv</th>
+                            <th>In Vektorstore indizieren</th>
+                            <th>Status</th>
+                            <th>Last indexed</th>
+                        </tr>
                     </thead>
                     <tbody>
-                    {payload.items.modules.map((row) => (
-                        <tr key={row.cmid}>
-                            <td>{row.name}</td>
-                            <td>{row.moddisplayname || row.modname}</td>
-                            <td>
-                                <div className="form-check form-switch m-0">
-                                    <input
-                                        id={`module-enabled-${row.cmid}`}
-                                        className="form-check-input"
-                                        type="checkbox"
-                                        role="switch"
-                                        checked={row.enabled}
-                                        disabled={saving}
-                                        onChange={() => performWrite(
-                                            'PATCH',
-                                            `contexts/${contextid}/module-sources/${row.cmid}`,
-                                            {enabled: !row.enabled},
-                                        )}
-                                        aria-label={`Aktivität ${row.name} für KI-Zugriff aktivieren`}
-                                    />
-                                </div>
-                            </td>
-                            <td>
-                                {row.enabled && (
-                                    <div className="form-check form-switch m-0">
+                        {payload.items.modules.map(row => (
+                            <tr key={row.cmid}>
+                                <td>{row.name}</td>
+                                <td>{row.moddisplayname === '' ? row.modname : row.moddisplayname}</td>
+                                <td>
+                                    <div className='form-check form-switch m-0'>
                                         <input
-                                            id={`module-index-${row.cmid}`}
-                                            className="form-check-input"
-                                            type="checkbox"
-                                            role="switch"
-                                            checked={row.indexState.allowIndex}
-                                            disabled={saving || isActive(row.indexState)}
-                                            onChange={() => handleAllowIndexToggle(row.sourceid, !row.indexState.allowIndex)}
-                                            aria-label={`Aktivität ${row.name} in Vektorstore indizieren`}
+                                            id={`module-enabled-${row.cmid}`}
+                                            className='form-check-input'
+                                            type='checkbox'
+                                            role='switch'
+                                            checked={row.enabled}
+                                            disabled={saving}
+                                            onChange={() => {
+                                                void performWrite(
+                                                    'PATCH',
+                                                    `contexts/${contextid}/module-sources/${row.cmid}`,
+                                                    {enabled: !row.enabled},
+                                                );
+                                            }}
+                                            aria-label={`Aktivität ${row.name} für KI-Zugriff aktivieren`}
                                         />
                                     </div>
-                                )}
-                            </td>
-                            <td>{row.enabled && (
-                                <IndexStatusCell
-                                    state={row.indexState}
-                                    disabled={saving}
-                                    onIndexCurrentModel={() => handleAllowIndexToggle(row.sourceid, true)}
-                                />
-                            )}</td>
-                            <td>{row.enabled && formatTimestamp(row.indexState.lastIndexedAt)}</td>
-                        </tr>
-                    ))}
-                    {payload.items.modules.length === 0 && (
-                        <tr>
-                            <td colSpan={6} className="text-muted">Keine unterstützten Aktivitäten gefunden.</td>
-                        </tr>
-                    )}
+                                </td>
+                                <td>
+                                    {row.enabled && (
+                                        <div className='form-check form-switch m-0'>
+                                            <input
+                                                id={`module-index-${row.cmid}`}
+                                                className='form-check-input'
+                                                type='checkbox'
+                                                role='switch'
+                                                checked={row.indexState.allowIndex}
+                                                disabled={saving || isActive(row.indexState)}
+                                                onChange={() => {
+                                                    void handleAllowIndexToggle(row.sourceid, !row.indexState.allowIndex);
+                                                }}
+                                                aria-label={`Aktivität ${row.name} in Vektorstore indizieren`}
+                                            />
+                                        </div>
+                                    )}
+                                </td>
+                                <td>{row.enabled && (
+                                    <IndexStatusCell
+                                        state={row.indexState}
+                                        disabled={saving}
+                                        onIndexCurrentModel={() => {
+                                            void handleAllowIndexToggle(row.sourceid, true);
+                                        }}
+                                    />
+                                )}</td>
+                                <td>{row.enabled && formatTimestamp(row.indexState.lastIndexedAt)}</td>
+                            </tr>
+                        ))}
+                        {payload.items.modules.length === 0 && (
+                            <tr>
+                                <td colSpan={6} className='text-muted'>Keine unterstützten Aktivitäten gefunden.</td>
+                            </tr>
+                        )}
                     </tbody>
                 </table>
-                <div className="small text-muted">
+                <div className='small text-muted'>
                     Hier werden nur Aktivitäten angezeigt, deren Typ aktuell vom Plugin unterstützt wird.
                 </div>
             </section>
 
-            {createScope !== null && (
+            {newDocumentScope !== null && (
                 <>
                     <div
-                        className="modal fade show d-block"
-                        role="dialog"
-                        aria-modal="true"
-                        aria-labelledby="source-create-modal-title"
+                        className='modal fade show d-block'
+                        role='dialog'
+                        aria-modal='true'
+                        aria-labelledby='source-create-modal-title'
                     >
-                        <div className="modal-dialog modal-lg modal-dialog-scrollable" role="document">
-                            <div className="modal-content">
-                                <div className="modal-header">
-                                    <h5 id="source-create-modal-title" className="modal-title">Neues Dokument anlegen</h5>
+                        <div className='modal-dialog modal-lg modal-dialog-scrollable' role='document'>
+                            <div className='modal-content'>
+                                <div className='modal-header'>
+                                    <h5 id='source-create-modal-title' className='modal-title'>Neues Dokument anlegen</h5>
                                     <button
-                                        type="button"
-                                        className="close"
-                                        aria-label="Close"
+                                        type='button'
+                                        className='close'
+                                        aria-label='Close'
                                         onClick={closeCreateModal}
                                         disabled={saving}
                                     >
-                                        <span aria-hidden="true">&times;</span>
+                                        <span aria-hidden='true'>&times;</span>
                                     </button>
                                 </div>
-                                <div className="modal-body">
+                                <div className='modal-body'>
                                     {payload.canmanagesystemsources && (
-                                        <div className="form-group">
-                                            <label htmlFor="source-create-scope">Quelle anlegen in</label>
+                                        <div className='form-group'>
+                                            <label htmlFor='source-create-scope'>Quelle anlegen in</label>
                                             <select
-                                                id="source-create-scope"
-                                                className="custom-select"
-                                                value={createScope}
-                                                onChange={(e) => setCreateScope(e.target.value === 'global' ? 'global' : 'course')}
+                                                id='source-create-scope'
+                                                className='custom-select'
+                                                value={newDocumentScope}
+                                                onChange={event => {
+                                                    setNewDocumentScope(event.target.value === 'global' ? 'global' : 'course');
+                                                }}
                                             >
-                                                <option value="course">Diesem Kurs</option>
-                                                <option value="global">Systemkontext (global)</option>
+                                                <option value='course'>Diesem Kurs</option>
+                                                <option value='global'>Systemkontext (global)</option>
                                             </select>
                                         </div>
                                     )}
-                                    <div className="form-group">
+                                    <div className='form-group'>
                                         <label>Name</label>
                                         <input
-                                            className="form-control form-control-sm"
+                                            className='form-control form-control-sm'
                                             value={newDocument.name}
-                                            onChange={(e) => setNewDocument({...newDocument, name: e.target.value})}
+                                            onChange={event => {
+                                                setNewDocument({...newDocument, name: event.target.value});
+                                            }}
                                         />
                                     </div>
-                                    <div className="form-group">
+                                    <div className='form-group'>
                                         <label>Beschreibung</label>
                                         <input
-                                            className="form-control form-control-sm"
+                                            className='form-control form-control-sm'
                                             value={newDocument.description}
-                                            onChange={(e) => setNewDocument({...newDocument, description: e.target.value})}
+                                            onChange={event => {
+                                                setNewDocument({...newDocument, description: event.target.value});
+                                            }}
                                         />
                                     </div>
-                                    <div className="form-group mb-0">
+                                    <div className='form-group mb-0'>
                                         <label>Inhalt</label>
                                         <textarea
-                                            className="form-control form-control-sm"
+                                            className='form-control form-control-sm'
                                             rows={8}
                                             value={newDocument.content}
-                                            onChange={(e) => setNewDocument({...newDocument, content: e.target.value})}
+                                            onChange={event => {
+                                                setNewDocument({...newDocument, content: event.target.value});
+                                            }}
                                         />
                                     </div>
                                 </div>
-                                <div className="modal-footer">
+                                <div className='modal-footer'>
                                     <Button
-                                        type="button"
-                                        variant="secondary"
+                                        type='button'
+                                        variant='secondary'
                                         disabled={saving}
                                         onClick={closeCreateModal}
-                                        label="Abbrechen"
+                                        label='Abbrechen'
                                     />
                                     <Button
-                                        type="button"
-                                        variant="primary"
+                                        type='button'
+                                        variant='primary'
                                         disabled={saving}
                                         onClick={handleCreateDocument}
-                                        label="Dokument anlegen"
+                                        label='Dokument anlegen'
                                     />
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div className="modal-backdrop fade show" onClick={closeCreateModal}/>
+                    <div className='modal-backdrop fade show' onClick={closeCreateModal}/>
                 </>
             )}
 
             {editingDocument && (
                 <>
                     <div
-                        className="modal fade show d-block"
-                        role="dialog"
-                        aria-modal="true"
-                        aria-labelledby="source-edit-modal-title"
+                        className='modal fade show d-block'
+                        role='dialog'
+                        aria-modal='true'
+                        aria-labelledby='source-edit-modal-title'
                     >
-                        <div className="modal-dialog modal-lg modal-dialog-scrollable" role="document">
-                            <div className="modal-content">
-                                <div className="modal-header">
-                                    <h5 id="source-edit-modal-title" className="modal-title">Dokument bearbeiten</h5>
+                        <div className='modal-dialog modal-lg modal-dialog-scrollable' role='document'>
+                            <div className='modal-content'>
+                                <div className='modal-header'>
+                                    <h5 id='source-edit-modal-title' className='modal-title'>Dokument bearbeiten</h5>
                                     <button
-                                        type="button"
-                                        className="close"
-                                        aria-label="Close"
-                                        onClick={() => setEditingDocument(null)}
+                                        type='button'
+                                        className='close'
+                                        aria-label='Close'
+                                        onClick={closeEditModal}
                                         disabled={saving}
                                     >
-                                        <span aria-hidden="true">&times;</span>
+                                        <span aria-hidden='true'>&times;</span>
                                     </button>
                                 </div>
-                                <div className="modal-body">
-                                    <div className="form-group">
+                                <div className='modal-body'>
+                                    <div className='form-group'>
                                         <label>Name</label>
                                         <input
-                                            className="form-control form-control-sm"
+                                            className='form-control form-control-sm'
                                             value={editingDocument.name}
-                                            onChange={(e) => setEditingDocument({...editingDocument, name: e.target.value})}
+                                            onChange={event => {
+                                                setEditingDocument({...editingDocument, name: event.target.value});
+                                            }}
                                         />
                                     </div>
-                                    <div className="form-group">
+                                    <div className='form-group'>
                                         <label>Beschreibung</label>
                                         <input
-                                            className="form-control form-control-sm"
+                                            className='form-control form-control-sm'
                                             value={editingDocument.description}
-                                            onChange={(e) => setEditingDocument({...editingDocument, description: e.target.value})}
+                                            onChange={event => {
+                                                setEditingDocument({...editingDocument, description: event.target.value});
+                                            }}
                                         />
                                     </div>
-                                    <div className="form-group mb-0">
+                                    <div className='form-group mb-0'>
                                         <label>Inhalt</label>
                                         <textarea
-                                            className="form-control form-control-sm"
+                                            className='form-control form-control-sm'
                                             rows={8}
                                             value={editingDocument.content}
-                                            onChange={(e) => setEditingDocument({...editingDocument, content: e.target.value})}
+                                            onChange={event => {
+                                                setEditingDocument({...editingDocument, content: event.target.value});
+                                            }}
                                         />
                                     </div>
                                 </div>
-                                <div className="modal-footer">
+                                <div className='modal-footer'>
                                     <Button
-                                        type="button"
-                                        variant="secondary"
+                                        type='button'
+                                        variant='secondary'
                                         disabled={saving}
-                                        onClick={() => setEditingDocument(null)}
-                                        label="Abbrechen"
+                                        onClick={closeEditModal}
+                                        label='Abbrechen'
                                     />
                                     <Button
-                                        type="button"
-                                        variant="primary"
+                                        type='button'
+                                        variant='primary'
                                         disabled={saving}
                                         onClick={handleUpdateDocument}
-                                        label="Speichern"
+                                        label='Speichern'
                                     />
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div className="modal-backdrop fade show" onClick={() => setEditingDocument(null)}/>
+                    <div className='modal-backdrop fade show' onClick={closeEditModal}/>
                 </>
             )}
 
-            {deleteCandidate && (
+            {documentToDelete !== null && (
                 <>
                     <div
-                        className="modal fade show d-block"
-                        role="dialog"
-                        aria-modal="true"
-                        aria-labelledby="source-delete-modal-title"
+                        className='modal fade show d-block'
+                        role='dialog'
+                        aria-modal='true'
+                        aria-labelledby='source-delete-modal-title'
                     >
-                        <div className="modal-dialog" role="document">
-                            <div className="modal-content">
-                                <div className="modal-header">
-                                    <h5 id="source-delete-modal-title" className="modal-title">Quelle löschen</h5>
+                        <div className='modal-dialog' role='document'>
+                            <div className='modal-content'>
+                                <div className='modal-header'>
+                                    <h5 id='source-delete-modal-title' className='modal-title'>Quelle löschen</h5>
                                     <button
-                                        type="button"
-                                        className="close"
-                                        aria-label="Close"
-                                        onClick={() => setDeleteCandidate(null)}
+                                        type='button'
+                                        className='close'
+                                        aria-label='Close'
+                                        onClick={closeDeleteModal}
                                         disabled={saving}
                                     >
-                                        <span aria-hidden="true">&times;</span>
+                                        <span aria-hidden='true'>&times;</span>
                                     </button>
                                 </div>
-                                <div className="modal-body">
-                                    Möchtest du die Quelle „{deleteCandidate.name}“ wirklich löschen?
+                                <div className='modal-body'>
+                                    Möchtest du die Quelle „{documentToDelete.name}“ wirklich löschen?
                                 </div>
-                                <div className="modal-footer">
+                                <div className='modal-footer'>
                                     <Button
-                                        type="button"
-                                        variant="secondary"
+                                        type='button'
+                                        variant='secondary'
                                         disabled={saving}
-                                        onClick={() => setDeleteCandidate(null)}
-                                        label="Abbrechen"
+                                        onClick={closeDeleteModal}
+                                        label='Abbrechen'
                                     />
                                     <Button
-                                        type="button"
-                                        variant="danger"
+                                        type='button'
+                                        variant='danger'
                                         disabled={saving}
                                         onClick={handleDeleteDocument}
-                                        label="Löschen"
+                                        label='Löschen'
                                     />
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div className="modal-backdrop fade show" onClick={() => setDeleteCandidate(null)}/>
+                    <div className='modal-backdrop fade show' onClick={closeDeleteModal}/>
                 </>
             )}
 
-            {error && <div className="text-danger small mt-2">{error}</div>}
+            {error !== null && <div className='text-danger small mt-2'>{error}</div>}
         </div>
     );
 }

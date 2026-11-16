@@ -23,10 +23,6 @@
 
 import {useState, useEffect, useRef} from 'react';
 import {createPortal} from 'react-dom';
-import Fetch from '@moodle/lms/core/fetch';
-import MoodleString from '@moodle/lms/core/String';
-import {getString} from '@moodle/lms/core/stringUtils';
-// @ts-ignore - path resolved via Moodle import map at runtime
 import {Checkbox} from '@moodlehq/design-system';
 import {
     closeSourceSelectorModal,
@@ -38,6 +34,9 @@ import {
     saveSelectedSourceIds,
     type SourceOption,
 } from './source_selector/data_manager';
+import Fetch from '@moodle/lms/core/fetch';
+import MoodleString from '@moodle/lms/core/String';
+import {getString} from '@moodle/lms/core/stringUtils';
 
 type ImportableCourse = {
     id: number;
@@ -91,8 +90,8 @@ type Props = {
 /**
  * Build one compact meta string for a source.
  *
- * @param {SourceOption} source Source item.
- * @returns {string} Origin/type label.
+ * @param source Source item.
+ * @returns Origin/type label.
  */
 function getSourceMeta(source: SourceOption): string {
     return source.sourcetype;
@@ -101,13 +100,13 @@ function getSourceMeta(source: SourceOption): string {
 /**
  * Render the badge marking a source whose content changed since it was indexed.
  *
- * @returns {JSX.Element} Badge UI.
+ * @returns Badge UI.
  */
 function OutdatedBadge() {
     return (
-        <span className="badge bg-warning text-dark align-self-start">
-            <i className="icon fa fa-exclamation-triangle me-1" aria-hidden="true" />
-            <MoodleString identifier="sourceoutdated" component="local_ai_content" />
+        <span className='badge bg-warning text-dark align-self-start'>
+            <i className='icon fa fa-exclamation-triangle me-1' aria-hidden='true' />
+            <MoodleString identifier='sourceoutdated' component='local_ai_content' />
         </span>
     );
 }
@@ -115,8 +114,8 @@ function OutdatedBadge() {
 /**
  * Render one selectable source section.
  *
- * @param {SourceListSectionProps} props Section props.
- * @returns {JSX.Element} Section UI.
+ * @param props The sources of the section, their selection state and the change callbacks.
+ * @returns Section UI.
  */
 function SourceListSection({
     contextId,
@@ -130,19 +129,21 @@ function SourceListSection({
     onRemove,
 }: SourceListSectionProps) {
     return (
-        <section className="mb-3">
-            <h6 className="mb-2">{sectionTitle}</h6>
-            {sources.length === 0 && <div className="text-muted small">{emptyText}</div>}
+        <section className='mb-3'>
+            <h6 className='mb-2'>{sectionTitle}</h6>
+            {sources.length === 0 && <div className='text-muted small'>{emptyText}</div>}
             {sources.length > 0 && (
-                <ul className="source-selector__list list-unstyled mb-0">
-                    {sources.map((source) => (
-                        <li key={source.id} className="source-selector__item mb-1">
-                            <div className="d-flex justify-content-between align-items-start gap-2">
-                                <div className="flex-grow-1">
+                <ul className='source-selector__list list-unstyled mb-0'>
+                    {sources.map(source => (
+                        <li key={source.id} className='source-selector__item mb-1'>
+                            <div className='d-flex justify-content-between align-items-start gap-2'>
+                                <div className='flex-grow-1'>
                                     <Checkbox
                                         id={`source-selector-source-${contextId}-${source.id}`}
                                         checked={selected.has(source.id)}
-                                        onChange={() => onToggle(source.id)}
+                                        onChange={() => {
+                                            onToggle(source.id);
+                                        }}
                                         disabled={readOnly}
                                         label={source.name}
                                         supportingText={getSourceMeta(source)}
@@ -151,14 +152,16 @@ function SourceListSection({
                                 {source.outdated && <OutdatedBadge />}
                                 {onRemove && !readOnly && (
                                     <button
-                                        type="button"
-                                        className="btn btn-link btn-sm p-0 text-muted"
-                                        title="Quelle entfernen"
+                                        type='button'
+                                        className='btn btn-link btn-sm p-0 text-muted'
+                                        title='Quelle entfernen'
                                         aria-label={`Quelle ${source.name} entfernen`}
-                                        onClick={() => onRemove(source.id)}
+                                        onClick={() => {
+                                            onRemove(source.id);
+                                        }}
                                         disabled={saving}
                                     >
-                                        <i className="icon fa fa-unlink" aria-hidden="true" />
+                                        <i className='icon fa fa-unlink' aria-hidden='true' />
                                     </button>
                                 )}
                             </div>
@@ -173,8 +176,8 @@ function SourceListSection({
 /**
  * Render one import selection section.
  *
- * @param {ImportListSectionProps} props Section props.
- * @returns {JSX.Element} Section UI.
+ * @param props The sources of the section, their staged selection and the toggle callback.
+ * @returns Section UI.
  */
 function ImportListSection({
     contextId,
@@ -185,19 +188,21 @@ function ImportListSection({
     onToggle,
 }: ImportListSectionProps) {
     return (
-        <section className="mb-3">
-            <h6 className="mb-2">{sectionTitle}</h6>
-            {sources.length === 0 && <div className="text-muted small">{emptyText}</div>}
+        <section className='mb-3'>
+            <h6 className='mb-2'>{sectionTitle}</h6>
+            {sources.length === 0 && <div className='text-muted small'>{emptyText}</div>}
             {sources.length > 0 && (
-                <ul className="source-selector__list list-unstyled mb-0">
-                    {sources.map((source) => (
-                        <li key={source.id} className="source-selector__item mb-1">
-                            <div className="d-flex justify-content-between align-items-start gap-2">
-                                <div className="flex-grow-1">
+                <ul className='source-selector__list list-unstyled mb-0'>
+                    {sources.map(source => (
+                        <li key={source.id} className='source-selector__item mb-1'>
+                            <div className='d-flex justify-content-between align-items-start gap-2'>
+                                <div className='flex-grow-1'>
                                     <Checkbox
                                         id={`source-selector-import-source-${contextId}-${source.id}`}
                                         checked={stagedSelection.has(source.id)}
-                                        onChange={() => onToggle(source.id)}
+                                        onChange={() => {
+                                            onToggle(source.id);
+                                        }}
                                         label={source.name}
                                         supportingText={getSourceMeta(source)}
                                     />
@@ -218,8 +223,8 @@ function ImportListSection({
  * Renders a checkbox list of selectable sources for the given contextId and saves
  * the source selection via the REST API.
  *
- * @param {Props} props Component props.
- * @returns {JSX.Element} The rendered component.
+ * @param props Component props.
+ * @returns The rendered component.
  */
 export default function SourceSelector({
     contextId,
@@ -246,14 +251,14 @@ export default function SourceSelector({
     const [error, setError] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
     const [modalBodyRoot, setModalBodyRoot] = useState<HTMLElement | null>(null);
-    const modalRef = useRef<MoodleModal | null>(null);
+    const modalReference = useRef<MoodleModal | null>(null);
     const pendingSaves = useRef<number>(0);
     const [outdatedWarning, setOutdatedWarning] = useState<string>('');
 
     const listedSources = [...globalDocuments, ...courseActivities, ...externalSources];
-    const hasOutdatedSources = listedSources.some((source) => source.outdated);
+    const hasOutdatedSources = listedSources.some(source => source.outdated);
     // Chat requests use the selected sources, so warn if at least one of them is answered from outdated content.
-    const hasOutdatedSelection = listedSources.some((source) => source.outdated && selected.has(source.id));
+    const hasOutdatedSelection = listedSources.some(source => source.outdated && selected.has(source.id));
 
     useEffect(() => {
         if (hasOutdatedSelection && outdatedWarning === '') {
@@ -265,14 +270,14 @@ export default function SourceSelector({
     /**
      * Load the sources and the selection of the context into the component state.
      *
-     * @param {boolean} reload Whether to bypass the cache of the data manager.
+     * @param reload Whether to bypass the cache of the data manager.
      */
     const loadSelection = (reload: boolean) => {
         setLoading(true);
         setError(null);
 
         loadSourceSelection(contextId, reload)
-            .then((selection) => {
+            .then(selection => {
                 setGlobalDocuments(selection.globalDocuments);
                 setCourseActivities(selection.courseActivities);
                 setExternalSources(selection.externalSources);
@@ -294,9 +299,9 @@ export default function SourceSelector({
     /**
      * Apply a new selection and persist it immediately.
      *
-     * @param {Set<number>} next The new set of selected source ids.
+     * @param next The new set of selected source ids.
      */
-    const updateSelection = async(next: Set<number>) => {
+    const updateSelection = async (next: Set<number>) => {
         setSelected(next);
         setSaveSuccess(false);
         setError(null);
@@ -330,34 +335,39 @@ export default function SourceSelector({
         } else {
             next.add(id);
         }
-        updateSelection(next);
+
+        void updateSelection(next);
     };
 
     const handleImportToggle = (id: number) => {
-        setStagedImportSelection((prev) => {
-            const next = new Set(prev);
+        setStagedImportSelection(previous => {
+            const next = new Set(previous);
             if (next.has(id)) {
                 next.delete(id);
             } else {
                 next.add(id);
             }
+
             return next;
         });
     };
 
     const handleRemoveExternalSource = (id: number) => {
-        setExternalSources((prev) => prev.filter((source) => source.id !== id));
+        setExternalSources(previous => previous.filter(source => source.id !== id));
         const next = new Set(selected);
         next.delete(id);
-        updateSelection(next);
+        void updateSelection(next);
     };
 
-    const loadImportableCourses = async() => {
+    const loadImportableCourses = async () => {
         setLoadingImportView(true);
         setError(null);
         try {
-            const res = await Fetch.performGet('local_ai_content', `contexts/${contextId}/source-selections/importable-courses`);
-            const data = await res.json() as ImportableCoursesResponse;
+            const response = await Fetch.performGet(
+                'local_ai_content',
+                `contexts/${contextId}/source-selections/importable-courses`,
+            );
+            const data = await response.json() as ImportableCoursesResponse;
             const courses = data.items;
             setImportableCourses(courses);
             // There may be no importable course at all.
@@ -369,7 +379,7 @@ export default function SourceSelector({
         }
     };
 
-    const openCourseSelection = async() => {
+    const openCourseSelection = async () => {
         setMode('courses');
         setImportCourseActivities([]);
         setImportCourseDocuments([]);
@@ -377,28 +387,30 @@ export default function SourceSelector({
         await loadImportableCourses();
     };
 
-    const loadImportableSources = async() => {
+    const loadImportableSources = async () => {
         if (selectedCourseId <= 0) {
             return;
         }
+
         setLoadingImportView(true);
         setError(null);
         try {
-            const res = await Fetch.performGet(
+            const response = await Fetch.performGet(
                 'local_ai_content',
                 `contexts/${contextId}/source-selections/importable-sources?sourceCourseId=${selectedCourseId}`,
             );
-            const data = await res.json() as ImportableSourcesResponse;
+            const data = await response.json() as ImportableSourcesResponse;
             const item = data.items[0];
-            const existingExternalIds = new Set(externalSources.map((source) => source.id));
-            const activities = item.courseActivities.filter((source) => !existingExternalIds.has(source.id));
-            const documents = item.courseDocuments.filter((source) => !existingExternalIds.has(source.id));
+            const existingExternalIds = new Set(externalSources.map(source => source.id));
+            const activities = item.courseActivities.filter(source => !existingExternalIds.has(source.id));
+            const documents = item.courseDocuments.filter(source => !existingExternalIds.has(source.id));
             const nextStaged = new Set<number>();
-            [...activities, ...documents].forEach((source) => {
+            for (const source of [...activities, ...documents]) {
                 if (selected.has(source.id)) {
                     nextStaged.add(source.id);
                 }
-            });
+            }
+
             setImportCourseActivities(activities);
             setImportCourseDocuments(documents);
             setStagedImportSelection(nextStaged);
@@ -413,40 +425,49 @@ export default function SourceSelector({
     const addSelectedExternalSources = () => {
         const importableSources = [...importCourseActivities, ...importCourseDocuments];
         const byId = new Map<number, SourceOption>();
-        importableSources.forEach((source) => byId.set(source.id, source));
+        for (const source of importableSources) {
+            byId.set(source.id, source);
+        }
 
-        setExternalSources((prev) => {
-            const existingIds = new Set(prev.map((source) => source.id));
-            const localIds = new Set([...globalDocuments, ...courseActivities].map((source) => source.id));
-            const next = [...prev];
-            stagedImportSelection.forEach((id) => {
+        setExternalSources(previous => {
+            const existingIds = new Set(previous.map(source => source.id));
+            const localIds = new Set([...globalDocuments, ...courseActivities].map(source => source.id));
+            const next = [...previous];
+            stagedImportSelection.forEach(id => {
                 if (existingIds.has(id) || localIds.has(id)) {
                     return;
                 }
+
                 const source = byId.get(id);
                 if (!source) {
                     return;
                 }
+
                 next.push(source);
             });
             return next.sort((a, b) => a.name.localeCompare(b.name));
         });
 
         setMode('main');
-        updateSelection(new Set([...selected, ...stagedImportSelection]));
+        const next = new Set(selected);
+        for (const id of stagedImportSelection) {
+            next.add(id);
+        }
+
+        void updateSelection(next);
     };
 
-    useEffect(() => {
-        return () => {
-            if (modalRef.current) {
-                closeSourceSelectorModal(modalRef.current);
-                modalRef.current = null;
-            }
-        };
+    useEffect(() => () => {
+        if (!modalReference.current) {
+            return;
+        }
+
+        void closeSourceSelectorModal(modalReference.current);
+        modalReference.current = null;
     }, []);
 
-    const openModal = async() => {
-        if (modalRef.current) {
+    const openModal = async () => {
+        if (modalReference.current) {
             return;
         }
 
@@ -457,57 +478,63 @@ export default function SourceSelector({
 
         const modalResult = await openSourceSelectorModal({
             title: modalTitle,
-            onShown: () => {
+            onShown() {
                 setIsModalOpen(true);
             },
-            onHidden: () => {
+            onHidden() {
                 setIsModalOpen(false);
                 setModalBodyRoot(null);
-                modalRef.current = null;
+                modalReference.current = null;
             },
         });
-        modalRef.current = modalResult.modal;
+        modalReference.current = modalResult.modal;
         setModalBodyRoot(modalResult.bodyRoot);
     };
 
     const renderCoursesContent = () => (
-        <div className="source-selector">
-            <div className="d-flex justify-content-between align-items-center mb-3">
-                <h6 className="mb-0">Fremdkurs auswählen</h6>
+        <div className='source-selector'>
+            <div className='d-flex justify-content-between align-items-center mb-3'>
+                <h6 className='mb-0'>Fremdkurs auswählen</h6>
                 <button
-                    type="button"
-                    className="btn btn-link btn-sm p-0"
-                    onClick={() => setMode('main')}
+                    type='button'
+                    className='btn btn-link btn-sm p-0'
+                    onClick={() => {
+                        setMode('main');
+                    }}
                     disabled={loadingImportView || saving}
                 >
                     Zurück
                 </button>
             </div>
 
-            {loadingImportView && <div className="text-muted small mb-2">Lade Kurse...</div>}
+            {loadingImportView && <div className='text-muted small mb-2'>Lade Kurse...</div>}
             {!loadingImportView && importableCourses.length === 0 && (
-                <div className="text-muted small mb-2">Keine weiteren Kurse mit nutzbaren Quellen gefunden.</div>
+                <div className='text-muted small mb-2'>Keine weiteren Kurse mit nutzbaren Quellen gefunden.</div>
             )}
             {!loadingImportView && importableCourses.length > 0 && (
                 <>
-                    <div className="form-group">
+                    <div className='form-group'>
                         <label htmlFor={`source-selector-import-course-${contextId}`}>Kurs</label>
                         <select
                             id={`source-selector-import-course-${contextId}`}
-                            className="custom-select"
+                            className='custom-select'
                             value={selectedCourseId}
-                            onChange={(event) => setSelectedCourseId(parseInt(event.target.value, 10) || 0)}
+                            onChange={event => {
+                                setSelectedCourseId(Number(event.target.value));
+                            }}
                             disabled={saving}
                         >
-                            {importableCourses.map((course) => (
+                            {importableCourses.map(course => (
                                 <option key={course.id} value={course.id}>{course.name}</option>
                             ))}
                         </select>
                     </div>
                     <button
-                        type="button"
-                        className="btn btn-primary btn-sm"
-                        onClick={loadImportableSources}
+                        type='button'
+                        className='btn btn-primary btn-sm'
+                        onClick={() => {
+                            void loadImportableSources();
+                        }}
                         disabled={selectedCourseId <= 0 || saving || loadingImportView}
                     >
                         Quellen laden
@@ -515,56 +542,60 @@ export default function SourceSelector({
                 </>
             )}
 
-            {error && <div className="text-danger small mt-2">{error}</div>}
+            {error !== null && <div className='text-danger small mt-2'>{error}</div>}
         </div>
     );
 
     const renderImportSourcesContent = () => (
-        <div className="source-selector source-selector--empty">
-            <div className="d-flex justify-content-between align-items-center mb-3">
-                <h6 className="mb-0">Quellen aus Fremdkurs hinzufügen</h6>
+        <div className='source-selector source-selector--empty'>
+            <div className='d-flex justify-content-between align-items-center mb-3'>
+                <h6 className='mb-0'>Quellen aus Fremdkurs hinzufügen</h6>
                 <button
-                    type="button"
-                    className="btn btn-link btn-sm p-0"
-                    onClick={() => setMode('courses')}
+                    type='button'
+                    className='btn btn-link btn-sm p-0'
+                    onClick={() => {
+                        setMode('courses');
+                    }}
                     disabled={loadingImportView || saving}
                 >
                     Kurs wechseln
                 </button>
             </div>
 
-            {loadingImportView && <div className="text-muted small">Lade Quellen...</div>}
+            {loadingImportView && <div className='text-muted small'>Lade Quellen...</div>}
             {!loadingImportView && (
                 <>
                     <ImportListSection
                         contextId={contextId}
                         sources={importCourseDocuments}
-                        sectionTitle="Kursdokumente"
-                        emptyText="Keine Kursdokumente verfügbar."
+                        sectionTitle='Kursdokumente'
+                        emptyText='Keine Kursdokumente verfügbar.'
                         stagedSelection={stagedImportSelection}
                         onToggle={handleImportToggle}
                     />
                     <ImportListSection
                         contextId={contextId}
                         sources={importCourseActivities}
-                        sectionTitle="Kursaktivitäten"
-                        emptyText="Keine Kursaktivitäten verfügbar."
+                        sectionTitle='Kursaktivitäten'
+                        emptyText='Keine Kursaktivitäten verfügbar.'
                         stagedSelection={stagedImportSelection}
                         onToggle={handleImportToggle}
                     />
 
-                    <div className="d-flex gap-2 mt-3">
+                    <div className='d-flex gap-2 mt-3'>
                         <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => setMode('main')}
+                            type='button'
+                            className='btn btn-secondary btn-sm'
+                            onClick={() => {
+                                setMode('main');
+                            }}
                             disabled={saving}
                         >
                             Abbrechen
                         </button>
                         <button
-                            type="button"
-                            className="btn btn-primary btn-sm"
+                            type='button'
+                            className='btn btn-primary btn-sm'
                             onClick={addSelectedExternalSources}
                             disabled={saving || stagedImportSelection.size === 0}
                         >
@@ -574,23 +605,23 @@ export default function SourceSelector({
                 </>
             )}
 
-            {error && <div className="text-danger small mt-2">{error}</div>}
+            {error !== null && <div className='text-danger small mt-2'>{error}</div>}
         </div>
     );
 
     const renderMainContent = () => (
-        <div className="source-selector">
+        <div className='source-selector'>
             {hasOutdatedSources && (
-                <div className="alert alert-warning small py-2" role="status">
-                    <i className="icon fa fa-exclamation-triangle me-1" aria-hidden="true" />
-                    <MoodleString identifier="sourceoutdated_desc" component="local_ai_content" />
+                <div className='alert alert-warning small py-2' role='status'>
+                    <i className='icon fa fa-exclamation-triangle me-1' aria-hidden='true' />
+                    <MoodleString identifier='sourceoutdated_desc' component='local_ai_content' />
                 </div>
             )}
             <SourceListSection
                 contextId={contextId}
                 sources={globalDocuments}
-                sectionTitle="Globale Dokumente"
-                emptyText="Keine globalen Dokumente verfügbar."
+                sectionTitle='Globale Dokumente'
+                emptyText='Keine globalen Dokumente verfügbar.'
                 selected={selected}
                 saving={saving}
                 readOnly={!canSelect}
@@ -599,8 +630,8 @@ export default function SourceSelector({
             <SourceListSection
                 contextId={contextId}
                 sources={courseActivities}
-                sectionTitle="Kursaktivitäten"
-                emptyText="Keine Kursaktivitäten verfügbar."
+                sectionTitle='Kursaktivitäten'
+                emptyText='Keine Kursaktivitäten verfügbar.'
                 selected={selected}
                 saving={saving}
                 readOnly={!canSelect}
@@ -609,8 +640,8 @@ export default function SourceSelector({
             <SourceListSection
                 contextId={contextId}
                 sources={externalSources}
-                sectionTitle="Externe Quellen"
-                emptyText="Keine externen Quellen hinzugefügt."
+                sectionTitle='Externe Quellen'
+                emptyText='Keine externen Quellen hinzugefügt.'
                 selected={selected}
                 saving={saving}
                 readOnly={!canSelect}
@@ -619,30 +650,32 @@ export default function SourceSelector({
             />
 
             {canSelect && (
-                <div className="mb-3">
+                <div className='mb-3'>
                     <button
-                        type="button"
-                        className="btn btn-outline-secondary btn-sm"
-                        onClick={openCourseSelection}
+                        type='button'
+                        className='btn btn-outline-secondary btn-sm'
+                        onClick={() => {
+                            void openCourseSelection();
+                        }}
                         disabled={saving || loadingImportView}
                     >
-                        <i className="icon fa fa-plus mr-1" aria-hidden="true" />
+                        <i className='icon fa fa-plus mr-1' aria-hidden='true' />
                         Quelle hinzufügen
                     </button>
                 </div>
             )}
 
-            <div className="source-selector__actions mt-2 d-flex align-items-center gap-3">
+            <div className='source-selector__actions mt-2 d-flex align-items-center gap-3'>
                 {saving && (
-                    <span className="text-muted small">Speichere...</span>
+                    <span className='text-muted small'>Speichere...</span>
                 )}
 
                 {saveSuccess && (
-                    <span className="text-success small">Gespeichert</span>
+                    <span className='text-success small'>Gespeichert</span>
                 )}
 
-                {error && (
-                    <span className="text-danger small">{error}</span>
+                {error !== null && (
+                    <span className='text-danger small'>{error}</span>
                 )}
             </div>
         </div>
@@ -650,7 +683,7 @@ export default function SourceSelector({
 
     const renderSelectorContent = () => {
         if (loading) {
-            return <div className="source-selector source-selector--loading">Lade Quellen...</div>;
+            return <div className='source-selector source-selector--loading'>Lade Quellen...</div>;
         }
 
         if (mode === 'courses') {
@@ -667,17 +700,19 @@ export default function SourceSelector({
     return (
         <>
             <button
-                type="button"
-                className="btn btn-icon icon-no-margin p-0 local_ai_content-source-selector-launcher"
+                type='button'
+                className='btn btn-icon icon-no-margin p-0 local_ai_content-source-selector-launcher'
                 title={launcherTitle}
                 aria-label={launcherTitle}
-                onClick={openModal}
+                onClick={() => {
+                    void openModal();
+                }}
             >
-                <i className="fa fa-paperclip" aria-hidden="true" />
+                <i className='fa fa-paperclip' aria-hidden='true' />
                 {hasOutdatedSelection && (
                     <i
-                        className="fa fa-exclamation-triangle local_ai_content-source-selector-outdated"
-                        aria-hidden="true"
+                        className='fa fa-exclamation-triangle local_ai_content-source-selector-outdated'
+                        aria-hidden='true'
                     />
                 )}
             </button>

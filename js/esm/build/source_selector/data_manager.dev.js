@@ -18,20 +18,22 @@ const selections = /* @__PURE__ */ new Map();
 const listeners = /* @__PURE__ */ new Map();
 const parseSourceIds = /* @__PURE__ */ __name((sourceIds) => {
   const values = typeof sourceIds === "string" ? sourceIds.split(",") : sourceIds;
-  const ids = values.map((id) => parseInt(String(id).trim(), 10)).filter((id) => !isNaN(id) && id > 0);
+  const ids = values.map((id) => Number(String(id).trim())).filter((id) => Number.isSafeInteger(id) && id > 0);
   return [...new Set(ids)];
 }, "parseSourceIds");
 const setSelectedSourceIds = /* @__PURE__ */ __name((contextId, sourceIds) => {
   const ids = parseSourceIds(sourceIds);
   selections.set(contextId, ids);
-  listeners.get(contextId)?.forEach((listener) => listener([...ids]));
+  for (const listener of listeners.get(contextId) ?? []) {
+    listener([...ids]);
+  }
 }, "setSelectedSourceIds");
-const loadSourceSelection = /* @__PURE__ */ __name((contextId, reload = false) => {
+const loadSourceSelection = /* @__PURE__ */ __name(async (contextId, reload = false) => {
   const cached = loadPromises.get(contextId);
   if (cached && !reload) {
     return cached;
   }
-  const promise = Fetch.performGet("local_ai_content", `contexts/${contextId}/source-selections`).then((response) => response.json()).then((data) => {
+  const promise = Fetch.performGet("local_ai_content", `contexts/${contextId}/source-selections`).then(async (response) => response.json()).then((data) => {
     const item = data.items[0];
     const selection = {
       globalDocuments: item.globalDocuments,
@@ -55,11 +57,11 @@ const getSelectedSourceIds = /* @__PURE__ */ __name(async (contextId) => {
   }
   return [...selections.get(contextId)];
 }, "getSelectedSourceIds");
-const saveSelectedSourceIds = /* @__PURE__ */ __name((contextId, sourceIds) => {
+const saveSelectedSourceIds = /* @__PURE__ */ __name(async (contextId, sourceIds) => {
   const ids = parseSourceIds(sourceIds);
   setSelectedSourceIds(contextId, ids);
   const previous = savePromises.get(contextId) ?? Promise.resolve();
-  const promise = previous.catch(() => void 0).then(() => Fetch.performPut("local_ai_content", `contexts/${contextId}/source-selections`, {
+  const promise = previous.catch(() => void 0).then(async () => Fetch.performPut("local_ai_content", `contexts/${contextId}/source-selections`, {
     body: { selectedSourceIds: ids.join(",") }
   })).then(() => {
     loadPromises.delete(contextId);
