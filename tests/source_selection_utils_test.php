@@ -200,4 +200,61 @@ final class source_selection_utils_test extends \advanced_testcase {
         $this->assertCount(1, $groups['globaldocuments']);
         $this->assertSame($expected, $groups['globaldocuments'][0]['outdated']);
     }
+
+    /**
+     * Ensure only existing, selectable and accessible sources are stored as selection and the stored ids are returned.
+     */
+    public function test_save_selected_sourceids_drops_invalid_ids(): void {
+        $this->resetAfterTest();
+        $course = $this->getDataGenerator()->create_course();
+        $user = $this->getDataGenerator()->create_user();
+        $this->setUser($user);
+        $systemcontextid = \context_system::instance()->id;
+        $coursecontext = \context_course::instance($course->id);
+        /** @var \local_ai_content_generator $generator */
+        $generator = $this->getDataGenerator()->get_plugin_generator('local_ai_content');
+
+        $valid = $generator->create_source(['contextid' => $systemcontextid, 'allowindex' => true]);
+        $generator->create_model_index(['sourceid' => $valid->get_id()]);
+        $notindexed = $generator->create_source(['contextid' => $systemcontextid]);
+        $disabled = $generator->create_source(['contextid' => $systemcontextid, 'enabled' => false, 'allowindex' => true]);
+        $generator->create_model_index(['sourceid' => $disabled->get_id()]);
+        // The user is not enrolled in the course, so the source is not accessible.
+        $inaccessible = $generator->create_source(['contextid' => $coursecontext->id, 'allowindex' => true]);
+        $generator->create_model_index(['sourceid' => $inaccessible->get_id()]);
+        $nonexistentid = $inaccessible->get_id() + 1000;
+
+        $requested = implode(',', [
+            $nonexistentid,
+            $inaccessible->get_id(),
+            $disabled->get_id(),
+            $notindexed->get_id(),
+            $valid->get_id(),
+        ]);
+        $utils = \core\di::get(source_selection_utils::class);
+        $saved = $utils->save_selected_sourceids($coursecontext->id, $requested);
+
+        $this->assertSame((string)$valid->get_id(), $saved);
+        $this->assertSame((string)$valid->get_id(), $utils->get_selected_sourceids($coursecontext->id));
+    }
+
+    /**
+     * Ensure an empty selection clears the stored selection.
+     */
+    public function test_save_selected_sourceids_with_empty_string_clears_selection(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $contextid = \context_system::instance()->id;
+        /** @var \local_ai_content_generator $generator */
+        $generator = $this->getDataGenerator()->get_plugin_generator('local_ai_content');
+        $source = $generator->create_source(['contextid' => $contextid, 'allowindex' => true]);
+        $generator->create_model_index(['sourceid' => $source->get_id()]);
+        $utils = \core\di::get(source_selection_utils::class);
+        $utils->save_selected_sourceids($contextid, (string)$source->get_id());
+
+        $saved = $utils->save_selected_sourceids($contextid, '');
+
+        $this->assertSame('', $saved);
+        $this->assertSame('', $utils->get_selected_sourceids($contextid));
+    }
 }

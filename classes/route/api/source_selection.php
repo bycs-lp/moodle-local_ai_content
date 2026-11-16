@@ -275,7 +275,7 @@ class source_selection {
         $body = (array)$request->getParsedBody();
         $selectedsourceids = clean_param((string)($body['selectedSourceIds'] ?? ''), PARAM_SEQUENCE);
 
-        $this->sourceselectionutils->save_selected_sourceids($contextId, $selectedsourceids);
+        $selectedsourceids = $this->sourceselectionutils->save_selected_sourceids($contextId, $selectedsourceids);
 
         return new payload_response(
             payload: [

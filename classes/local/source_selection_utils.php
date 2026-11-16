@@ -489,11 +489,27 @@ class source_selection_utils {
     /**
      * Save (replace) the selected source IDs for a context.
      *
+     * Ids of sources which do not exist, are not selectable or are not accessible for the current user are dropped.
+     *
      * @param int $contextid The Moodle context ID.
      * @param string $sourceids Comma-separated list of local_ai_content_sources record IDs.
+     * @return string The comma-separated IDs which have actually been stored.
      */
-    public function save_selected_sourceids(int $contextid, string $sourceids): void {
-        $sourceidsarray = $sourceids === '' ? [] : explode(',', $sourceids);
-        context_source::set_sourceids_for_context($contextid, $sourceidsarray);
+    public function save_selected_sourceids(int $contextid, string $sourceids): string {
+        global $USER;
+
+        $requestedids = $sourceids === '' ? [] : explode(',', $sourceids);
+        $sources = source::get_records_by_ids($requestedids);
+
+        $validids = [];
+        foreach ($sources as $source) {
+            if ($this->is_selectable($source) && source_access::can_access_source($source, (int)$USER->id)) {
+                $validids[] = $source->get_id();
+            }
+        }
+        sort($validids);
+
+        context_source::set_sourceids_for_context($contextid, $validids);
+        return implode(',', $validids);
     }
 }
