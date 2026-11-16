@@ -407,11 +407,12 @@ class source {
      * The stored source-level citation (if any) always takes precedence. Missing fields are filled from the
      * source: an empty title falls back to the source name, and for internal module sources an empty URL is
      * derived from the related course module. External sources are expected to carry their own citation.
+     * The derived values are only set on a copy, the stored citation of this source is never modified.
      *
      * @return source_citation the effective citation (may still be empty if nothing could be derived)
      */
     public function get_effective_citation(): source_citation {
-        $citation = $this->citation ?? source_citation::create();
+        $citation = $this->citation !== null ? clone $this->citation : source_citation::create();
 
         if ($citation->get_title() === '' && !empty($this->name)) {
             $citation->set_title((string) $this->name);
