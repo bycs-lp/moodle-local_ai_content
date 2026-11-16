@@ -25,6 +25,7 @@ use core\router\schema\response\payload_response;
 use local_ai_content\local\index_service;
 use local_ai_content\local\index_state;
 use local_ai_content\local\route_access;
+use local_ai_content\local\source_content_reader;
 use local_ai_content\source;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -425,13 +426,14 @@ class sourcemanagement {
             $sourcebycmid[$modulesource->get_cmid()] = $modulesource;
         }
         $states = \core\di::get(index_service::class)->get_states($modulesources);
+        $contentreader = \core\di::get(source_content_reader::class);
 
         $rows = [];
         foreach ($cms as $cm) {
             if (!empty($cm->deletioninprogress)) {
                 continue;
             }
-            if (!self::is_supported_module_type((string)$cm->modname)) {
+            if ($contentreader->get_extractor_class((string)$cm->modname) === null) {
                 continue;
             }
             $modulesource = $sourcebycmid[(int)$cm->id] ?? null;
@@ -750,15 +752,6 @@ class sourcemanagement {
         ];
     }
 
-    /**
-     * Returns whether this module type has a registered local_ai_content content extractor.
-     *
-     * @param string $modname
-     * @return bool
-     */
-    private static function is_supported_module_type(string $modname): bool {
-        return class_exists('local_ai_content\\contentextractor\\cm_content_' . $modname);
-    }
 
     /**
      * Resolve a localized module type name for display.

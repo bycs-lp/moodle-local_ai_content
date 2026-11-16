@@ -209,8 +209,8 @@ final class index_service_test extends \advanced_testcase {
             'allowindex' => true,
             'vecstoreid' => self::VECSTOREID,
         ]);
-        $currenthash = $reader->hash_chunks($reader->get_chunks($source));
-        $oldhash = $reader->hash_chunks(['Old content']);
+        $currenthash = $reader->get_content_hash($source);
+        $oldhash = hash('sha256', 'Old content');
         $indexes = [
             'unchanged' => ['status' => model_index::STATUS_INDEXED, 'contenthash' => $currenthash],
             'changed' => ['status' => model_index::STATUS_INDEXED, 'contenthash' => $oldhash],
@@ -253,7 +253,7 @@ final class index_service_test extends \advanced_testcase {
         $reader = \core\di::get(source_content_reader::class);
         $index = $generator->create_model_index([
             'sourceid' => $source->get_id(),
-            'contenthash' => $reader->hash_chunks($reader->get_chunks($source)),
+            'contenthash' => $reader->get_content_hash($source),
         ]);
 
         // An update without content change keeps the index.

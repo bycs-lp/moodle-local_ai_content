@@ -175,10 +175,12 @@ class index_service {
      * Queue the check for content changes of the source of an updated course module.
      *
      * Only queues the check if the module has a source with a completed index, so updates of other modules stay cheap.
+     * The check runs as the user who changed the module.
      *
      * @param int $cmid The id of the updated course module.
+     * @param int $userid The user who changed the module, 0 if unknown (the check then runs as the cron user).
      */
-    public function queue_module_change_check(int $cmid): void {
+    public function queue_module_change_check(int $cmid, int $userid): void {
         global $DB;
 
         $sourceid = $DB->get_field_sql(
@@ -190,7 +192,7 @@ class index_service {
             IGNORE_MULTIPLE
         );
         if ($sourceid) {
-            \core\task\manager::queue_adhoc_task(check_source_changes_adhoc::instance((int) $sourceid), true);
+            \core\task\manager::queue_adhoc_task(check_source_changes_adhoc::instance((int) $sourceid, $userid), true);
         }
     }
 
@@ -218,7 +220,7 @@ class index_service {
             return;
         }
 
-        $contenthash = $this->contentreader->hash_chunks($this->contentreader->get_chunks($source));
+        $contenthash = $this->contentreader->get_content_hash($source);
         $now = \core\di::get(\core\clock::class)->time();
         foreach ($indexes as $index) {
             if ($index->get_contenthash() === $contenthash) {

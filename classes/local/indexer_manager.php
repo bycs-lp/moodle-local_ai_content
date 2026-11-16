@@ -67,7 +67,11 @@ class indexer_manager {
             return;
         }
 
-        $this->index_source($source, $index, \core\di::get(source_content_reader::class)->get_chunks($source));
+        $reader = \core\di::get(source_content_reader::class);
+        // Hashed before reading the content: if the content changes meanwhile, the stored hash is the older one and the
+        // next change check marks the index outdated.
+        $contenthash = $reader->get_content_hash($source);
+        $this->index_source($source, $index, $reader->get_chunks($source), $contenthash);
     }
 
     /**
@@ -78,9 +82,10 @@ class indexer_manager {
      * @param source $source The source to index.
      * @param model_index $index The index of the source for the embedding model.
      * @param string[] $chunks The content chunks to embed and store, as returned by {@see source_content_reader::get_chunks()}.
+     * @param string $contenthash The hash of the content, as returned by {@see source_content_reader::get_content_hash()}.
      * @throws \moodle_exception If there is no content to index or an embedding request fails.
      */
-    protected function index_source(source $source, model_index $index, array $chunks): void {
+    protected function index_source(source $source, model_index $index, array $chunks, string $contenthash): void {
         if (empty($chunks)) {
             throw new \moodle_exception('indexingerror_nocontent', 'local_ai_content');
         }
@@ -154,10 +159,10 @@ class indexer_manager {
                 $response->get_errormessage(), $response->get_debuginfo());
         }
 
-        // Persist indexing metadata on the index record. The hash covers the extracted chunks (not the ones split for the
-        // embedding requests), so it can be compared with the current content of the source to detect changes.
+        // Persist indexing metadata on the index record. The content hash is compared with the hash of the current content
+        // of the source to detect changes.
         $clock = \core\di::get(\core\clock::class);
-        $index->set_contenthash(\core\di::get(source_content_reader::class)->hash_chunks($chunks));
+        $index->set_contenthash($contenthash);
         $index->set_lastindexed($clock->time());
         $index->store();
     }

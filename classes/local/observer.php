@@ -46,7 +46,10 @@ class observer {
         if ((int) $event->contextlevel !== CONTEXT_MODULE) {
             return;
         }
-        \core\di::get(index_service::class)->queue_module_change_check((int) $event->contextinstanceid);
+        \core\di::get(index_service::class)->queue_module_change_check(
+            (int) $event->contextinstanceid,
+            (int) $event->userid,
+        );
     }
 
     /**

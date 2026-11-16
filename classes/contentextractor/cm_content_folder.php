@@ -42,15 +42,30 @@ class cm_content_folder extends cm_content_extractor {
 
     #[\Override]
     public function extract(\core_course\cm_info $cm): string {
-        $context = \context_module::instance($cm->id);
-        $fs = get_file_storage();
-        $files = $fs->get_area_files($context->id, 'mod_folder', 'content', 0, 'id ASC', false);
-
         $filecontents = [];
-        foreach ($files as $file) {
-            $filecontents[] = $this->extract_content_from_file($file, $context->id);
+        foreach ($this->get_files($cm) as $file) {
+            $filecontents[] = $this->extract_content_from_file($file, $cm->context->id);
         }
 
         return $this->format_with_intro($cm, $filecontents);
+    }
+
+    #[\Override]
+    public function get_content_hash(\core_course\cm_info $cm): string {
+        // Hashes the inputs of the extraction, so the change check does not extract the files.
+        return $this->hash_content_parts([
+            ...$this->get_intro_hash_parts($cm),
+            ...array_map(fn(\stored_file $file): string => $this->get_file_hash_part($file), $this->get_files($cm)),
+        ]);
+    }
+
+    /**
+     * Return the files of the folder in extraction order.
+     *
+     * @param \core_course\cm_info $cm The course module info object.
+     * @return \stored_file[] The files, without directories.
+     */
+    private function get_files(\core_course\cm_info $cm): array {
+        return array_values(get_file_storage()->get_area_files($cm->context->id, 'mod_folder', 'content', 0, 'id ASC', false));
     }
 }

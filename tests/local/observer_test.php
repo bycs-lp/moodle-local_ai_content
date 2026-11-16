@@ -52,14 +52,16 @@ final class observer_test extends \advanced_testcase {
     }
 
     /**
-     * Updating a book chapter queues the content change check of the indexed source of the book.
+     * Updating a book chapter queues the content change check of the indexed source of the book as the user who
+     * updated the chapter.
      */
     public function test_book_chapter_update_queues_change_check(): void {
         global $DB;
 
         $this->resetAfterTest();
-        $this->setAdminUser();
         $course = $this->getDataGenerator()->create_course();
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
         $book = $this->getDataGenerator()->create_module('book', ['course' => $course->id]);
         /** @var \mod_book_generator $bookgenerator */
         $bookgenerator = $this->getDataGenerator()->get_plugin_generator('mod_book');
@@ -79,7 +81,9 @@ final class observer_test extends \advanced_testcase {
 
         $tasks = $DB->get_records('task_adhoc', ['classname' => '\\' . check_source_changes_adhoc::class]);
         $this->assertCount(1, $tasks);
-        $this->assertSame($source->get_id(), (int) json_decode(reset($tasks)->customdata)->sourceid);
+        $task = reset($tasks);
+        $this->assertSame($source->get_id(), (int) json_decode($task->customdata)->sourceid);
+        $this->assertSame((int) $teacher->id, (int) $task->userid);
     }
 }
 

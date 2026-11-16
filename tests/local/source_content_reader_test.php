@@ -59,5 +59,15 @@ final class source_content_reader_test extends \advanced_testcase {
 
         $this->assertSame($expected, \core\di::get(source_content_reader::class)->get_chunks($source));
     }
+
+    /**
+     * Test that the content extractor class of a module type is found by naming convention.
+     */
+    public function test_get_extractor_class(): void {
+        $reader = \core\di::get(source_content_reader::class);
+
+        $this->assertSame(\local_ai_content\contentextractor\cm_content_page::class, $reader->get_extractor_class('page'));
+        $this->assertNull($reader->get_extractor_class('forum'));
+    }
 }
 

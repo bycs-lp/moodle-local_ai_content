@@ -91,4 +91,44 @@ final class cleanup_cache_test extends \advanced_testcase {
         $this->assertEquals(1, $DB->count_records('local_ai_content_cache'));
         $this->assertTrue($DB->record_exists('local_ai_content_cache', ['contenthash' => sha1('fresh')]));
     }
+
+    /**
+     * Expired entries of files in course modules with an indexable source are kept.
+     */
+    public function test_keeps_expired_entries_of_indexable_module_files(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $now = \core\di::get(\core\clock::class)->time();
+        set_config('cachettl', '90', 'local_ai_content');
+        /** @var \local_ai_content_generator $generator */
+        $generator = $this->getDataGenerator()->get_plugin_generator('local_ai_content');
+        $course = $this->getDataGenerator()->create_course();
+        $contenthashes = [];
+        foreach (['indexable' => true, 'notindexable' => false] as $name => $allowindex) {
+            $resource = $this->getDataGenerator()->create_module('resource', ['course' => $course->id]);
+            $context = \context_module::instance($resource->cmid);
+            $files = get_file_storage()->get_area_files($context->id, 'mod_resource', 'content', 0, 'id', false);
+            $contenthashes[$name] = reset($files)->get_contenthash();
+            $generator->create_source([
+                'contextid' => \context_course::instance($course->id)->id,
+                'sourcetype' => \local_ai_content\source::TYPE_MODULE,
+                'cmid' => $resource->cmid,
+                'allowindex' => $allowindex,
+            ]);
+            $generator->create_cache_record([
+                'contenthash' => $contenthashes[$name],
+                'timelastaccessed' => $now - (100 * DAYSECS),
+            ]);
+        }
+        $this->assertNotSame($contenthashes['indexable'], $contenthashes['notindexable']);
+
+        ob_start();
+        (new cleanup_cache())->execute();
+        ob_end_clean();
+
+        $this->assertTrue($DB->record_exists('local_ai_content_cache', ['contenthash' => $contenthashes['indexable']]));
+        $this->assertFalse($DB->record_exists('local_ai_content_cache', ['contenthash' => $contenthashes['notindexable']]));
+    }
 }

@@ -30,12 +30,20 @@ class check_source_changes_adhoc extends \core\task\adhoc_task {
     /**
      * Factory with typed custom data.
      *
+     * The task runs as the given user, so AI requests needed to extract the current content (e.g. text extraction of
+     * changed files) are made as the user who changed the content.
+     *
      * @param int $sourceid The id of the source to check.
+     * @param int $userid The user who triggered the content change, 0 to run the task as the cron user.
      * @return self Task instance ready to be queued.
      */
-    public static function instance(int $sourceid): self {
+    public static function instance(int $sourceid, int $userid): self {
         $task = new self();
         $task->set_custom_data(['sourceid' => $sourceid]);
+        // Events triggered without a logged in user (e.g. by CLI scripts or cron) have no user.
+        if ($userid) {
+            $task->set_userid($userid);
+        }
         return $task;
     }
 

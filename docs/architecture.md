@@ -164,17 +164,25 @@ management shows a summarized status (failed > running > queued > indexed) plus 
    `html_to_text`; document = stored text.
 4. Chunking: 1000 characters, 100 overlap; on HTTP 400 (context length) the chunk is halved and retried.
 5. One embedding request per chunk, then `insert_embeddings(model, …)` into the model collection of the source vecstore;
-   the model index gets `contenthash` (SHA-256 of the extracted chunks, before any halving) and `lastindexed`.
+   the model index gets `contenthash` (`source_content_reader::get_content_hash()`, computed before the extraction: module
+   sources via `cm_content_extractor::get_content_hash()`, documents SHA-256 of the stored text) and `lastindexed`.
 6. Errors → model index `failed`, `error` (debug info only with developer debugging).
 7. Change detection of activities: every extractor declares the events signalling a change of its content
    (`cm_content_extractor::get_content_change_events()`, default `course_module_updated`; book: chapter events, lesson:
    page events, folder: `folder_updated`). `db/events.php` registers them via `observer::get_content_change_observers()`
    (changes need a version bump). `observer::module_content_changed()` takes the cmid from the event context and calls
    `index_service::queue_module_change_check()`, which queues `check_source_changes_adhoc` (deduplicated) if the module
-   has a source with an `indexed` index. The task extracts the current content and marks every `indexed` index whose
-   `contenthash` differs as `outdated`. Outdated indexes stay searchable (old vectors) until a source manager re-indexes
+   has a source with an `indexed` index. The task runs as the user who triggered the event (cron user for events
+   without user), computes the current content hash and marks every `indexed` index whose `contenthash` differs as
+   `outdated`; it never re-indexes. The content hash of an extractor must change whenever its extraction would change
+   (it may change more often). The default hashes the extracted text; extractors with expensive extraction (`resource`,
+   `folder`: AI extraction of files) hash the inputs instead (description and its format, path, name and content hash
+   of the files), so the check never makes AI requests. Not detected: changes of the extraction logic, extraction
+   prompt/model or chunking. Outdated indexes stay searchable (old vectors) until a source manager re-indexes
    them ("Index with my embedding model"). Changes without any event (e.g. direct database changes) are not detected.
    Restoring or importing a backup always creates new course modules without a source, so it does not affect indexes.
+   The extraction cache (`local_ai_content_cache`, cleaned by `task\cleanup_cache` after `cachettl` days without access)
+   keeps the entries of files in modules with an indexable source, so re-indexing does not repeat the AI extraction.
 
 ### 3.4 Retrieval (`rag_manager::get_rag_content(prompt, sourceids, component, contextid, ?minsimilarity, ?maxchars)`)
 1. Embed prompt (purpose `embedding`).

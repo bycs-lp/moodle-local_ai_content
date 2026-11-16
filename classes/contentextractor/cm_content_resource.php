@@ -33,11 +33,8 @@ class cm_content_resource extends cm_content_extractor {
             return false;
         }
 
-        $context = \context_module::instance($cm->id);
-        $fs = get_file_storage();
-        $files = $fs->get_area_files($context->id, 'mod_resource', 'content', 0, 'sortorder DESC, id ASC', false);
-        $file = reset($files);
-        if (empty($file)) {
+        $file = $this->get_main_file($cm);
+        if ($file === null) {
             return false;
         }
 
@@ -47,15 +44,34 @@ class cm_content_resource extends cm_content_extractor {
 
     #[\Override]
     public function extract(\core_course\cm_info $cm): string {
-        $context = \context_module::instance($cm->id);
-        $fs = get_file_storage();
-        $files = $fs->get_area_files($context->id, 'mod_resource', 'content', 0, 'sortorder DESC, id ASC', false);
-        $file = reset($files);
-        if (empty($file)) {
+        $file = $this->get_main_file($cm);
+        if ($file === null) {
             return '';
         }
 
-        $content = $this->extract_content_from_file($file, $context->id);
+        $content = $this->extract_content_from_file($file, $cm->context->id);
         return $this->format_with_intro($cm, [$content]);
+    }
+
+    #[\Override]
+    public function get_content_hash(\core_course\cm_info $cm): string {
+        // Hashes the inputs of the extraction, so the change check does not extract the file.
+        $file = $this->get_main_file($cm);
+        if ($file === null) {
+            return $this->hash_content_parts([]);
+        }
+        return $this->hash_content_parts([...$this->get_intro_hash_parts($cm), $this->get_file_hash_part($file)]);
+    }
+
+    /**
+     * Return the main file of the resource, which is the extracted file.
+     *
+     * @param \core_course\cm_info $cm The course module info object.
+     * @return ?\stored_file The main file, null if the resource has no file.
+     */
+    private function get_main_file(\core_course\cm_info $cm): ?\stored_file {
+        $files = get_file_storage()->get_area_files($cm->context->id, 'mod_resource', 'content', 0,
+            'sortorder DESC, id ASC', false);
+        return reset($files) ?: null;
     }
 }
