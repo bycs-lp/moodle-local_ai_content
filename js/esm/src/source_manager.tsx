@@ -22,7 +22,7 @@
  */
 
 import {useEffect, useMemo, useRef, useState} from 'react';
-import Config from '@moodle/lms/core/config';
+import Fetch from '@moodle/lms/core/fetch';
 import Log from '@moodle/lms/core/log';
 import MoodleString from '@moodle/lms/core/String';
 import {Button, ProgressBar} from '@moodlehq/design-system';
@@ -100,37 +100,19 @@ type Props = {
     contextid: number;
 };
 
-function buildApiUrl(path: string): string {
-    const url = new URL(Config.apibase);
-    const basepathname = url.pathname.replace(/\/+$/, '');
-
-    url.pathname = `${basepathname}/rest/v2/local_ai_content/${path.replace(/^\/+/, '')}`.replace(/\/{2,}/g, '/');
-    return url.toString();
+/**
+ * Perform one REST request against the plugin API and return the decoded JSON response.
+ */
+async function apiRequest<T>(method: string, path: string, body?: Record<string, unknown>): Promise<T> {
+    const response = await Fetch.request('local_ai_content', path, {method, body});
+    return response.json() as Promise<T>;
 }
 
 /**
- * Perform one REST request against the plugin API.
- *
- * Rejects with a human readable message so callers only ever have to handle a single error shape.
+ * Get the message of a failed request: core/fetch rejects with the HTTP status text, other failures with an Error.
  */
-async function apiRequest<T>(method: string, path: string, body?: Record<string, unknown>): Promise<T> {
-    const response = await fetch(buildApiUrl(path), {
-        method,
-        headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'pageparent': Config.traceId || '',
-        },
-        body: body ? JSON.stringify(body) : undefined,
-        credentials: 'same-origin',
-    });
-
-    const payload = await response.json();
-    if (!response.ok) {
-        throw new Error(payload.message ?? `HTTP ${response.status}`);
-    }
-
-    return payload as T;
+function getErrorMessage(caught: unknown): string {
+    return caught instanceof Error ? caught.message : String(caught);
 }
 
 function isActive(state: IndexState): boolean {
@@ -290,7 +272,7 @@ export default function SourceManager({contextid}: Props) {
         try {
             applyPayload(await apiRequest<SourceManagementResponse>('GET', `contexts/${contextid}/sources`));
         } catch (caught) {
-            setError(`Die Quellen konnten nicht geladen werden: ${(caught as Error).message}`);
+            setError(`Die Quellen konnten nicht geladen werden: ${getErrorMessage(caught)}`);
         } finally {
             setLoading(false);
         }
@@ -305,7 +287,7 @@ export default function SourceManager({contextid}: Props) {
             applyPayload(await apiRequest<SourceManagementResponse>('GET', `contexts/${contextid}/sources`));
             return true;
         } catch (caught) {
-            setError(`Die Aktion konnte nicht ausgeführt werden: ${(caught as Error).message}`);
+            setError(`Die Aktion konnte nicht ausgeführt werden: ${getErrorMessage(caught)}`);
             return false;
         } finally {
             setSaving(false);
@@ -319,7 +301,7 @@ export default function SourceManager({contextid}: Props) {
         try {
             applyIndexStates([await apiRequest<IndexState>('PUT', `sources/${sourceid}/index-state`, {allowIndex})]);
         } catch (caught) {
-            setError(`Der Indizierungsstatus konnte nicht geändert werden: ${(caught as Error).message}`);
+            setError(`Der Indizierungsstatus konnte nicht geändert werden: ${getErrorMessage(caught)}`);
         } finally {
             setSaving(false);
         }
