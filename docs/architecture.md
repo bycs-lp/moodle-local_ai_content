@@ -30,10 +30,14 @@ local_ai_manager (infrastructure): embedding purpose/tool, vecstore subplugins (
 - Registration: `db/subplugins.json`, `classes/plugininfo/aivecstore.php` (enabled via `enabled`).
 - Two classes per subplugin, resolved by naming convention in `local\vecstore_factory`:
   - `aivecstore_X\instance` extends `base_vecstore_instance` – configuration (record in `local_ai_manager_vecstore`, form extension points).
+    Generic connection fields for all backends: `endpoint`, optional `username` (`uses_username()`), `secret` (API key, token
+    or password; label via `get_secret_label()`); backend specific interpretation lives in the subplugin.
   - `aivecstore_X\vecstore` extends `base_vecstore` – operations against the database.
 - Implementations:
   - `qdrant`: REST via `core\http_client`, collection = Qdrant collection, search via `/points/search`.
-  - `postgres`: external PostgreSQL with pgvector via `pg_connect`; the DSN is stored in field `apikey`; table
+  - `postgres`: external PostgreSQL with pgvector via `pg_connect`; same fields as Qdrant: `endpoint` =
+    `postgresql://host:port/database[?sslmode=...]`, `username`, password in `secret`; the libpq connection string is built
+    from them on connect (`instance::get_connection_string()`, no credentials in a visible string); table
     `(id, documentid bigint, embedding vector(N), payload jsonb)` with a B-tree index on `documentid`. The document id is
     stored in its own column (not in the payload) in tables created by Moodle; tables of external sources keep it in the
     payload.
@@ -41,7 +45,7 @@ local_ai_manager (infrastructure): embedding purpose/tool, vecstore subplugins (
   and filters) plus the caller's metadata as flat keys. local_ai_content stores the source id as `documentid` and
   `chunk`, `maxchunks` as metadata; `locator`, `url` are read from the metadata if present (external sources). Qdrant
   creates an integer payload index on `documentid` for every collection.
-- Table `local_ai_manager_vecstore`: `name`, `tenant`, `vecstore`, `isglobal`, `endpoint`, `apikey`, `useglobalapikey`,
+- Table `local_ai_manager_vecstore`: `name`, `tenant`, `vecstore`, `isglobal`, `endpoint`, `username`, `secret`,
   `collection` (prefix of the collection names), `timecreated`, `timemodified`.
 - One collection per embedding model and instance (`{collection}_{model slug}`), registered in `local_ai_manager_collection`
   (`vecstoreid`, `embeddingmodel`, `collection`, `dimensions` from the first stored vector), see
@@ -82,7 +86,9 @@ local_ai_manager (infrastructure): embedding purpose/tool, vecstore subplugins (
   - `hook\vecstore_usage` – before deletion: collect usage descriptions (number of sources).
   - `hook\before_vecstore_instance_deleted` – detach sources, optionally delete vectors, disable external sources.
 - Admin UI: `tenant_config.php` → table `output\vecstoretable`; `edit_vecstore.php` (create/edit/delete),
-  `test_vecstore.php`, `set_primary_vecstore.php`. Setting `local_ai_manager/allowinsecurevecstore` (allow http).
+  `test_vecstore.php`, `set_primary_vecstore.php`. Setting `local_ai_manager/allowinsecurevecstore` (allow http; for Postgres: allow `sslmode` below
+  `require`, otherwise encryption is required, checked in the form via `base_vecstore_instance::validate_endpoint()` and again
+  when connecting; host and port are checked against the Moodle cURL security settings).
 - Capability `local/ai_manager:manageglobalvecstores` for global instances; otherwise tenant manager rights (`access_manager::can_manage_vecstoreinstance()`).
 
 ### 2.2 Embeddings
