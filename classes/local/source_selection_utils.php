@@ -34,6 +34,7 @@ class source_selection_utils {
      * @param embedding_model_resolver $modelresolver Resolver of the embedding model of the current user.
      * @param context_source_store $contextsourcestore Store of the source selections of contexts.
      * @param source_access $sourceaccess Checks whether a user may retrieve from a source.
+     * @param access_guard $accessguard Enforces the access rules for the current user.
      */
     public function __construct(
         /** @var embedding_model_resolver Resolver of the embedding model of the current user. */
@@ -42,6 +43,8 @@ class source_selection_utils {
         private readonly context_source_store $contextsourcestore,
         /** @var source_access Checks whether a user may retrieve from a source. */
         private readonly source_access $sourceaccess,
+        /** @var access_guard Enforces the access rules for the current user. */
+        private readonly access_guard $accessguard,
     ) {
     }
 
@@ -170,8 +173,8 @@ class source_selection_utils {
         }
 
         $sourcecoursecontext = \context_course::instance($sourcecourseid, MUST_EXIST);
-        route_access::require_capability('local/ai_content:usesource', $sourcecoursecontext);
-        route_access::require_course_access($sourcecoursecontext);
+        $this->accessguard->require_capability('local/ai_content:usesource', $sourcecoursecontext);
+        $this->accessguard->require_course_access($sourcecoursecontext);
 
         $userid = (int)$USER->id;
         $courseactivities = [];

@@ -24,7 +24,7 @@ use core\router\schema\response\content\payload_response_type;
 use core\router\schema\response\payload_response;
 use local_ai_content\local\index_service;
 use local_ai_content\local\index_state;
-use local_ai_content\local\route_access;
+use local_ai_content\local\access_guard;
 use local_ai_content\local\source_content_reader;
 use local_ai_content\source;
 use Psr\Http\Message\ResponseInterface;
@@ -354,26 +354,8 @@ class sourcemanagement {
                 get_capability_string('local/ai_content:managesources'),
             );
         }
-        route_access::require_capability('local/ai_content:managesources', $coursecontext);
+        \core\di::get(access_guard::class)->require_capability('local/ai_content:managesources', $coursecontext);
         return $coursecontext;
-    }
-
-    /**
-     * Resolve all context ids whose sources the current user may manage from the given context.
-     *
-     * @param \context $context The active context.
-     * @return int[] Context ids.
-     */
-    public static function resolve_managed_contextids(\context $context): array {
-        $coursecontext = self::require_manage_access($context);
-        $systemcontext = \context_system::instance();
-
-        $contextids = [$coursecontext->id];
-        if (has_capability('local/ai_content:managesources', $systemcontext)) {
-            $contextids[] = $systemcontext->id;
-        }
-
-        return $contextids;
     }
 
     /**
@@ -654,7 +636,7 @@ class sourcemanagement {
 
         if ($scope === 'global') {
             $systemcontext = \context_system::instance();
-            route_access::require_capability('local/ai_content:managesources', $systemcontext);
+            \core\di::get(access_guard::class)->require_capability('local/ai_content:managesources', $systemcontext);
             return $systemcontext->id;
         }
 
@@ -670,7 +652,7 @@ class sourcemanagement {
     private static function require_document_manage_access(\context_course $coursecontext, source $source): void {
         $systemcontext = \context_system::instance();
         if ($source->get_contextid() === $systemcontext->id) {
-            route_access::require_capability('local/ai_content:managesources', $systemcontext);
+            \core\di::get(access_guard::class)->require_capability('local/ai_content:managesources', $systemcontext);
             return;
         }
 

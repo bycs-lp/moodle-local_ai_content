@@ -25,6 +25,7 @@ use core\router\schema\parameters\path_parameter;
 use core\router\schema\response\content\payload_response_type;
 use core\router\schema\response\payload_response;
 use core\router\schema\response\response as route_response;
+use local_ai_content\local\access_guard;
 use local_ai_content\local\index_service;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -41,12 +42,25 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 class source_index {
     /**
+     * Constructor.
+     *
+     * @param index_service $indexservice The indexing service.
+     * @param access_guard $accessguard Enforces the access rules for the current user.
+     */
+    public function __construct(
+        /** @var index_service The indexing service. */
+        private readonly index_service $indexservice,
+        /** @var access_guard Enforces the access rules for the current user. */
+        private readonly access_guard $accessguard,
+    ) {
+    }
+
+    /**
      * Switch indexing on or off for one source.
      *
      * @param ServerRequestInterface $request The request.
      * @param ResponseInterface $response The response.
      * @param int $sourceId The source id.
-     * @param index_service $indexservice The indexing service.
      * @return payload_response
      */
     #[route(
@@ -76,13 +90,12 @@ class source_index {
         ServerRequestInterface $request,
         ResponseInterface $response,
         int $sourceId,
-        index_service $indexservice,
     ): payload_response {
         $body = (array) $request->getParsedBody();
         $allowindex = (int) clean_param((string) ($body['allowIndex'] ?? ''), PARAM_BOOL) === 1;
 
         return new payload_response(
-            payload: $indexservice->set_allow_index($sourceId, $allowindex)->to_array(),
+            payload: $this->indexservice->set_allow_index($sourceId, $allowindex)->to_array(),
             request: $request,
             response: $response,
         );
@@ -94,7 +107,6 @@ class source_index {
      * @param ServerRequestInterface $request The request.
      * @param ResponseInterface $response The response.
      * @param int $contextId The active context id.
-     * @param index_service $indexservice The indexing service.
      * @return payload_response
      */
     #[route(
@@ -117,14 +129,13 @@ class source_index {
         ServerRequestInterface $request,
         ResponseInterface $response,
         int $contextId,
-        index_service $indexservice,
     ): payload_response {
         $context = \context_helper::instance_by_id($contextId, MUST_EXIST);
-        $contextids = sourcemanagement::resolve_managed_contextids($context);
+        $contextids = $this->accessguard->get_managed_contextids($context);
 
         return new payload_response(
             payload: [
-                'items' => $indexservice->get_states_for_contexts($contextids),
+                'items' => $this->indexservice->get_states_for_contexts($contextids),
                 'pollIntervalSeconds' => stored_progress_bar::get_timeout(),
             ],
             request: $request,

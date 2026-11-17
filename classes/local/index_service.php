@@ -42,13 +42,13 @@ class index_service {
     /**
      * Constructor.
      *
-     * @param source_management_access $access Access service for source management checks.
+     * @param access_guard $accessguard Enforces the access rules for the current user.
      * @param embedding_model_resolver $modelresolver Resolver of the embedding model of the current user.
      * @param source_content_reader $contentreader Reader of the indexable content of sources.
      */
     public function __construct(
-        /** @var source_management_access Access service for source management checks. */
-        private readonly source_management_access $access,
+        /** @var access_guard Enforces the access rules for the current user. */
+        private readonly access_guard $accessguard,
         /** @var embedding_model_resolver Resolver of the embedding model of the current user. */
         private readonly embedding_model_resolver $modelresolver,
         /** @var source_content_reader Reader of the indexable content of sources. */
@@ -70,7 +70,7 @@ class index_service {
         if ($source === null) {
             throw new \invalid_parameter_exception('Source not found.');
         }
-        $this->access->require_manage_access_for_source($source);
+        $this->accessguard->require_manage_access_for_source($source);
 
         return $allowindex ? $this->start($source) : $this->stop($source);
     }

@@ -23,7 +23,7 @@ use core\router\schema\objects\schema_object;
 use core\router\schema\objects\scalar_type;
 use core\router\schema\response\payload_response;
 use core\router\schema\response\content\payload_response_type;
-use local_ai_content\local\route_access;
+use local_ai_content\local\access_guard;
 use local_ai_content\local\source_selection_utils;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -46,9 +46,11 @@ class source_selection {
      * Constructor.
      *
      * @param source_selection_utils $sourceselectionutils Service providing the source selection logic.
+     * @param access_guard $accessguard Enforces the access rules for the current user.
      */
     public function __construct(
         private readonly source_selection_utils $sourceselectionutils,
+        private readonly access_guard $accessguard,
     ) {
     }
 
@@ -85,7 +87,7 @@ class source_selection {
         int $contextId,
     ): payload_response {
         $context = \context_helper::instance_by_id($contextId);
-        self::require_login_and_access($context);
+        $this->accessguard->require_use_access($context);
 
         $groupedsources = $this->sourceselectionutils->get_grouped_sources_for_context($contextId);
         $selectedsourceids = $this->sourceselectionutils->get_selected_sourceids($contextId);
@@ -143,8 +145,8 @@ class source_selection {
         int $contextId,
     ): payload_response {
         $context = \context_helper::instance_by_id($contextId);
-        self::require_login_and_access($context);
-        route_access::require_capability('local/ai_content:selectsources', $context);
+        $this->accessguard->require_use_access($context);
+        $this->accessguard->require_capability('local/ai_content:selectsources', $context);
 
         $courses = $this->sourceselectionutils->get_importable_courses_for_context($contextId);
 
@@ -204,8 +206,8 @@ class source_selection {
         int $contextId,
     ): payload_response {
         $context = \context_helper::instance_by_id($contextId);
-        self::require_login_and_access($context);
-        route_access::require_capability('local/ai_content:selectsources', $context);
+        $this->accessguard->require_use_access($context);
+        $this->accessguard->require_capability('local/ai_content:selectsources', $context);
 
         // The router has already validated the required query parameter.
         $sourcecourseid = (int)$request->getQueryParams()['sourceCourseId'];
@@ -269,8 +271,8 @@ class source_selection {
         int $contextId,
     ): payload_response {
         $context = \context_helper::instance_by_id($contextId);
-        self::require_login_and_access($context);
-        route_access::require_capability('local/ai_content:selectsources', $context);
+        $this->accessguard->require_use_access($context);
+        $this->accessguard->require_capability('local/ai_content:selectsources', $context);
 
         $body = (array)$request->getParsedBody();
         $selectedsourceids = clean_param((string)($body['selectedSourceIds'] ?? ''), PARAM_SEQUENCE);
@@ -292,20 +294,5 @@ class source_selection {
             request: $request,
             response: $response,
         );
-    }
-
-    /**
-     * Enforce login, course access and the capability to use sources for a context.
-     *
-     * @param \context $context The context the source selection belongs to.
-     */
-    private static function require_login_and_access(\context $context): void {
-        require_login();
-
-        $coursecontext = $context->get_course_context(false);
-        if ($coursecontext !== false) {
-            route_access::require_capability('local/ai_content:usesource', $coursecontext);
-            route_access::require_course_access($coursecontext);
-        }
     }
 }
