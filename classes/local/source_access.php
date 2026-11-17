@@ -29,6 +29,8 @@ use local_ai_content\source;
  *  - Document and external sources: the user must hold the local/ai_content:usesource capability in the context
  *    the source is attached to, or local/ai_content:useglobalsources for global sources (system context).
  *
+ * Obtain it via dependency injection.
+ *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
  * @author     Philipp Memmel
@@ -42,7 +44,7 @@ class source_access {
      * @param ?int $userid the user to check access for, or null for the current user
      * @return int[] the subset of source ids the user may retrieve from
      */
-    public static function filter_accessible_sourceids(array $sourceids, ?int $userid = null): array {
+    public function filter_accessible_sourceids(array $sourceids, ?int $userid = null): array {
         global $USER;
         $sourceids = array_values(array_unique(array_filter(array_map('intval', $sourceids))));
         if (empty($sourceids)) {
@@ -52,7 +54,7 @@ class source_access {
         $sources = source::get_records_by_ids($sourceids);
         $accessible = [];
         foreach ($sources as $source) {
-            if (self::can_access_source($source, $userid)) {
+            if ($this->can_access_source($source, $userid)) {
                 $accessible[] = $source->get_id();
             }
         }
@@ -66,14 +68,14 @@ class source_access {
      * @param ?int $userid the user to check access for, or null for the current user
      * @return bool true if the user may retrieve from the source
      */
-    public static function can_access_source(source $source, ?int $userid = null): bool {
+    public function can_access_source(source $source, ?int $userid = null): bool {
         global $USER;
 
         $userid = $userid ?? (int) $USER->id;
         if ($source->get_sourcetype() === source::TYPE_MODULE) {
-            return self::user_can_access_module_source($source, $userid);
+            return $this->user_can_access_module_source($source, $userid);
         }
-        return self::user_can_access_context_source($source, $userid);
+        return $this->user_can_access_context_source($source, $userid);
     }
 
     /**
@@ -86,7 +88,7 @@ class source_access {
      * @param int $userid the user to check access for
      * @return bool true if the user may retrieve from the module source
      */
-    protected static function user_can_access_module_source(source $source, int $userid): bool {
+    protected function user_can_access_module_source(source $source, int $userid): bool {
         $cmid = $source->get_cmid();
         $cmrecord = get_coursemodule_from_id('', $cmid, 0, false, IGNORE_MISSING);
         if (!$cmrecord) {
@@ -117,7 +119,7 @@ class source_access {
      * @param int $userid the user to check access for
      * @return bool true if the user may retrieve from the source
      */
-    protected static function user_can_access_context_source(source $source, int $userid): bool {
+    protected function user_can_access_context_source(source $source, int $userid): bool {
         try {
             $context = \context_helper::instance_by_id($source->get_contextid());
         } catch (\moodle_exception $e) {

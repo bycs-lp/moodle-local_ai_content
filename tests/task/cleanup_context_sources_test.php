@@ -16,7 +16,7 @@
 
 namespace local_ai_content\task;
 
-use local_ai_content\context_source;
+use local_ai_content\local\context_source_store;
 
 /**
  * Tests for the cleanup_context_sources scheduled task.
@@ -28,7 +28,7 @@ use local_ai_content\context_source;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[\PHPUnit\Framework\Attributes\CoversClass(cleanup_context_sources::class)]
-#[\PHPUnit\Framework\Attributes\CoversClass(context_source::class)]
+#[\PHPUnit\Framework\Attributes\CoversClass(context_source_store::class)]
 final class cleanup_context_sources_test extends \advanced_testcase {
     /**
      * The selections of all contexts of a deleted course are removed, the ones of other contexts are kept.
@@ -57,8 +57,9 @@ final class cleanup_context_sources_test extends \advanced_testcase {
             ['parentcontextid' => \context_course::instance($othercourse->id)->id]);
         $keptcontextid = \context_block::instance($otherblock->id)->id;
 
+        $store = \core\di::get(context_source_store::class);
         foreach ([...$deletedcontextids, $keptcontextid] as $contextid) {
-            context_source::set_sourceids_for_context($contextid, [$sourceid]);
+            $store->set_sourceids_for_context($contextid, [$sourceid]);
         }
 
         delete_course($course, false);
@@ -67,9 +68,9 @@ final class cleanup_context_sources_test extends \advanced_testcase {
         (new cleanup_context_sources())->execute();
 
         foreach ($deletedcontextids as $contextid) {
-            $this->assertSame([], context_source::get_sourceids_for_context($contextid));
+            $this->assertSame([], $store->get_sourceids_for_context($contextid));
         }
-        $this->assertSame([$sourceid], context_source::get_sourceids_for_context($keptcontextid));
+        $this->assertSame([$sourceid], $store->get_sourceids_for_context($keptcontextid));
     }
 }
 

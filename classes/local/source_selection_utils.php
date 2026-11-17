@@ -16,7 +16,6 @@
 
 namespace local_ai_content\local;
 
-use local_ai_content\context_source;
 use local_ai_content\source;
 
 /**
@@ -33,10 +32,16 @@ class source_selection_utils {
      * Constructor.
      *
      * @param embedding_model_resolver $modelresolver Resolver of the embedding model of the current user.
+     * @param context_source_store $contextsourcestore Store of the source selections of contexts.
+     * @param source_access $sourceaccess Checks whether a user may retrieve from a source.
      */
     public function __construct(
         /** @var embedding_model_resolver Resolver of the embedding model of the current user. */
         private readonly embedding_model_resolver $modelresolver,
+        /** @var context_source_store Store of the source selections of contexts. */
+        private readonly context_source_store $contextsourcestore,
+        /** @var source_access Checks whether a user may retrieve from a source. */
+        private readonly source_access $sourceaccess,
     ) {
     }
 
@@ -97,7 +102,7 @@ class source_selection_utils {
 
         $courseactivities = $this->get_course_activity_sources($coursecontext, $userid);
 
-        $selectedsourceids = context_source::get_sourceids_for_context($contextid);
+        $selectedsourceids = $this->contextsourcestore->get_sourceids_for_context($contextid);
         $externalsources = $this->get_selected_external_sources($selectedsourceids, $coursecontext, $globaldocuments, $courseactivities, $userid);
 
         return $this->add_outdated_flags([
@@ -204,7 +209,7 @@ class source_selection_utils {
             if ($documentsource->get_sourcetype() === source::TYPE_MODULE || !$this->is_selectable($documentsource)) {
                 continue;
             }
-            if (!source_access::can_access_source($documentsource, $userid)) {
+            if (!$this->sourceaccess->can_access_source($documentsource, $userid)) {
                 continue;
             }
             $coursedocuments[] = [
@@ -361,7 +366,7 @@ class source_selection_utils {
             if (!$this->is_selectable($selectedsource)) {
                 continue;
             }
-            if (!source_access::can_access_source($selectedsource, $userid)) {
+            if (!$this->sourceaccess->can_access_source($selectedsource, $userid)) {
                 continue;
             }
             if (!$this->is_external_to_course($selectedsource, $coursecontext)) {
@@ -483,7 +488,7 @@ class source_selection_utils {
      * @return string The stored comma-separated IDs, empty if nothing is saved.
      */
     public function get_selected_sourceids(int $contextid): string {
-        return implode(',', context_source::get_sourceids_for_context($contextid));
+        return implode(',', $this->contextsourcestore->get_sourceids_for_context($contextid));
     }
 
     /**
@@ -503,13 +508,13 @@ class source_selection_utils {
 
         $validids = [];
         foreach ($sources as $source) {
-            if ($this->is_selectable($source) && source_access::can_access_source($source, (int)$USER->id)) {
+            if ($this->is_selectable($source) && $this->sourceaccess->can_access_source($source, (int)$USER->id)) {
                 $validids[] = $source->get_id();
             }
         }
         sort($validids);
 
-        context_source::set_sourceids_for_context($contextid, $validids);
+        $this->contextsourcestore->set_sourceids_for_context($contextid, $validids);
         return implode(',', $validids);
     }
 }

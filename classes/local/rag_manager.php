@@ -16,7 +16,6 @@
 
 namespace local_ai_content\local;
 
-use local_ai_content\context_source;
 use local_ai_content\source;
 use local_ai_manager\base_vecstore;
 use local_ai_manager\hook\additional_prompt_context;
@@ -90,10 +89,14 @@ EOF;
      *
      * @param source_selection_utils $sourceselectionutils Service deciding which sources are selectable.
      * @param embedding_model_resolver $modelresolver Resolver of the embedding model of the current user.
+     * @param context_source_store $contextsourcestore Store of the source selections of contexts.
+     * @param source_access $sourceaccess Checks whether a user may retrieve from a source.
      */
     public function __construct(
         private readonly source_selection_utils $sourceselectionutils,
         private readonly embedding_model_resolver $modelresolver,
+        private readonly context_source_store $contextsourcestore,
+        private readonly source_access $sourceaccess,
     ) {
     }
 
@@ -172,7 +175,7 @@ EOF;
         // Security: the source ids come from the client, so only those stored as selection for the context are used.
         $sourceids = array_intersect(
             array_map('intval', $sourceids),
-            context_source::get_sourceids_for_context($contextid)
+            $this->contextsourcestore->get_sourceids_for_context($contextid)
         );
         if (empty($sourceids)) {
             return new rag_result('');
@@ -188,7 +191,7 @@ EOF;
         }
 
         // Security: restrict the selection to the sources the requesting user is actually allowed to retrieve from.
-        $accessiblesourceids = source_access::filter_accessible_sourceids(array_keys($sources));
+        $accessiblesourceids = $this->sourceaccess->filter_accessible_sourceids(array_keys($sources));
         $sources = array_intersect_key($sources, array_flip($accessiblesourceids));
         if (empty($sources)) {
             return new rag_result('');

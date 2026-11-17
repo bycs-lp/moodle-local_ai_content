@@ -14,21 +14,33 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace local_ai_content;
+namespace local_ai_content\local;
 
 /**
- * Helper for the local_ai_content_ctx_sources junction table.
+ * Store of the source selections of contexts (table local_ai_content_ctx_sources).
  *
  * Represents the n:m relation between Moodle contexts and the sources that are activated for RAG retrieval in
- * that context. Replaces the previous comma-separated sourceids storage.
+ * that context. Obtain it via dependency injection.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
+ * @author     Philipp Memmel
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class context_source {
+class context_source_store {
     /** @var int Number of selection rows deleted with one statement. */
     private const DELETE_CHUNK_SIZE = 500;
+
+    /**
+     * Constructor.
+     *
+     * @param \core\clock $clock Clock for the timestamps of the selection rows.
+     */
+    public function __construct(
+        /** @var \core\clock Clock for the timestamps of the selection rows. */
+        private readonly \core\clock $clock,
+    ) {
+    }
 
     /**
      * Returns the source ids activated for a single context.
@@ -36,8 +48,8 @@ class context_source {
      * @param int $contextid The Moodle context id.
      * @return int[] The activated source ids.
      */
-    public static function get_sourceids_for_context(int $contextid): array {
-        return self::get_sourceids_for_contexts([$contextid]);
+    public function get_sourceids_for_context(int $contextid): array {
+        return $this->get_sourceids_for_contexts([$contextid]);
     }
 
     /**
@@ -46,7 +58,7 @@ class context_source {
      * @param int[] $contextids The Moodle context ids.
      * @return int[] The activated source ids (unique).
      */
-    public static function get_sourceids_for_contexts(array $contextids): array {
+    public function get_sourceids_for_contexts(array $contextids): array {
         global $DB;
 
         $contextids = array_values(array_unique(array_filter(array_map('intval', $contextids))));
@@ -67,7 +79,7 @@ class context_source {
      * @param int $contextid The Moodle context id.
      * @param int[] $sourceids The source ids to activate for the context.
      */
-    public static function set_sourceids_for_context(int $contextid, array $sourceids): void {
+    public function set_sourceids_for_context(int $contextid, array $sourceids): void {
         global $DB, $USER;
 
         $sourceids = array_values(array_unique(array_filter(
@@ -75,8 +87,7 @@ class context_source {
             static fn(int $id): bool => $id > 0
         )));
 
-        $clock = \core\di::get(\core\clock::class);
-        $now = $clock->time();
+        $now = $this->clock->time();
 
         $transaction = $DB->start_delegated_transaction();
         $DB->delete_records('local_ai_content_ctx_sources', ['contextid' => $contextid]);
@@ -100,7 +111,7 @@ class context_source {
      *
      * @return int Number of deleted selection rows.
      */
-    public static function delete_for_deleted_contexts(): int {
+    public function delete_for_deleted_contexts(): int {
         global $DB;
 
         $sql = 'SELECT cs.id
@@ -126,3 +137,4 @@ class context_source {
         return $deleted;
     }
 }
+
