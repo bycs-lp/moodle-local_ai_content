@@ -22,11 +22,8 @@ use core\router\schema\objects\scalar_type;
 use core\router\schema\objects\schema_object;
 use core\router\schema\response\content\payload_response_type;
 use core\router\schema\response\payload_response;
-use local_ai_content\local\index_service;
-use local_ai_content\local\index_state;
 use local_ai_content\local\access_guard;
-use local_ai_content\local\source_content_reader;
-use local_ai_content\source;
+use local_ai_content\local\source_management_service;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -38,6 +35,20 @@ use Psr\Http\Message\ServerRequestInterface;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class sourcemanagement {
+    /**
+     * Constructor.
+     *
+     * @param access_guard $accessguard Enforces the access rules for the current user.
+     * @param source_management_service $managementservice Service behind the source management.
+     */
+    public function __construct(
+        /** @var access_guard Enforces the access rules for the current user. */
+        private readonly access_guard $accessguard,
+        /** @var source_management_service Service behind the source management. */
+        private readonly source_management_service $managementservice,
+    ) {
+    }
+
     /**
      * Return module and document sources for management UI.
      *
@@ -70,11 +81,10 @@ class sourcemanagement {
         ResponseInterface $response,
         int $contextId,
     ): payload_response {
-        $context = \context_helper::instance_by_id($contextId, MUST_EXIST);
-        $coursecontext = self::require_manage_access($context);
+        $coursecontext = $this->accessguard->require_manage_access(\context_helper::instance_by_id($contextId, MUST_EXIST));
 
         return new payload_response(
-            payload: self::build_payload($coursecontext),
+            payload: $this->build_payload($coursecontext),
             request: $request,
             response: $response,
         );
@@ -125,16 +135,14 @@ class sourcemanagement {
         ResponseInterface $response,
         int $contextId,
         int $cmId,
-        index_service $indexservice,
     ): payload_response {
-        $context = \context_helper::instance_by_id($contextId, MUST_EXIST);
-        $coursecontext = self::require_manage_access($context);
+        $coursecontext = $this->accessguard->require_manage_access(\context_helper::instance_by_id($contextId, MUST_EXIST));
         $body = (array)$request->getParsedBody();
 
-        self::toggle_module_enabled($coursecontext, $cmId, self::as_bool($body['enabled']), $indexservice);
+        $this->managementservice->set_module_enabled($coursecontext, $cmId, self::as_bool($body['enabled']));
 
         return new payload_response(
-            payload: self::build_payload($coursecontext),
+            payload: $this->build_payload($coursecontext),
             request: $request,
             response: $response,
         );
@@ -182,11 +190,10 @@ class sourcemanagement {
         ResponseInterface $response,
         int $contextId,
     ): payload_response {
-        $context = \context_helper::instance_by_id($contextId, MUST_EXIST);
-        $coursecontext = self::require_manage_access($context);
+        $coursecontext = $this->accessguard->require_manage_access(\context_helper::instance_by_id($contextId, MUST_EXIST));
         $body = (array)$request->getParsedBody();
 
-        $documentsource = self::create_document(
+        $documentsource = $this->managementservice->create_document(
             $coursecontext,
             clean_param((string)($body['scope'] ?? ''), PARAM_ALPHA),
             clean_param((string)($body['name'] ?? ''), PARAM_TEXT),
@@ -199,7 +206,7 @@ class sourcemanagement {
 
         return new payload_response(
             payload: [
-                'item' => self::build_document_item_payload($documentsource),
+                'item' => $this->managementservice->get_document_item($documentsource),
             ],
             request: $request,
             response: $createdresponse,
@@ -254,32 +261,27 @@ class sourcemanagement {
         ResponseInterface $response,
         int $contextId,
         int $sourceId,
-        index_service $indexservice,
     ): payload_response {
-        $context = \context_helper::instance_by_id($contextId, MUST_EXIST);
-        $coursecontext = self::require_manage_access($context);
+        $coursecontext = $this->accessguard->require_manage_access(\context_helper::instance_by_id($contextId, MUST_EXIST));
         $body = (array)$request->getParsedBody();
 
         if (array_key_exists('enabled', $body)) {
-            self::toggle_document_enabled($coursecontext, $sourceId, self::as_bool($body['enabled']), $indexservice);
+            $this->managementservice->set_document_enabled($coursecontext, $sourceId, self::as_bool($body['enabled']));
         }
 
         if (array_key_exists('name', $body) || array_key_exists('description', $body) || array_key_exists('content', $body)) {
-            $documentsource = self::load_document_source($sourceId);
-            self::require_document_manage_access($coursecontext, $documentsource);
-
-            $name = array_key_exists('name', $body) ?
-                clean_param((string)$body['name'], PARAM_TEXT) : (string)$documentsource->get_name();
-            $description = array_key_exists('description', $body) ?
-                clean_param((string)$body['description'], PARAM_RAW) : (string)$documentsource->get_description();
-            $content = array_key_exists('content', $body) ?
-                clean_param((string)$body['content'], PARAM_RAW) : (string)$documentsource->get_content();
-
-            self::update_document($coursecontext, $sourceId, $name, $description, $content, $indexservice);
+            // Fields missing in the request body are kept.
+            $this->managementservice->update_document(
+                $coursecontext,
+                $sourceId,
+                array_key_exists('name', $body) ? clean_param((string)$body['name'], PARAM_TEXT) : null,
+                array_key_exists('description', $body) ? clean_param((string)$body['description'], PARAM_RAW) : null,
+                array_key_exists('content', $body) ? clean_param((string)$body['content'], PARAM_RAW) : null,
+            );
         }
 
         return new payload_response(
-            payload: self::build_payload($coursecontext),
+            payload: $this->build_payload($coursecontext),
             request: $request,
             response: $response,
         );
@@ -323,381 +325,32 @@ class sourcemanagement {
         ResponseInterface $response,
         int $contextId,
         int $sourceId,
-        index_service $indexservice,
     ): payload_response {
-        $context = \context_helper::instance_by_id($contextId, MUST_EXIST);
-        $coursecontext = self::require_manage_access($context);
+        $coursecontext = $this->accessguard->require_manage_access(\context_helper::instance_by_id($contextId, MUST_EXIST));
 
-        self::delete_source($coursecontext, $sourceId, $indexservice);
+        $this->managementservice->delete_document($coursecontext, $sourceId);
 
         return new payload_response(
-            payload: self::build_payload($coursecontext),
+            payload: $this->build_payload($coursecontext),
             request: $request,
             response: $response,
         );
     }
 
     /**
-     * Enforce course-level source management capability.
-     *
-     * @param \context $context
-     * @return \context_course
-     */
-    private static function require_manage_access(\context $context): \context_course {
-        require_login();
-        $coursecontext = $context->get_course_context(false);
-        if (!$coursecontext) {
-            throw new \core\exception\access_denied_exception(
-                'nopermissions',
-                'error',
-                '',
-                get_capability_string('local/ai_content:managesources'),
-            );
-        }
-        \core\di::get(access_guard::class)->require_capability('local/ai_content:managesources', $coursecontext);
-        return $coursecontext;
-    }
-
-    /**
      * Build the response payload consumed by the management React app.
      *
-     * @param \context_course $coursecontext
-     * @return array
+     * @param \context_course $coursecontext The context of the course whose sources are managed.
+     * @return array The overview of the managed sources.
      */
-    private static function build_payload(\context_course $coursecontext): array {
-        $systemcontext = \context_system::instance();
-        $canmanagesystemsources = has_capability('local/ai_content:managesources', $systemcontext);
-
-        $modulerows = self::get_module_rows($coursecontext);
-        $globaldocuments = self::get_document_rows($systemcontext->id, $canmanagesystemsources);
-        $coursedocuments = self::get_document_rows($coursecontext->id, true);
-
-        return [
-            'coursecontextid' => $coursecontext->id,
-            'canmanagesystemsources' => $canmanagesystemsources,
-            'items' => [
-                'modules' => $modulerows,
-                'globaldocuments' => $globaldocuments,
-                'coursedocuments' => $coursedocuments,
-            ],
+    private function build_payload(\context_course $coursecontext): array {
+        return $this->managementservice->get_overview($coursecontext) + [
             'pagination' => [
                 'page' => 1,
                 'pageSize' => 1,
                 'totalItems' => 1,
             ],
         ];
-    }
-
-    /**
-     * Build module rows for the course.
-     *
-     * @param \context_course $coursecontext
-     * @return array
-     */
-    private static function get_module_rows(\context_course $coursecontext): array {
-        $modinfo = get_fast_modinfo($coursecontext->instanceid);
-        $cms = $modinfo->get_cms();
-        if (empty($cms)) {
-            return [];
-        }
-
-        $cmids = array_map(static fn($cm): int => (int)$cm->id, $cms);
-        $modulesources = source::get_records_by_cmids($cmids);
-        $sourcebycmid = [];
-        foreach ($modulesources as $modulesource) {
-            $sourcebycmid[$modulesource->get_cmid()] = $modulesource;
-        }
-        $states = \core\di::get(index_service::class)->get_states($modulesources);
-        $contentreader = \core\di::get(source_content_reader::class);
-
-        $rows = [];
-        foreach ($cms as $cm) {
-            if (!empty($cm->deletioninprogress)) {
-                continue;
-            }
-            if ($contentreader->get_extractor_class((string)$cm->modname) === null) {
-                continue;
-            }
-            $modulesource = $sourcebycmid[(int)$cm->id] ?? null;
-            $rows[] = [
-                'cmid' => (int)$cm->id,
-                'modname' => (string)$cm->modname,
-                'moddisplayname' => self::get_module_display_name((string)$cm->modname),
-                'name' => format_string($cm->name, true, ['context' => $cm->context]),
-                'sourceid' => $modulesource ? $modulesource->get_id() : 0,
-                'enabled' => $modulesource ? $modulesource->get_enabled() : false,
-                'indexState' => $modulesource
-                    ? $states[$modulesource->get_id()]->to_array()
-                    : index_state::unmanaged()->to_array(),
-            ];
-        }
-
-        usort($rows, static fn(array $a, array $b): int => strcmp($a['name'], $b['name']));
-        return $rows;
-    }
-
-    /**
-     * Build document rows for one context.
-     *
-     * @param int $contextid
-     * @param bool $canedit
-     * @return array
-     */
-    private static function get_document_rows(int $contextid, bool $canedit): array {
-        $sources = array_filter(
-            source::get_records_by_contextids([$contextid]),
-            static fn(source $source): bool => $source->get_sourcetype() === source::TYPE_DOCUMENT
-        );
-        $states = \core\di::get(index_service::class)->get_states($sources);
-        $rows = [];
-        foreach ($sources as $documentsource) {
-            $rows[] = [
-                'id' => $documentsource->get_id(),
-                'name' => (string)$documentsource->get_name(),
-                'description' => (string)$documentsource->get_description(),
-                'content' => (string)$documentsource->get_content(),
-                'enabled' => $documentsource->get_enabled(),
-                'indexState' => $states[$documentsource->get_id()]->to_array(),
-                'canedit' => $canedit,
-            ];
-        }
-
-        usort($rows, static fn(array $a, array $b): int => strcmp((string)$a['name'], (string)$b['name']));
-        return $rows;
-    }
-
-    /**
-     * Toggle module source enabled flag.
-     *
-     * @param \context_course $coursecontext
-     * @param int $cmid
-     * @param bool $enabled
-     * @param index_service $indexservice
-     */
-    private static function toggle_module_enabled(
-        \context_course $coursecontext,
-        int $cmid,
-        bool $enabled,
-        index_service $indexservice,
-    ): void {
-        $modulesource = self::get_or_create_module_source($coursecontext, $cmid);
-
-        if (!$enabled) {
-            $indexservice->stop($modulesource);
-        }
-
-        $modulesource->set_enabled($enabled);
-        $modulesource->store();
-    }
-
-    /**
-     * Toggle document source enabled flag.
-     *
-     * @param \context_course $coursecontext
-     * @param int $sourceid
-     * @param bool $enabled
-     * @param index_service $indexservice
-     */
-    private static function toggle_document_enabled(
-        \context_course $coursecontext,
-        int $sourceid,
-        bool $enabled,
-        index_service $indexservice,
-    ): void {
-        $documentsource = self::load_document_source($sourceid);
-        self::require_document_manage_access($coursecontext, $documentsource);
-
-        if (!$enabled) {
-            $indexservice->stop($documentsource);
-        }
-
-        $documentsource->set_enabled($enabled);
-        $documentsource->store();
-    }
-
-    /**
-     * Create a document source.
-     *
-     * @param \context_course $coursecontext
-     * @param string $scope
-     * @param string $name
-     * @param string $description
-     * @param string $content
-     */
-    private static function create_document(
-        \context_course $coursecontext,
-        string $scope,
-        string $name,
-        string $description,
-        string $content,
-    ): source {
-        $contextid = self::resolve_document_contextid($coursecontext, $scope);
-
-        $documentsource = new source();
-        $documentsource->set_contextid($contextid);
-        $documentsource->set_sourcetype(source::TYPE_DOCUMENT);
-        $documentsource->set_name($name);
-        $documentsource->set_description($description);
-        $documentsource->set_content($content);
-        $documentsource->set_enabled(true);
-        $documentsource->set_allowindex(false);
-        $documentsource->store();
-        return $documentsource;
-    }
-
-    /**
-     * Update a document source and re-index it when its content changed.
-     *
-     * @param \context_course $coursecontext
-     * @param int $sourceid
-     * @param string $name
-     * @param string $description
-     * @param string $content
-     * @param index_service $indexservice
-     */
-    private static function update_document(
-        \context_course $coursecontext,
-        int $sourceid,
-        string $name,
-        string $description,
-        string $content,
-        index_service $indexservice,
-    ): void {
-        $documentsource = self::load_document_source($sourceid);
-        self::require_document_manage_access($coursecontext, $documentsource);
-
-        $contentchanged = (string)$documentsource->get_content() !== $content;
-
-        $documentsource->set_name($name);
-        $documentsource->set_description($description);
-        $documentsource->set_content($content);
-        $documentsource->store();
-
-        if ($contentchanged && $documentsource->get_allowindex()) {
-            $indexservice->reindex_changed_source($documentsource);
-        }
-    }
-
-    /**
-     * Delete a document source and its context mappings.
-     *
-     * @param \context_course $coursecontext
-     * @param int $sourceid
-     * @param index_service $indexservice
-     */
-    private static function delete_source(
-        \context_course $coursecontext,
-        int $sourceid,
-        index_service $indexservice,
-    ): void {
-        global $DB;
-
-        $documentsource = self::load_document_source($sourceid);
-        self::require_document_manage_access($coursecontext, $documentsource);
-
-        $indexservice->stop($documentsource);
-
-        $transaction = $DB->start_delegated_transaction();
-        $DB->delete_records('local_ai_content_ctx_sources', ['sourceid' => $sourceid]);
-        $DB->delete_records('local_ai_content_sources', ['id' => $sourceid]);
-        $transaction->allow_commit();
-    }
-
-    /**
-     * Load one document source by id.
-     *
-     * @param int $sourceid
-     * @return source
-     */
-    private static function load_document_source(int $sourceid): source {
-        if ($sourceid <= 0) {
-            throw new \invalid_parameter_exception('Invalid source id.');
-        }
-
-        $source = source::get_record(['id' => $sourceid]);
-        if ($source === null || $source->get_sourcetype() !== source::TYPE_DOCUMENT) {
-            throw new \invalid_parameter_exception('Document source not found.');
-        }
-
-        return $source;
-    }
-
-    /**
-     * Resolve context for new document based on selected scope.
-     *
-     * @param \context_course $coursecontext
-     * @param string $scope
-     * @return int
-     */
-    private static function resolve_document_contextid(\context_course $coursecontext, string $scope): int {
-        if ($scope === 'course') {
-            return $coursecontext->id;
-        }
-
-        if ($scope === 'global') {
-            $systemcontext = \context_system::instance();
-            \core\di::get(access_guard::class)->require_capability('local/ai_content:managesources', $systemcontext);
-            return $systemcontext->id;
-        }
-
-        throw new \invalid_parameter_exception('Unsupported document scope: ' . $scope);
-    }
-
-    /**
-     * Require manage permission for one document source.
-     *
-     * @param \context_course $coursecontext
-     * @param source $source
-     */
-    private static function require_document_manage_access(\context_course $coursecontext, source $source): void {
-        $systemcontext = \context_system::instance();
-        if ($source->get_contextid() === $systemcontext->id) {
-            \core\di::get(access_guard::class)->require_capability('local/ai_content:managesources', $systemcontext);
-            return;
-        }
-
-        if ($source->get_contextid() !== $coursecontext->id) {
-            throw new \core\exception\access_denied_exception(
-                'nopermissions',
-                'error',
-                '',
-                get_capability_string('local/ai_content:managesources'),
-            );
-        }
-    }
-
-    /**
-     * Find or create the module source wrapper for a course module.
-     *
-     * @param \context_course $coursecontext
-     * @param int $cmid
-     * @return source
-     */
-    private static function get_or_create_module_source(\context_course $coursecontext, int $cmid): source {
-        if ($cmid <= 0) {
-            throw new \invalid_parameter_exception('Invalid course module id.');
-        }
-
-        $cm = get_coursemodule_from_id('', $cmid, $coursecontext->instanceid, false, MUST_EXIST);
-        $modulesource = source::get_record(['cmid' => $cmid, 'sourcetype' => source::TYPE_MODULE]);
-
-        if ($modulesource === null) {
-            $modulesource = new source();
-            $modulesource->set_contextid($coursecontext->id);
-            $modulesource->set_sourcetype(source::TYPE_MODULE);
-            $modulesource->set_cmid($cmid);
-            $modulesource->set_name((string)$cm->name);
-            $modulesource->set_enabled(false);
-            $modulesource->set_allowindex(false);
-            $modulesource->store();
-            return $modulesource;
-        }
-
-        $modulesource->set_contextid($coursecontext->id);
-        $modulesource->set_name((string)$cm->name);
-        $modulesource->store();
-
-        return $modulesource;
     }
 
     /**
@@ -715,38 +368,5 @@ class sourcemanagement {
         }
         return (int)clean_param((string)$value, PARAM_BOOL) === 1;
     }
-
-    /**
-     * Build a response representation for a document source.
-     *
-     * @param source $documentsource
-     * @return array
-     */
-    private static function build_document_item_payload(source $documentsource): array {
-        return [
-            'id' => (int)$documentsource->get_id(),
-            'contextId' => (int)$documentsource->get_contextid(),
-            'name' => (string)$documentsource->get_name(),
-            'description' => (string)$documentsource->get_description(),
-            'content' => (string)$documentsource->get_content(),
-            'enabled' => (bool)$documentsource->get_enabled(),
-            'indexState' => \core\di::get(index_service::class)->get_state($documentsource)->to_array(),
-        ];
-    }
-
-
-    /**
-     * Resolve a localized module type name for display.
-     *
-     * @param string $modname
-     * @return string
-     */
-    private static function get_module_display_name(string $modname): string {
-        if (get_string_manager()->string_exists('modulename', $modname)) {
-            return get_string('modulename', $modname);
-        }
-        return $modname;
-    }
 }
-
 

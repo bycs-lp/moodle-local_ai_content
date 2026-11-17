@@ -362,6 +362,15 @@ class index_service {
     }
 
     /**
+     * Delete one source, e.g. a document source deleted in the source management.
+     *
+     * @param source $source The source to delete.
+     */
+    public function delete_source(source $source): void {
+        $this->delete_sources('id = :id', ['id' => $source->get_id()]);
+    }
+
+    /**
      * Delete the source of a course module, e.g. because the course module has been deleted.
      *
      * @param int $cmid The course module id.
