@@ -16,8 +16,6 @@
 
 namespace local_ai_content\local;
 
-use local_ai_content\source;
-
 /**
  * Access control utility for RAG sources.
  *

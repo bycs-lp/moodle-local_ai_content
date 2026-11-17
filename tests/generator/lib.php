@@ -67,12 +67,12 @@ class local_ai_content_generator extends testing_module_generator {
      *   - allowindex (bool): Whether indexing is switched on, defaults to false.
      *   - externalcollection (string): Collection of external sources, defaults to null.
      *   - externalmodel (string): Embedding model of external sources, defaults to null.
-     * @return \local_ai_content\source The stored source.
+     * @return \local_ai_content\local\source The stored source.
      */
-    public function create_source(array $record): \local_ai_content\source {
-        $source = new \local_ai_content\source();
+    public function create_source(array $record): \local_ai_content\local\source {
+        $source = new \local_ai_content\local\source();
         $source->set_contextid($record['contextid']);
-        $source->set_sourcetype($record['sourcetype'] ?? \local_ai_content\source::TYPE_DOCUMENT);
+        $source->set_sourcetype($record['sourcetype'] ?? \local_ai_content\local\source::TYPE_DOCUMENT);
         $source->set_cmid($record['cmid'] ?? null);
         $source->set_vecstoreid($record['vecstoreid'] ?? null);
         $source->set_name($record['name'] ?? 'Test source ' . random_string(5));

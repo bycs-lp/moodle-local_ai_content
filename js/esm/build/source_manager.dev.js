@@ -146,8 +146,8 @@ function SourceManager({ contextid }) {
       return [];
     }
     return [
-      ...payload.items.globaldocuments.map((row) => ({ ...row, scope: "global" })),
-      ...payload.items.coursedocuments.map((row) => ({ ...row, scope: "course" }))
+      ...payload.items.globalDocuments.map((row) => ({ ...row, scope: "global" })),
+      ...payload.items.courseDocuments.map((row) => ({ ...row, scope: "course" }))
     ].sort((a, b) => a.name.localeCompare(b.name));
   }, [payload]);
   const hasActiveTasks = useMemo(() => {
@@ -156,8 +156,8 @@ function SourceManager({ contextid }) {
     }
     return [
       ...payload.items.modules,
-      ...payload.items.globaldocuments,
-      ...payload.items.coursedocuments
+      ...payload.items.globalDocuments,
+      ...payload.items.courseDocuments
     ].some((row) => isActive(row.indexState));
   }, [payload]);
   const logDebugInfo = /* @__PURE__ */ __name((states) => {
@@ -173,8 +173,8 @@ ${state.debugInfo}`, "local_ai_content");
   const applyPayload = /* @__PURE__ */ __name((data) => {
     logDebugInfo([
       ...data.items.modules,
-      ...data.items.globaldocuments,
-      ...data.items.coursedocuments
+      ...data.items.globalDocuments,
+      ...data.items.courseDocuments
     ].map((row) => row.indexState));
     setPayload(data);
   }, "applyPayload");
@@ -185,16 +185,16 @@ ${state.debugInfo}`, "local_ai_content");
       if (!current) {
         return current;
       }
-      const merge = /* @__PURE__ */ __name((row, sourceid) => {
-        const state = byid.get(sourceid);
+      const merge = /* @__PURE__ */ __name((row, sourceId) => {
+        const state = byid.get(sourceId);
         return state ? { ...row, indexState: state } : row;
       }, "merge");
       return {
         ...current,
         items: {
-          modules: current.items.modules.map((row) => merge(row, row.sourceid)),
-          globaldocuments: current.items.globaldocuments.map((row) => merge(row, row.id)),
-          coursedocuments: current.items.coursedocuments.map((row) => merge(row, row.id))
+          modules: current.items.modules.map((row) => merge(row, row.sourceId)),
+          globalDocuments: current.items.globalDocuments.map((row) => merge(row, row.id)),
+          courseDocuments: current.items.courseDocuments.map((row) => merge(row, row.id))
         }
       };
     });
@@ -224,11 +224,11 @@ ${state.debugInfo}`, "local_ai_content");
       setSaving(false);
     }
   }, "performWrite");
-  const handleAllowIndexToggle = /* @__PURE__ */ __name(async (sourceid, allowIndex) => {
+  const handleAllowIndexToggle = /* @__PURE__ */ __name(async (sourceId, allowIndex) => {
     setSaving(true);
     setError(null);
     try {
-      applyIndexStates([await apiRequest("PUT", `sources/${sourceid}/index-state`, { allowIndex })]);
+      applyIndexStates([await apiRequest("PUT", `sources/${sourceId}/index-state`, { allowIndex })]);
     } catch (error_) {
       setError(`Der Indizierungsstatus konnte nicht ge\xE4ndert werden: ${getErrorMessage(error_)}`);
     } finally {
@@ -441,7 +441,7 @@ ${state.debugInfo}`, "local_ai_content");
                 type: "checkbox",
                 role: "switch",
                 checked: row.enabled,
-                disabled: saving || !row.canedit,
+                disabled: saving || !row.canEdit,
                 onChange: () => {
                   void performWrite(
                     "PATCH",
@@ -476,7 +476,7 @@ ${state.debugInfo}`, "local_ai_content");
                 type: "checkbox",
                 role: "switch",
                 checked: row.indexState.allowIndex,
-                disabled: saving || !row.canedit || isActive(row.indexState),
+                disabled: saving || !row.canEdit || isActive(row.indexState),
                 onChange: () => {
                   void handleAllowIndexToggle(row.id, !row.indexState.allowIndex);
                 },
@@ -503,7 +503,7 @@ ${state.debugInfo}`, "local_ai_content");
               IndexStatusCell,
               {
                 state: row.indexState,
-                disabled: saving || !row.canedit,
+                disabled: saving || !row.canEdit,
                 onIndexCurrentModel: () => {
                   void handleAllowIndexToggle(row.id, true);
                 }
@@ -526,7 +526,7 @@ ${state.debugInfo}`, "local_ai_content");
               lineNumber: 508,
               columnNumber: 33
             }, this),
-            /* @__PURE__ */ jsxDEV("td", { children: row.canedit && /* @__PURE__ */ jsxDEV("div", { className: "d-flex gap-1", children: [
+            /* @__PURE__ */ jsxDEV("td", { children: row.canEdit && /* @__PURE__ */ jsxDEV("div", { className: "d-flex gap-1", children: [
               /* @__PURE__ */ jsxDEV(
                 "button",
                 {
@@ -676,7 +676,7 @@ ${state.debugInfo}`, "local_ai_content");
               lineNumber: 571,
               columnNumber: 33
             }, this),
-            /* @__PURE__ */ jsxDEV("td", { children: row.moddisplayname === "" ? row.modname : row.moddisplayname }, void 0, false, {
+            /* @__PURE__ */ jsxDEV("td", { children: row.modDisplayName === "" ? row.modName : row.modDisplayName }, void 0, false, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
               lineNumber: 572,
               columnNumber: 33
@@ -684,7 +684,7 @@ ${state.debugInfo}`, "local_ai_content");
             /* @__PURE__ */ jsxDEV("td", { children: /* @__PURE__ */ jsxDEV("div", { className: "form-check form-switch m-0", children: /* @__PURE__ */ jsxDEV(
               "input",
               {
-                id: `module-enabled-${row.cmid}`,
+                id: `module-enabled-${row.cmId}`,
                 className: "form-check-input",
                 type: "checkbox",
                 role: "switch",
@@ -693,7 +693,7 @@ ${state.debugInfo}`, "local_ai_content");
                 onChange: () => {
                   void performWrite(
                     "PATCH",
-                    `contexts/${contextid}/module-sources/${row.cmid}`,
+                    `contexts/${contextid}/module-sources/${row.cmId}`,
                     { enabled: !row.enabled }
                   );
                 },
@@ -719,14 +719,14 @@ ${state.debugInfo}`, "local_ai_content");
             /* @__PURE__ */ jsxDEV("td", { children: row.enabled && /* @__PURE__ */ jsxDEV("div", { className: "form-check form-switch m-0", children: /* @__PURE__ */ jsxDEV(
               "input",
               {
-                id: `module-index-${row.cmid}`,
+                id: `module-index-${row.cmId}`,
                 className: "form-check-input",
                 type: "checkbox",
                 role: "switch",
                 checked: row.indexState.allowIndex,
                 disabled: saving || isActive(row.indexState),
                 onChange: () => {
-                  void handleAllowIndexToggle(row.sourceid, !row.indexState.allowIndex);
+                  void handleAllowIndexToggle(row.sourceId, !row.indexState.allowIndex);
                 },
                 "aria-label": `Aktivit\xE4t ${row.name} in Vektorstore indizieren`
               },
@@ -753,7 +753,7 @@ ${state.debugInfo}`, "local_ai_content");
                 state: row.indexState,
                 disabled: saving,
                 onIndexCurrentModel: () => {
-                  void handleAllowIndexToggle(row.sourceid, true);
+                  void handleAllowIndexToggle(row.sourceId, true);
                 }
               },
               void 0,
@@ -774,7 +774,7 @@ ${state.debugInfo}`, "local_ai_content");
               lineNumber: 620,
               columnNumber: 33
             }, this)
-          ] }, row.cmid, true, {
+          ] }, row.cmId, true, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
             lineNumber: 570,
             columnNumber: 29
@@ -852,7 +852,7 @@ ${state.debugInfo}`, "local_ai_content");
               columnNumber: 33
             }, this),
             /* @__PURE__ */ jsxDEV("div", { className: "modal-body", children: [
-              payload.canmanagesystemsources && /* @__PURE__ */ jsxDEV("div", { className: "form-group", children: [
+              payload.canManageGlobalSources && /* @__PURE__ */ jsxDEV("div", { className: "form-group", children: [
                 /* @__PURE__ */ jsxDEV("label", { htmlFor: "source-create-scope", children: "Quelle anlegen in" }, void 0, false, {
                   fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
                   lineNumber: 660,

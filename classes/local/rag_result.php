@@ -33,7 +33,7 @@ class rag_result {
     /** @var string Retrieved text chunks used as grounding context. */
     protected string $retrievedtext;
 
-    /** @var rag_source[] Sources ordered by relevance. */
+    /** @var source_reference[] Sources ordered by relevance. */
     protected array $sources;
 
     /** @var array[] Selected sources which could not be used, each with the keys sourceid, name and reason. */
@@ -43,7 +43,7 @@ class rag_result {
      * Constructor.
      *
      * @param string $retrievedtext Retrieved text chunks.
-     * @param rag_source[] $sources Source references.
+     * @param source_reference[] $sources Source references.
      * @param array[] $unavailablesources Selected sources which could not be used, each with the keys sourceid (int),
      *  name (string) and reason (one of the UNAVAILABLE_* constants).
      */
@@ -65,7 +65,7 @@ class rag_result {
     /**
      * Get source references.
      *
-     * @return rag_source[]
+     * @return source_reference[]
      */
     public function get_sources(): array {
         return $this->sources;
@@ -97,7 +97,7 @@ class rag_result {
     public function to_array(): array {
         return [
             'retrievedText' => $this->retrievedtext,
-            'sources' => array_map(static fn(rag_source $source): array => $source->to_array(), $this->sources),
+            'sources' => array_map(static fn(source_reference $source): array => $source->to_array(), $this->sources),
             'unavailableSources' => array_map(static fn(array $source): array => [
                 'sourceId' => $source['sourceid'],
                 'name' => $source['name'],

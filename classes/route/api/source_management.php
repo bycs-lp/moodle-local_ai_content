@@ -34,7 +34,7 @@ use Psr\Http\Message\ServerRequestInterface;
  * @copyright  2026 ISB Bayern
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class sourcemanagement {
+class source_management {
     /**
      * Constructor.
      *

@@ -16,7 +16,6 @@
 
 namespace local_ai_content\local;
 
-use local_ai_content\source;
 use local_ai_manager\base_vecstore;
 use local_ai_manager\base_vecstore_instance;
 use local_ai_manager\local\vecstore_factory;

@@ -19,7 +19,7 @@ namespace local_ai_content\task;
 use local_ai_content\local\embedding_model_resolver;
 use local_ai_content\local\indexer_manager;
 use local_ai_content\local\model_index;
-use local_ai_content\source;
+use local_ai_content\local\source;
 
 /**
  * Adhoc task indexing a single source with one embedding model.

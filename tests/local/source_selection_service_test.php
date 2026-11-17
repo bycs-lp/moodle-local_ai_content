@@ -16,18 +16,16 @@
 
 namespace local_ai_content\local;
 
-use local_ai_content\source;
-
 /**
- * Tests for source selection utilities.
+ * Tests for the source selection service.
  *
  * @package    local_ai_content
  * @category   test
  * @copyright  2026 ISB Bayern
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-#[\PHPUnit\Framework\Attributes\CoversClass(\local_ai_content\local\source_selection_utils::class)]
-final class source_selection_utils_test extends \advanced_testcase {
+#[\PHPUnit\Framework\Attributes\CoversClass(source_selection_service::class)]
+final class source_selection_service_test extends \advanced_testcase {
     /**
      * Ensure non-course contexts still include global documents.
      */
@@ -46,15 +44,15 @@ final class source_selection_utils_test extends \advanced_testcase {
         $generator = $this->getDataGenerator()->get_plugin_generator('local_ai_content');
         $generator->create_model_index(['sourceid' => $globalsource->get_id()]);
 
-        $groups = \core\di::get(source_selection_utils::class)->get_grouped_sources_for_context(\context_system::instance()->id);
+        $groups = \core\di::get(source_selection_service::class)->get_grouped_sources_for_context(\context_system::instance()->id);
 
-        $this->assertArrayHasKey('globaldocuments', $groups);
-        $this->assertArrayHasKey('courseactivities', $groups);
-        $this->assertArrayHasKey('externalsources', $groups);
-        $this->assertCount(1, $groups['globaldocuments']);
-        $this->assertEquals($globalsource->get_id(), (int)$groups['globaldocuments'][0]['id']);
-        $this->assertSame([], $groups['courseactivities']);
-        $this->assertSame([], $groups['externalsources']);
+        $this->assertArrayHasKey('globalDocuments', $groups);
+        $this->assertArrayHasKey('courseActivities', $groups);
+        $this->assertArrayHasKey('externalSources', $groups);
+        $this->assertCount(1, $groups['globalDocuments']);
+        $this->assertEquals($globalsource->get_id(), (int)$groups['globalDocuments'][0]['id']);
+        $this->assertSame([], $groups['courseActivities']);
+        $this->assertSame([], $groups['externalSources']);
     }
 
     /**
@@ -144,7 +142,7 @@ final class source_selection_utils_test extends \advanced_testcase {
             ]);
         }
 
-        $ids = \core\di::get(source_selection_utils::class)->get_available_sourceids_for_context(\context_system::instance()->id);
+        $ids = \core\di::get(source_selection_service::class)->get_available_sourceids_for_context(\context_system::instance()->id);
 
         $this->assertSame($expected, in_array($globalsource->get_id(), $ids));
     }
@@ -195,10 +193,10 @@ final class source_selection_utils_test extends \advanced_testcase {
             ]);
         }
 
-        $groups = \core\di::get(source_selection_utils::class)->get_grouped_sources_for_context(\context_system::instance()->id);
+        $groups = \core\di::get(source_selection_service::class)->get_grouped_sources_for_context(\context_system::instance()->id);
 
-        $this->assertCount(1, $groups['globaldocuments']);
-        $this->assertSame($expected, $groups['globaldocuments'][0]['outdated']);
+        $this->assertCount(1, $groups['globalDocuments']);
+        $this->assertSame($expected, $groups['globalDocuments'][0]['outdated']);
     }
 
     /**
@@ -231,11 +229,11 @@ final class source_selection_utils_test extends \advanced_testcase {
             $notindexed->get_id(),
             $valid->get_id(),
         ]);
-        $utils = \core\di::get(source_selection_utils::class);
-        $saved = $utils->save_selected_sourceids($coursecontext->id, $requested);
+        $service = \core\di::get(source_selection_service::class);
+        $saved = $service->save_selected_sourceids($coursecontext->id, $requested);
 
         $this->assertSame((string)$valid->get_id(), $saved);
-        $this->assertSame((string)$valid->get_id(), $utils->get_selected_sourceids($coursecontext->id));
+        $this->assertSame((string)$valid->get_id(), $service->get_selected_sourceids($coursecontext->id));
     }
 
     /**
@@ -249,12 +247,12 @@ final class source_selection_utils_test extends \advanced_testcase {
         $generator = $this->getDataGenerator()->get_plugin_generator('local_ai_content');
         $source = $generator->create_source(['contextid' => $contextid, 'allowindex' => true]);
         $generator->create_model_index(['sourceid' => $source->get_id()]);
-        $utils = \core\di::get(source_selection_utils::class);
-        $utils->save_selected_sourceids($contextid, (string)$source->get_id());
+        $service = \core\di::get(source_selection_service::class);
+        $service->save_selected_sourceids($contextid, (string)$source->get_id());
 
-        $saved = $utils->save_selected_sourceids($contextid, '');
+        $saved = $service->save_selected_sourceids($contextid, '');
 
         $this->assertSame('', $saved);
-        $this->assertSame('', $utils->get_selected_sourceids($contextid));
+        $this->assertSame('', $service->get_selected_sourceids($contextid));
     }
 }

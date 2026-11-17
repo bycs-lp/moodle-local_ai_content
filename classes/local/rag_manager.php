@@ -16,7 +16,6 @@
 
 namespace local_ai_content\local;
 
-use local_ai_content\source;
 use local_ai_manager\base_vecstore;
 use local_ai_manager\hook\additional_prompt_context;
 use local_ai_manager\local\vecstore_factory;
@@ -87,16 +86,16 @@ EOF;
     /**
      * Constructor.
      *
-     * @param source_selection_utils $sourceselectionutils Service deciding which sources are selectable.
+     * @param source_selection_service $selectionservice Service deciding which sources are selectable.
      * @param embedding_model_resolver $modelresolver Resolver of the embedding model of the current user.
-     * @param context_source_store $contextsourcestore Store of the source selections of contexts.
+     * @param source_selection_store $selectionstore Store of the source selections of contexts.
      * @param source_access $sourceaccess Checks whether a user may retrieve from a source.
      * @param vecstore_factory $vecstorefactory Factory of the vector store drivers.
      */
     public function __construct(
-        private readonly source_selection_utils $sourceselectionutils,
+        private readonly source_selection_service $selectionservice,
         private readonly embedding_model_resolver $modelresolver,
-        private readonly context_source_store $contextsourcestore,
+        private readonly source_selection_store $selectionstore,
         private readonly source_access $sourceaccess,
         private readonly vecstore_factory $vecstorefactory,
     ) {
@@ -177,7 +176,7 @@ EOF;
         // Security: the source ids come from the client, so only those stored as selection for the context are used.
         $sourceids = array_intersect(
             array_map('intval', $sourceids),
-            $this->contextsourcestore->get_sourceids_for_context($contextid)
+            $this->selectionstore->get_sourceids_for_context($contextid)
         );
         if (empty($sourceids)) {
             return new rag_result('');
@@ -186,7 +185,7 @@ EOF;
         // Load the selected source records, keeping only selectable ones (enabled and with retrievable vectors).
         $sources = array_filter(
             source::get_records_by_ids($sourceids),
-            fn(source $source): bool => $this->sourceselectionutils->is_selectable($source)
+            fn(source $source): bool => $this->selectionservice->is_selectable($source)
         );
         if (empty($sources)) {
             return new rag_result('');
@@ -468,9 +467,9 @@ EOF;
      *
      * @param vector_record $match the query match
      * @param source[] $sourcesbyid the referenced sources indexed by record id
-     * @return ?rag_source source reference or null when no usable title exists
+     * @return ?source_reference source reference or null when no usable title exists
      */
-    protected function build_source_reference(vector_record $match, array $sourcesbyid): ?rag_source {
+    protected function build_source_reference(vector_record $match, array $sourcesbyid): ?source_reference {
         $source = $sourcesbyid[$match->get_documentid()] ?? null;
         $citation = $source !== null ? $source->get_effective_citation() : source_citation::create();
 
@@ -485,7 +484,12 @@ EOF;
         // A per-chunk deep link takes precedence over the source-level canonical URL.
         $chunkurl = self::get_payload_string($match, self::PAYLOAD_URL);
         $url = $chunkurl !== '' ? $chunkurl : $citation->get_url();
-        return new rag_source($match->get_documentid(), $title, $url, self::get_payload_string($match, self::PAYLOAD_LOCATOR));
+        return new source_reference(
+            $match->get_documentid(),
+            $title,
+            $url,
+            self::get_payload_string($match, self::PAYLOAD_LOCATOR)
+        );
     }
 
     /**

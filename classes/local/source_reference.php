@@ -17,13 +17,13 @@
 namespace local_ai_content\local;
 
 /**
- * DTO representing one RAG source reference.
+ * Reference to a source used in a RAG result.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class rag_source {
+class source_reference {
     /**
      * Constructor.
      */

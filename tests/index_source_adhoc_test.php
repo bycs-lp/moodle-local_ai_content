@@ -17,6 +17,7 @@
 namespace local_ai_content;
 
 use local_ai_content\local\model_index;
+use local_ai_content\local\source;
 use local_ai_content\task\index_source_adhoc;
 
 /**

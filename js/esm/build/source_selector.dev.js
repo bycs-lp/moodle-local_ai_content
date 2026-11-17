@@ -23,7 +23,7 @@ import Fetch from "@moodle/lms/core/fetch";
 import MoodleString from "@moodle/lms/core/String";
 import { getString } from "@moodle/lms/core/stringUtils";
 function getSourceMeta(source) {
-  return source.sourcetype;
+  return source.sourceType;
 }
 __name(getSourceMeta, "getSourceMeta");
 function OutdatedBadge() {

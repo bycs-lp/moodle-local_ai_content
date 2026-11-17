@@ -16,8 +16,6 @@
 
 namespace local_ai_content\local;
 
-use local_ai_content\source;
-
 /**
  * Service behind the source management of a course: module sources of the course and course/global document sources.
  *
@@ -66,12 +64,12 @@ class source_management_service {
         $canmanageglobalsources = $this->accessguard->can_manage_global_sources();
 
         return [
-            'coursecontextid' => $coursecontext->id,
-            'canmanagesystemsources' => $canmanageglobalsources,
+            'courseContextId' => $coursecontext->id,
+            'canManageGlobalSources' => $canmanageglobalsources,
             'items' => [
                 'modules' => $this->get_module_rows($coursecontext),
-                'globaldocuments' => $this->get_document_rows(SYSCONTEXTID, $canmanageglobalsources),
-                'coursedocuments' => $this->get_document_rows($coursecontext->id, true),
+                'globalDocuments' => $this->get_document_rows(SYSCONTEXTID, $canmanageglobalsources),
+                'courseDocuments' => $this->get_document_rows($coursecontext->id, true),
             ],
         ];
     }
@@ -237,11 +235,11 @@ class source_management_service {
             }
             $modulesource = $sourcebycmid[(int) $cm->id] ?? null;
             $rows[] = [
-                'cmid' => (int) $cm->id,
-                'modname' => (string) $cm->modname,
-                'moddisplayname' => $this->get_module_display_name((string) $cm->modname),
+                'cmId' => (int) $cm->id,
+                'modName' => (string) $cm->modname,
+                'modDisplayName' => $this->get_module_display_name((string) $cm->modname),
                 'name' => format_string($cm->name, true, ['context' => $cm->context]),
-                'sourceid' => $modulesource ? $modulesource->get_id() : 0,
+                'sourceId' => $modulesource ? $modulesource->get_id() : 0,
                 'enabled' => $modulesource ? $modulesource->get_enabled() : false,
                 'indexState' => $modulesource
                     ? $states[$modulesource->get_id()]->to_array()
@@ -275,7 +273,7 @@ class source_management_service {
                 'content' => (string) $documentsource->get_content(),
                 'enabled' => $documentsource->get_enabled(),
                 'indexState' => $states[$documentsource->get_id()]->to_array(),
-                'canedit' => $canedit,
+                'canEdit' => $canedit,
             ];
         }
 

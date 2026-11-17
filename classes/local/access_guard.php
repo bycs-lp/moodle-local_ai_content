@@ -17,7 +17,6 @@
 namespace local_ai_content\local;
 
 use core\exception\access_denied_exception;
-use local_ai_content\source;
 
 /**
  * Enforces the access rules of the plugin for the current user.

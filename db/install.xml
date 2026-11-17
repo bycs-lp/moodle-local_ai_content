@@ -76,7 +76,7 @@
               <INDEX NAME="sourceid_embeddingmodel" UNIQUE="true" FIELDS="sourceid, embeddingmodel"/>
           </INDEXES>
       </TABLE>
-      <TABLE NAME="local_ai_content_ctx_sources" COMMENT="Junction table mapping which sources are activated for RAG in a given context">
+      <TABLE NAME="local_ai_content_selection" COMMENT="Source selections: which sources are activated for RAG in a given context">
           <FIELDS>
               <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
               <FIELD NAME="contextid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The context in which the source is activated for RAG retrieval"/>

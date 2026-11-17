@@ -30,9 +30,9 @@ import Fetch from '@moodle/lms/core/fetch';
 /** A single selectable source returned by the API. */
 export type SourceOption = {
     id: number;
-    cmid: number;
+    cmId: number | null;
     name: string;
-    sourcetype: string;
+    sourceType: string;
     /** Whether the content changed since the source was indexed with the embedding model of the current user. */
     outdated: boolean;
 };

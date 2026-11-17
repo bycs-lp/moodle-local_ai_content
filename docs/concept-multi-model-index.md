@@ -79,7 +79,7 @@ instance, one collection per model. External sources get `externalcollection` an
 4. If no source is usable, the request continues without RAG. The notice is shown at the end of the answer after the
    source list (block_ai_chat, `contextdata.ragresult.unavailableSources`).
 
-`source_selection_utils::is_selectable()`: a source is selectable if it is enabled and indexed with at least one model.
+`source_selection_service::is_selectable()`: a source is selectable if it is enabled and indexed with at least one model.
 
 ## Source management UI
 One summarized status per source (failed > running > queued > indexed) plus a list "model: status". If the source is

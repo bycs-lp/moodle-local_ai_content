@@ -65,7 +65,7 @@ class cleanup_cache extends \core\task\scheduled_task {
         $params = [
             'cutoff' => $cutoff,
             'contextlevel' => CONTEXT_MODULE,
-            'sourcetype' => \local_ai_content\source::TYPE_MODULE,
+            'sourcetype' => \local_ai_content\local\source::TYPE_MODULE,
         ];
 
         $count = $DB->count_records_select('local_ai_content_cache', $select, $params);

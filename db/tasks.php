@@ -36,7 +36,7 @@ $tasks = [
         'dayofweek' => '*',
     ],
     [
-        'classname' => \local_ai_content\task\cleanup_context_sources::class,
+        'classname' => \local_ai_content\task\cleanup_source_selections::class,
         'blocking' => 0,
         'minute' => 'R',
         'hour' => '2',

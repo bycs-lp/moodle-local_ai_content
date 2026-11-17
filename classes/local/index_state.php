@@ -17,7 +17,6 @@
 namespace local_ai_content\local;
 
 use core\output\stored_progress_bar;
-use local_ai_content\source;
 use local_ai_content\task\index_source_adhoc;
 
 /**

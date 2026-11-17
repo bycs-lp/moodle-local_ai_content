@@ -56,11 +56,11 @@ type IndexState = {
 };
 
 type ModuleSource = {
-    cmid: number;
-    modname: string;
-    moddisplayname: string;
+    cmId: number;
+    modName: string;
+    modDisplayName: string;
     name: string;
-    sourceid: number;
+    sourceId: number;
     enabled: boolean;
     indexState: IndexState;
 };
@@ -71,17 +71,17 @@ type DocumentSource = {
     description: string;
     content: string;
     enabled: boolean;
-    canedit: boolean;
+    canEdit: boolean;
     indexState: IndexState;
 };
 
 type SourceManagementResponse = {
-    coursecontextid: number;
-    canmanagesystemsources: boolean;
+    courseContextId: number;
+    canManageGlobalSources: boolean;
     items: {
         modules: ModuleSource[];
-        globaldocuments: DocumentSource[];
-        coursedocuments: DocumentSource[];
+        globalDocuments: DocumentSource[];
+        courseDocuments: DocumentSource[];
     };
 };
 
@@ -209,8 +209,8 @@ export default function SourceManager({contextid}: Props) {
         }
 
         return [
-            ...payload.items.globaldocuments.map(row => ({...row, scope: 'global' as const})),
-            ...payload.items.coursedocuments.map(row => ({...row, scope: 'course' as const})),
+            ...payload.items.globalDocuments.map(row => ({...row, scope: 'global' as const})),
+            ...payload.items.courseDocuments.map(row => ({...row, scope: 'course' as const})),
         ].sort((a, b) => a.name.localeCompare(b.name));
     }, [payload]);
 
@@ -221,8 +221,8 @@ export default function SourceManager({contextid}: Props) {
 
         return [
             ...payload.items.modules,
-            ...payload.items.globaldocuments,
-            ...payload.items.coursedocuments,
+            ...payload.items.globalDocuments,
+            ...payload.items.courseDocuments,
         ].some(row => isActive(row.indexState));
     }, [payload]);
 
@@ -246,8 +246,8 @@ export default function SourceManager({contextid}: Props) {
     const applyPayload = (data: SourceManagementResponse) => {
         logDebugInfo([
             ...data.items.modules,
-            ...data.items.globaldocuments,
-            ...data.items.coursedocuments,
+            ...data.items.globalDocuments,
+            ...data.items.courseDocuments,
         ].map(row => row.indexState));
         setPayload(data);
     };
@@ -264,17 +264,17 @@ export default function SourceManager({contextid}: Props) {
                 return current;
             }
 
-            const merge = <T extends {indexState: IndexState}>(row: T, sourceid: number): T => {
-                const state = byid.get(sourceid);
+            const merge = <T extends {indexState: IndexState}>(row: T, sourceId: number): T => {
+                const state = byid.get(sourceId);
                 return state ? {...row, indexState: state} : row;
             };
 
             return {
                 ...current,
                 items: {
-                    modules: current.items.modules.map(row => merge(row, row.sourceid)),
-                    globaldocuments: current.items.globaldocuments.map(row => merge(row, row.id)),
-                    coursedocuments: current.items.coursedocuments.map(row => merge(row, row.id)),
+                    modules: current.items.modules.map(row => merge(row, row.sourceId)),
+                    globalDocuments: current.items.globalDocuments.map(row => merge(row, row.id)),
+                    courseDocuments: current.items.courseDocuments.map(row => merge(row, row.id)),
                 },
             };
         });
@@ -309,11 +309,11 @@ export default function SourceManager({contextid}: Props) {
     };
 
     /** Start or stop indexing; the response is the new index state of that source. */
-    const handleAllowIndexToggle = async (sourceid: number, allowIndex: boolean) => {
+    const handleAllowIndexToggle = async (sourceId: number, allowIndex: boolean) => {
         setSaving(true);
         setError(null);
         try {
-            applyIndexStates([await apiRequest<IndexState>('PUT', `sources/${sourceid}/index-state`, {allowIndex})]);
+            applyIndexStates([await apiRequest<IndexState>('PUT', `sources/${sourceId}/index-state`, {allowIndex})]);
         } catch (error_) {
             setError(`Der Indizierungsstatus konnte nicht geändert werden: ${getErrorMessage(error_)}`);
         } finally {
@@ -466,7 +466,7 @@ export default function SourceManager({contextid}: Props) {
                                             type='checkbox'
                                             role='switch'
                                             checked={row.enabled}
-                                            disabled={saving || !row.canedit}
+                                            disabled={saving || !row.canEdit}
                                             onChange={() => {
                                                 void performWrite(
                                                     'PATCH',
@@ -487,7 +487,7 @@ export default function SourceManager({contextid}: Props) {
                                                 type='checkbox'
                                                 role='switch'
                                                 checked={row.indexState.allowIndex}
-                                                disabled={saving || !row.canedit || isActive(row.indexState)}
+                                                disabled={saving || !row.canEdit || isActive(row.indexState)}
                                                 onChange={() => {
                                                     void handleAllowIndexToggle(row.id, !row.indexState.allowIndex);
                                                 }}
@@ -499,7 +499,7 @@ export default function SourceManager({contextid}: Props) {
                                 <td>{row.enabled && (
                                     <IndexStatusCell
                                         state={row.indexState}
-                                        disabled={saving || !row.canedit}
+                                        disabled={saving || !row.canEdit}
                                         onIndexCurrentModel={() => {
                                             void handleAllowIndexToggle(row.id, true);
                                         }}
@@ -507,7 +507,7 @@ export default function SourceManager({contextid}: Props) {
                                 )}</td>
                                 <td>{row.enabled && formatTimestamp(row.indexState.lastIndexedAt)}</td>
                                 <td>
-                                    {row.canedit && (
+                                    {row.canEdit && (
                                         <div className='d-flex gap-1'>
                                             <button
                                                 type='button'
@@ -567,13 +567,13 @@ export default function SourceManager({contextid}: Props) {
                     </thead>
                     <tbody>
                         {payload.items.modules.map(row => (
-                            <tr key={row.cmid}>
+                            <tr key={row.cmId}>
                                 <td>{row.name}</td>
-                                <td>{row.moddisplayname === '' ? row.modname : row.moddisplayname}</td>
+                                <td>{row.modDisplayName === '' ? row.modName : row.modDisplayName}</td>
                                 <td>
                                     <div className='form-check form-switch m-0'>
                                         <input
-                                            id={`module-enabled-${row.cmid}`}
+                                            id={`module-enabled-${row.cmId}`}
                                             className='form-check-input'
                                             type='checkbox'
                                             role='switch'
@@ -582,7 +582,7 @@ export default function SourceManager({contextid}: Props) {
                                             onChange={() => {
                                                 void performWrite(
                                                     'PATCH',
-                                                    `contexts/${contextid}/module-sources/${row.cmid}`,
+                                                    `contexts/${contextid}/module-sources/${row.cmId}`,
                                                     {enabled: !row.enabled},
                                                 );
                                             }}
@@ -594,14 +594,14 @@ export default function SourceManager({contextid}: Props) {
                                     {row.enabled && (
                                         <div className='form-check form-switch m-0'>
                                             <input
-                                                id={`module-index-${row.cmid}`}
+                                                id={`module-index-${row.cmId}`}
                                                 className='form-check-input'
                                                 type='checkbox'
                                                 role='switch'
                                                 checked={row.indexState.allowIndex}
                                                 disabled={saving || isActive(row.indexState)}
                                                 onChange={() => {
-                                                    void handleAllowIndexToggle(row.sourceid, !row.indexState.allowIndex);
+                                                    void handleAllowIndexToggle(row.sourceId, !row.indexState.allowIndex);
                                                 }}
                                                 aria-label={`Aktivität ${row.name} in Vektorstore indizieren`}
                                             />
@@ -613,7 +613,7 @@ export default function SourceManager({contextid}: Props) {
                                         state={row.indexState}
                                         disabled={saving}
                                         onIndexCurrentModel={() => {
-                                            void handleAllowIndexToggle(row.sourceid, true);
+                                            void handleAllowIndexToggle(row.sourceId, true);
                                         }}
                                     />
                                 )}</td>
@@ -655,7 +655,7 @@ export default function SourceManager({contextid}: Props) {
                                     </button>
                                 </div>
                                 <div className='modal-body'>
-                                    {payload.canmanagesystemsources && (
+                                    {payload.canManageGlobalSources && (
                                         <div className='form-group'>
                                             <label htmlFor='source-create-scope'>Quelle anlegen in</label>
                                             <select

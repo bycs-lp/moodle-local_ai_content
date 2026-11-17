@@ -16,7 +16,6 @@
 
 namespace local_ai_content\local;
 
-use local_ai_content\source;
 use local_ai_content\task\check_source_changes_adhoc;
 
 /**

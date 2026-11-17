@@ -17,7 +17,6 @@
 namespace local_ai_content\local;
 
 use local_ai_content\cm_content_extractor;
-use local_ai_content\source;
 
 /**
  * Reads the indexable content of a source as chunks and the hash of its current content.

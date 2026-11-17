@@ -17,7 +17,7 @@
 namespace local_ai_content\local;
 
 /**
- * Store of the source selections of contexts (table local_ai_content_ctx_sources).
+ * Store of the source selections of contexts (table local_ai_content_selection).
  *
  * Represents the n:m relation between Moodle contexts and the sources that are activated for RAG retrieval in
  * that context. Obtain it via dependency injection.
@@ -27,7 +27,7 @@ namespace local_ai_content\local;
  * @author     Philipp Memmel
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class context_source_store {
+class source_selection_store {
     /** @var int Number of selection rows deleted with one statement. */
     private const DELETE_CHUNK_SIZE = 500;
 
@@ -66,7 +66,7 @@ class context_source_store {
             return [];
         }
         [$insql, $inparams] = $DB->get_in_or_equal($contextids, SQL_PARAMS_NAMED);
-        $records = $DB->get_records_select('local_ai_content_ctx_sources', 'contextid ' . $insql, $inparams, '',
+        $records = $DB->get_records_select('local_ai_content_selection', 'contextid ' . $insql, $inparams, '',
             'DISTINCT sourceid');
         return array_values(array_map(static fn($record): int => (int) $record->sourceid, $records));
     }
@@ -90,9 +90,9 @@ class context_source_store {
         $now = $this->clock->time();
 
         $transaction = $DB->start_delegated_transaction();
-        $DB->delete_records('local_ai_content_ctx_sources', ['contextid' => $contextid]);
+        $DB->delete_records('local_ai_content_selection', ['contextid' => $contextid]);
         foreach ($sourceids as $sourceid) {
-            $DB->insert_record('local_ai_content_ctx_sources', (object) [
+            $DB->insert_record('local_ai_content_selection', (object) [
                 'contextid' => $contextid,
                 'sourceid' => $sourceid,
                 'usermodified' => (int) $USER->id,
@@ -114,23 +114,23 @@ class context_source_store {
     public function delete_for_deleted_contexts(): int {
         global $DB;
 
-        $sql = 'SELECT cs.id
-                  FROM {local_ai_content_ctx_sources} cs
-                 WHERE NOT EXISTS (SELECT 1 FROM {context} ctx WHERE ctx.id = cs.contextid)';
+        $sql = 'SELECT sel.id
+                  FROM {local_ai_content_selection} sel
+                 WHERE NOT EXISTS (SELECT 1 FROM {context} ctx WHERE ctx.id = sel.contextid)';
         $deleted = 0;
         $ids = [];
         $records = $DB->get_recordset_sql($sql);
         foreach ($records as $record) {
             $ids[] = $record->id;
             if (count($ids) === self::DELETE_CHUNK_SIZE) {
-                $DB->delete_records_list('local_ai_content_ctx_sources', 'id', $ids);
+                $DB->delete_records_list('local_ai_content_selection', 'id', $ids);
                 $deleted += count($ids);
                 $ids = [];
             }
         }
         $records->close();
         if (!empty($ids)) {
-            $DB->delete_records_list('local_ai_content_ctx_sources', 'id', $ids);
+            $DB->delete_records_list('local_ai_content_selection', 'id', $ids);
             $deleted += count($ids);
         }
 

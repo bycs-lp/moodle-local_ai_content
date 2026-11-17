@@ -16,7 +16,6 @@
 
 namespace local_ai_content\local;
 
-use local_ai_content\source;
 use local_ai_content\task\check_source_changes_adhoc;
 use local_ai_content\task\delete_vectors_adhoc;
 use local_ai_content\task\index_source_adhoc;
@@ -438,7 +437,7 @@ class index_service {
             }
         }
         $sourcesubselect = "sourceid IN (SELECT id FROM {local_ai_content_sources} WHERE {$select})";
-        $DB->delete_records_select('local_ai_content_ctx_sources', $sourcesubselect, $params);
+        $DB->delete_records_select('local_ai_content_selection', $sourcesubselect, $params);
         $DB->delete_records_select('local_ai_content_index', $sourcesubselect, $params);
         $DB->delete_records_select('local_ai_content_sources', $select, $params);
         $transaction->allow_commit();

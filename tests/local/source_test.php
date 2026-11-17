@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace local_ai_content;
+namespace local_ai_content\local;
 
 /**
  * Tests for source model persistence.
@@ -24,7 +24,7 @@ namespace local_ai_content;
  * @copyright  2026 ISB Bayern
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-#[\PHPUnit\Framework\Attributes\CoversClass(\local_ai_content\source::class)]
+#[\PHPUnit\Framework\Attributes\CoversClass(source::class)]
 final class source_test extends \advanced_testcase {
     /**
      * Ensure the fields of external sources are persisted.

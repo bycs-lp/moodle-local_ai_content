@@ -16,7 +16,7 @@
 
 namespace local_ai_content\task;
 
-use local_ai_content\local\context_source_store;
+use local_ai_content\local\source_selection_store;
 
 /**
  * Scheduled task removing the source selections of deleted contexts.
@@ -26,15 +26,15 @@ use local_ai_content\local\context_source_store;
  * @author     Philipp Memmel
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class cleanup_context_sources extends \core\task\scheduled_task {
+class cleanup_source_selections extends \core\task\scheduled_task {
     #[\Override]
     public function get_name(): string {
-        return get_string('task_cleanupcontextsources', 'local_ai_content');
+        return get_string('task_cleanupsourceselections', 'local_ai_content');
     }
 
     #[\Override]
     public function execute(): void {
-        $deleted = \core\di::get(context_source_store::class)->delete_for_deleted_contexts();
+        $deleted = \core\di::get(source_selection_store::class)->delete_for_deleted_contexts();
         mtrace("Deleted {$deleted} source selections of deleted contexts.");
     }
 }

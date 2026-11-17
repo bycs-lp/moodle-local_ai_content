@@ -113,7 +113,7 @@ final class cleanup_cache_test extends \advanced_testcase {
             $contenthashes[$name] = reset($files)->get_contenthash();
             $generator->create_source([
                 'contextid' => \context_course::instance($course->id)->id,
-                'sourcetype' => \local_ai_content\source::TYPE_MODULE,
+                'sourcetype' => \local_ai_content\local\source::TYPE_MODULE,
                 'cmid' => $resource->cmid,
                 'allowindex' => $allowindex,
             ]);

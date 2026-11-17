@@ -41,7 +41,7 @@ import {getString} from '@moodle/lms/core/stringUtils';
 type ImportableCourse = {
     id: number;
     name: string;
-    shortname: string;
+    shortName: string;
 };
 
 type ImportableCoursesResponse = {
@@ -94,7 +94,7 @@ type Props = {
  * @returns Origin/type label.
  */
 function getSourceMeta(source: SourceOption): string {
-    return source.sourcetype;
+    return source.sourceType;
 }
 
 /**

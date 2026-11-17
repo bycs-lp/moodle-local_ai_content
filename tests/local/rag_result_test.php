@@ -14,10 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace local_ai_content;
-
-use local_ai_content\local\rag_result;
-use local_ai_content\local\rag_source;
+namespace local_ai_content\local;
 
 /**
  * Tests for rag_result DTO.
@@ -28,8 +25,8 @@ use local_ai_content\local\rag_source;
  * @author     Philipp Memmel
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-#[\PHPUnit\Framework\Attributes\CoversClass(\local_ai_content\local\rag_result::class)]
-#[\PHPUnit\Framework\Attributes\CoversClass(\local_ai_content\local\rag_source::class)]
+#[\PHPUnit\Framework\Attributes\CoversClass(rag_result::class)]
+#[\PHPUnit\Framework\Attributes\CoversClass(source_reference::class)]
 final class rag_result_test extends \advanced_testcase {
     /**
      * Ensure rag_result exports retrieved text and references in API-safe form.
@@ -38,8 +35,8 @@ final class rag_result_test extends \advanced_testcase {
         $this->resetAfterTest();
 
         $result = new rag_result('Chunk A\n\n---\n\nChunk B', [
-            new rag_source(123, 'Resource 1', 'https://example.org/r1', 'p. 2'),
-            new rag_source(456, 'Resource 2', '', ''),
+            new source_reference(123, 'Resource 1', 'https://example.org/r1', 'p. 2'),
+            new source_reference(456, 'Resource 2', '', ''),
         ]);
 
         $array = $result->to_array();

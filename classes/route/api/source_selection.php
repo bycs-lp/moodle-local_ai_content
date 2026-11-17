@@ -24,7 +24,7 @@ use core\router\schema\objects\scalar_type;
 use core\router\schema\response\payload_response;
 use core\router\schema\response\content\payload_response_type;
 use local_ai_content\local\access_guard;
-use local_ai_content\local\source_selection_utils;
+use local_ai_content\local\source_selection_service;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -45,11 +45,11 @@ class source_selection {
     /**
      * Constructor.
      *
-     * @param source_selection_utils $sourceselectionutils Service providing the source selection logic.
+     * @param source_selection_service $selectionservice Service providing the source selection logic.
      * @param access_guard $accessguard Enforces the access rules for the current user.
      */
     public function __construct(
-        private readonly source_selection_utils $sourceselectionutils,
+        private readonly source_selection_service $selectionservice,
         private readonly access_guard $accessguard,
     ) {
     }
@@ -89,15 +89,12 @@ class source_selection {
         $context = \context_helper::instance_by_id($contextId);
         $this->accessguard->require_use_access($context);
 
-        $groupedsources = $this->sourceselectionutils->get_grouped_sources_for_context($contextId);
-        $selectedsourceids = $this->sourceselectionutils->get_selected_sourceids($contextId);
+        $groupedsources = $this->selectionservice->get_grouped_sources_for_context($contextId);
+        $selectedsourceids = $this->selectionservice->get_selected_sourceids($contextId);
 
         return new payload_response(
             payload: [
-                'items' => [[
-                    'globalDocuments' => $groupedsources['globaldocuments'],
-                    'courseActivities' => $groupedsources['courseactivities'],
-                    'externalSources' => $groupedsources['externalsources'],
+                'items' => [$groupedsources + [
                     'selectedSourceIds' => $selectedsourceids,
                     'canSelect' => has_capability('local/ai_content:selectsources', $context),
                 ]],
@@ -148,7 +145,7 @@ class source_selection {
         $this->accessguard->require_use_access($context);
         $this->accessguard->require_capability('local/ai_content:selectsources', $context);
 
-        $courses = $this->sourceselectionutils->get_importable_courses_for_context($contextId);
+        $courses = $this->selectionservice->get_importable_courses_for_context($contextId);
 
         return new payload_response(
             payload: [
@@ -212,14 +209,11 @@ class source_selection {
         // The router has already validated the required query parameter.
         $sourcecourseid = (int)$request->getQueryParams()['sourceCourseId'];
 
-        $sources = $this->sourceselectionutils->get_importable_sources_for_course($contextId, $sourcecourseid);
+        $sources = $this->selectionservice->get_importable_sources_for_course($contextId, $sourcecourseid);
 
         return new payload_response(
             payload: [
-                'items' => [[
-                    'courseActivities' => $sources['courseactivities'],
-                    'courseDocuments' => $sources['coursedocuments'],
-                ]],
+                'items' => [$sources],
                 'pagination' => [
                     'page' => 1,
                     'pageSize' => 1,
@@ -277,7 +271,7 @@ class source_selection {
         $body = (array)$request->getParsedBody();
         $selectedsourceids = clean_param((string)($body['selectedSourceIds'] ?? ''), PARAM_SEQUENCE);
 
-        $selectedsourceids = $this->sourceselectionutils->save_selected_sourceids($contextId, $selectedsourceids);
+        $selectedsourceids = $this->selectionservice->save_selected_sourceids($contextId, $selectedsourceids);
 
         return new payload_response(
             payload: [

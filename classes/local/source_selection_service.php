@@ -16,8 +16,6 @@
 
 namespace local_ai_content\local;
 
-use local_ai_content\source;
-
 /**
  * Service for context-specific source selection.
  *
@@ -27,20 +25,20 @@ use local_ai_content\source;
  * @copyright  2026 ISB Bayern
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class source_selection_utils {
+class source_selection_service {
     /**
      * Constructor.
      *
      * @param embedding_model_resolver $modelresolver Resolver of the embedding model of the current user.
-     * @param context_source_store $contextsourcestore Store of the source selections of contexts.
+     * @param source_selection_store $selectionstore Store of the source selections of contexts.
      * @param source_access $sourceaccess Checks whether a user may retrieve from a source.
      * @param access_guard $accessguard Enforces the access rules for the current user.
      */
     public function __construct(
         /** @var embedding_model_resolver Resolver of the embedding model of the current user. */
         private readonly embedding_model_resolver $modelresolver,
-        /** @var context_source_store Store of the source selections of contexts. */
-        private readonly context_source_store $contextsourcestore,
+        /** @var source_selection_store Store of the source selections of contexts. */
+        private readonly source_selection_store $selectionstore,
         /** @var source_access Checks whether a user may retrieve from a source. */
         private readonly source_access $sourceaccess,
         /** @var access_guard Enforces the access rules for the current user. */
@@ -60,9 +58,10 @@ class source_selection_utils {
      *
      * Each entry in the returned array contains:
      *  - id         (int)     the local_ai_content_sources record ID
-     *  - cmid       (?int)    the course module ID for module sources, null otherwise
+     *  - cmId       (?int)    the course module ID for module sources, null otherwise
      *  - name       (string)  the source display name
-     *  - sourcetype (string)  one of source::TYPE_*
+     *  - sourceType (string)  one of source::TYPE_*
+     *  - origin     (string)  the name of the course or system the source belongs to
      *  - outdated   (bool)    whether the index for the embedding model of the current user is outdated
      *
      * @param int $contextid Any Moodle context ID.
@@ -71,20 +70,22 @@ class source_selection_utils {
     public function get_available_sources_for_context(int $contextid): array {
         $groups = $this->get_grouped_sources_for_context($contextid);
         return array_values(array_merge(
-            $groups['globaldocuments'],
-            $groups['courseactivities'],
-            $groups['externalsources'],
+            $groups['globalDocuments'],
+            $groups['courseActivities'],
+            $groups['externalSources'],
         ));
     }
 
     /**
      * Return grouped selectable sources for the source-selection UI.
      *
+     * The entries have the format described in {@see get_available_sources_for_context()}.
+     *
      * @param int $contextid Any Moodle context ID.
      * @return array{
-     *   globaldocuments: array,
-     *   courseactivities: array,
-     *   externalsources: array
+     *   globalDocuments: array,
+     *   courseActivities: array,
+     *   externalSources: array
      * }
      */
     public function get_grouped_sources_for_context(int $contextid): array {
@@ -97,21 +98,21 @@ class source_selection_utils {
 
         if ($coursecontext === false) {
             return $this->add_outdated_flags([
-                'globaldocuments' => $globaldocuments,
-                'courseactivities' => [],
-                'externalsources' => [],
+                'globalDocuments' => $globaldocuments,
+                'courseActivities' => [],
+                'externalSources' => [],
             ]);
         }
 
         $courseactivities = $this->get_course_activity_sources($coursecontext, $userid);
 
-        $selectedsourceids = $this->contextsourcestore->get_sourceids_for_context($contextid);
+        $selectedsourceids = $this->selectionstore->get_sourceids_for_context($contextid);
         $externalsources = $this->get_selected_external_sources($selectedsourceids, $coursecontext, $globaldocuments, $courseactivities, $userid);
 
         return $this->add_outdated_flags([
-            'globaldocuments' => $globaldocuments,
-            'courseactivities' => $courseactivities,
-            'externalsources' => $externalsources,
+            'globalDocuments' => $globaldocuments,
+            'courseActivities' => $courseactivities,
+            'externalSources' => $externalsources,
         ]);
     }
 
@@ -119,7 +120,7 @@ class source_selection_utils {
      * Return courses from which a user can add external sources.
      *
      * @param int $contextid Any Moodle context ID.
-     * @return array<int, array{id:int,name:string,shortname:string}>
+     * @return array<int, array{id:int,name:string,shortName:string}>
      */
     public function get_importable_courses_for_context(int $contextid): array {
         global $DB;
@@ -146,7 +147,7 @@ class source_selection_utils {
             $courses[] = [
                 'id' => (int)$record->id,
                 'name' => format_string($record->fullname, true, ['context' => $sourcecoursecontext]),
-                'shortname' => (string)$record->shortname,
+                'shortName' => (string)$record->shortname,
             ];
         }
 
@@ -158,7 +159,7 @@ class source_selection_utils {
      *
      * @param int $contextid Any Moodle context ID.
      * @param int $sourcecourseid Course ID to load source options from.
-     * @return array{courseactivities: array, coursedocuments: array}
+     * @return array{courseActivities: array, courseDocuments: array}
      */
     public function get_importable_sources_for_course(int $contextid, int $sourcecourseid): array {
         global $USER;
@@ -167,8 +168,8 @@ class source_selection_utils {
         $targetcoursecontext = $context->get_course_context(false);
         if ($targetcoursecontext === false || $sourcecourseid <= 0 || $sourcecourseid === (int)$targetcoursecontext->instanceid) {
             return [
-                'courseactivities' => [],
-                'coursedocuments' => [],
+                'courseActivities' => [],
+                'courseDocuments' => [],
             ];
         }
 
@@ -198,9 +199,9 @@ class source_selection_utils {
                 }
                 $courseactivities[] = [
                     'id' => (int)$modulesource->get_id(),
-                    'cmid' => (int)$cm->id,
+                    'cmId' => (int)$cm->id,
                     'name' => format_string($cm->name, true, ['context' => $cm->context]),
-                    'sourcetype' => $modulesource->get_sourcetype(),
+                    'sourceType' => $modulesource->get_sourcetype(),
                     'origin' => format_string($modinfo->get_course()->fullname, true, ['context' => $sourcecoursecontext]),
                 ];
             }
@@ -217,9 +218,9 @@ class source_selection_utils {
             }
             $coursedocuments[] = [
                 'id' => (int)$documentsource->get_id(),
-                'cmid' => $documentsource->get_cmid(),
+                'cmId' => $documentsource->get_cmid(),
                 'name' => (string)$documentsource->get_name(),
-                'sourcetype' => (string)$documentsource->get_sourcetype(),
+                'sourceType' => (string)$documentsource->get_sourcetype(),
                 'origin' => format_string($modinfo->get_course()->fullname, true, ['context' => $sourcecoursecontext]),
             ];
         }
@@ -228,8 +229,8 @@ class source_selection_utils {
         usort($coursedocuments, static fn(array $a, array $b): int => strcmp((string)$a['name'], (string)$b['name']));
 
         return $this->add_outdated_flags([
-            'courseactivities' => $courseactivities,
-            'coursedocuments' => $coursedocuments,
+            'courseActivities' => $courseactivities,
+            'courseDocuments' => $coursedocuments,
         ]);
     }
 
@@ -282,9 +283,9 @@ class source_selection_utils {
             }
             $result[] = [
                 'id' => (int)$pathsource->get_id(),
-                'cmid' => $pathsource->get_cmid(),
+                'cmId' => $pathsource->get_cmid(),
                 'name' => (string)$pathsource->get_name(),
-                'sourcetype' => (string)$pathsource->get_sourcetype(),
+                'sourceType' => (string)$pathsource->get_sourcetype(),
                 'origin' => get_string('coresystem'),
             ];
         }
@@ -326,9 +327,9 @@ class source_selection_utils {
             }
             $result[] = [
                 'id' => (int)$modulesource->get_id(),
-                'cmid' => (int)$cm->id,
+                'cmId' => (int)$cm->id,
                 'name' => format_string($cm->name, true, ['context' => $cm->context]),
-                'sourcetype' => (string)$modulesource->get_sourcetype(),
+                'sourceType' => (string)$modulesource->get_sourcetype(),
                 'origin' => format_string($course->fullname, true, ['context' => $coursecontext]),
             ];
         }
@@ -377,9 +378,9 @@ class source_selection_utils {
             }
             $externalsources[] = [
                 'id' => $sourceid,
-                'cmid' => $selectedsource->get_cmid(),
+                'cmId' => $selectedsource->get_cmid(),
                 'name' => (string)$selectedsource->get_name(),
-                'sourcetype' => (string)$selectedsource->get_sourcetype(),
+                'sourceType' => (string)$selectedsource->get_sourcetype(),
                 'origin' => $this->resolve_source_origin_label($selectedsource),
             ];
         }
@@ -491,7 +492,7 @@ class source_selection_utils {
      * @return string The stored comma-separated IDs, empty if nothing is saved.
      */
     public function get_selected_sourceids(int $contextid): string {
-        return implode(',', $this->contextsourcestore->get_sourceids_for_context($contextid));
+        return implode(',', $this->selectionstore->get_sourceids_for_context($contextid));
     }
 
     /**
@@ -517,7 +518,7 @@ class source_selection_utils {
         }
         sort($validids);
 
-        $this->contextsourcestore->set_sourceids_for_context($contextid, $validids);
+        $this->selectionstore->set_sourceids_for_context($contextid, $validids);
         return implode(',', $validids);
     }
 }

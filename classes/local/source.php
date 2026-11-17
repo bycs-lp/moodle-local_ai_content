@@ -14,9 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace local_ai_content;
-
-use local_ai_content\local\source_citation;
+namespace local_ai_content\local;
 
 /**
  * Wrapper class for local_ai_content_sources records.
