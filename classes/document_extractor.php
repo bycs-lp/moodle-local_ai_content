@@ -71,6 +71,20 @@ class document_extractor {
     private array $logmessages = [];
 
     /**
+     * Constructor.
+     *
+     * @param ai_backend $backend The configured AI backend for the ITT requests.
+     * @param \core\clock $clock Clock for the cache timestamps.
+     */
+    public function __construct(
+        /** @var ai_backend The configured AI backend for the ITT requests. */
+        private readonly ai_backend $backend,
+        /** @var \core\clock Clock for the cache timestamps. */
+        private readonly \core\clock $clock,
+    ) {
+    }
+
+    /**
      * Check whether the current user can test text extraction.
      *
      * @param \context $context The context to check the capability in.
@@ -313,12 +327,12 @@ class document_extractor {
 
 
     /**
-     * Get the configured AI backend instance via DI.
+     * Get the configured AI backend.
      *
      * @return ai_backend The active AI backend.
      */
     private function get_backend(): ai_backend {
-        return \core\di::get(ai_backend::class);
+        return $this->backend;
     }
 
     /**
@@ -648,8 +662,7 @@ class document_extractor {
         }
 
         // Update last accessed time and hit counter.
-        $clock = \core\di::get(\core\clock::class);
-        $record->timelastaccessed = $clock->now()->getTimestamp();
+        $record->timelastaccessed = $this->clock->now()->getTimestamp();
         $record->cachehit++;
         $DB->update_record('local_ai_content_cache', $record);
 
@@ -669,8 +682,7 @@ class document_extractor {
             return;
         }
 
-        $clock = \core\di::get(\core\clock::class);
-        $now = $clock->now()->getTimestamp();
+        $now = $this->clock->now()->getTimestamp();
 
         $existing = $DB->get_record('local_ai_content_cache', ['contenthash' => $contenthash]);
         if ($existing) {

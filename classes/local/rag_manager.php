@@ -91,12 +91,14 @@ EOF;
      * @param embedding_model_resolver $modelresolver Resolver of the embedding model of the current user.
      * @param context_source_store $contextsourcestore Store of the source selections of contexts.
      * @param source_access $sourceaccess Checks whether a user may retrieve from a source.
+     * @param vecstore_factory $vecstorefactory Factory of the vector store drivers.
      */
     public function __construct(
         private readonly source_selection_utils $sourceselectionutils,
         private readonly embedding_model_resolver $modelresolver,
         private readonly context_source_store $contextsourcestore,
         private readonly source_access $sourceaccess,
+        private readonly vecstore_factory $vecstorefactory,
     ) {
     }
 
@@ -512,7 +514,7 @@ EOF;
         if ($vecstoreid === 0) {
             return null;
         }
-        return \core\di::get(vecstore_factory::class)->get_vecstore_by_id($vecstoreid);
+        return $this->vecstorefactory->get_vecstore_by_id($vecstoreid);
     }
 
     /**

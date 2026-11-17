@@ -187,9 +187,10 @@ final class index_service_test extends \advanced_testcase {
         $this->mock_current_model('model-a');
         $this->assertFalse(\core\di::get(index_service::class)->get_state($source)->to_array()['canIndexCurrentModel']);
 
-        // The container caches the service, so a fresh one is needed to pick up the other model.
+        // The container caches the service, so a new container is needed to pick up the other model.
+        \core\di::reset_container();
         $this->mock_current_model('model-b');
-        $state = \core\di::get_container()->make(index_service::class)->get_state($source)->to_array();
+        $state = \core\di::get(index_service::class)->get_state($source)->to_array();
         $this->assertTrue($state['canIndexCurrentModel']);
         $this->assertSame('model-b', $state['currentModel']);
         $this->assertSame('model-a', $state['models'][0]['model']);

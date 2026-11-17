@@ -44,7 +44,8 @@ final class document_extractor_test extends \advanced_testcase {
      * @return document_extractor
      */
     private function get_extractor(): document_extractor {
-        $extractor = new document_extractor();
+        // The container caches the extractor, so the mocks have to be injected before the first call.
+        $extractor = \core\di::get(document_extractor::class);
         $extractor->set_log_outputmode(document_extractor::LOG_OUTPUT_NONE);
         return $extractor;
     }
@@ -412,16 +413,17 @@ final class document_extractor_test extends \advanced_testcase {
         $this->mock_ai_backend('Some text');
         $file = $this->create_test_file('img.png', 'fake png', 'image/png');
         $contextid = \context_system::instance()->id;
+        $clock = $this->mock_clock_with_frozen();
         $extractor = $this->get_extractor();
 
         $extractor->extract_text_from_file($file, $contextid, 2);
         $rec1 = $DB->get_record('local_ai_content_cache', ['contenthash' => $file->get_contenthash()]);
 
-        $this->mock_clock_with_frozen(\core\di::get(\core\clock::class)->now()->getTimestamp() + 60);
+        $clock->bump(60);
         $extractor->extract_text_from_file($file, $contextid, 2);
         $rec2 = $DB->get_record('local_ai_content_cache', ['contenthash' => $file->get_contenthash()]);
 
-        $this->assertGreaterThanOrEqual((int) $rec1->timelastaccessed, (int) $rec2->timelastaccessed);
+        $this->assertSame((int) $rec1->timelastaccessed + 60, (int) $rec2->timelastaccessed);
     }
 
     /**

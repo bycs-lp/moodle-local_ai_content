@@ -143,14 +143,17 @@ management shows a summarized status (failed > running > queued > indexed) plus 
 ### 3.2 Classes
 | Area | Classes |
 |---|---|
-| Records | `source` (record wrapper), `context_source` (selection per context), `local\source_citation` |
+| Records | `source` (record wrapper), `local\context_source_store` (selection per context), `local\source_citation` |
 | Indexing | `local\index_service` (start/stop/allowindex/release/delete), `task\index_source_adhoc`, `task\delete_vectors_adhoc`, `local\indexer_manager` (chunk, embed, store), `local\index_state` (status DTO for the frontend) |
 | Extraction | `cm_content_extractor` + `contentextractor\cm_content_{page,label,book,lesson,resource,folder}`, `document_extractor` (files → text via ITT backend `local\backend\*`, cached) |
 | Retrieval | `local\rag_manager`, `local\source_access`, `local\rag_result`, `local\rag_source` |
-| Selection/management | `local\source_selection_utils`, `local\source_management_access` |
+| Selection/management | `local\source_selection_utils`, `local\source_management_service` (module/document sources of a course) |
+| Access | `local\access_guard` (enforces capabilities for the current user, HTTP 403), `local\source_access` (may a user retrieve from a source) |
 | Hooks | `local\hook_callbacks` (DI, `vecstore_usage`, `before_vecstore_instance_deleted`, `additional_prompt_context`, `before_course_deleted`) |
 | Events | `local\observer` (`course_module_deleted`, content change events of the extractors) |
-| REST | `route\api\sourcemanagement`, `route\api\source_index`, `route\api\source_selection` |
+| REST | `route\api\sourcemanagement`, `route\api\source_index`, `route\api\source_selection` (thin: access check, request parsing, response; logic in the services) |
+
+All services are obtained via DI with constructor injection, no static utilities. Only the record wrappers (`source`, `local\model_index`) have static loaders.
 | Frontend | `js/esm/src/source_manager.tsx` (management page), `js/esm/src/source_selector.tsx` + `source_selector/data_manager.ts` + `source_selection_modal_manager.ts` (selection), `amd/src/source_selector.js` (AMD shim for block_ai_chat) |
 
 ### 3.3 Indexing
@@ -226,7 +229,7 @@ management shows a summarized status (failed > running > queued > indexed) plus 
 | `PUT contexts/{contextId}/source-selections` | Replace selection | additionally `selectsources` in the selection context |
 | `GET contexts/{contextId}/source-selections/importable-courses` and `/importable-sources?sourceCourseId=` | Sources from other courses | as PUT; source course: `usesource` + course access |
 
-Missing permissions are answered with HTTP 403 (`local\route_access` throws `core\exception\access_denied_exception`).
+Missing permissions are answered with HTTP 403 (`local\access_guard` throws `core\exception\access_denied_exception`).
 
 ### 3.6 Further integration
 - `lib.php`: link "Manage sources" in the course navigation (`manage_sources.php?courseid=`), cache cleanup on file deletion.

@@ -65,8 +65,7 @@ class index_source_adhoc extends \core\task\adhoc_task {
                     $index->get_embeddingmodel());
             }
 
-            $indexer = new indexer_manager($source->get_contextid(), new \local_ai_manager\manager('embedding'));
-            $indexer->index_single_source($source, $index);
+            \core\di::get(indexer_manager::class)->index_single_source($source, $index, new \local_ai_manager\manager('embedding'));
 
             $index->set_status(model_index::STATUS_INDEXED);
             $index->store();

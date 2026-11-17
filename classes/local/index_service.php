@@ -45,6 +45,8 @@ class index_service {
      * @param access_guard $accessguard Enforces the access rules for the current user.
      * @param embedding_model_resolver $modelresolver Resolver of the embedding model of the current user.
      * @param source_content_reader $contentreader Reader of the indexable content of sources.
+     * @param vecstore_factory $vecstorefactory Factory of the vector store drivers.
+     * @param \core\clock $clock Clock for the modification timestamps.
      */
     public function __construct(
         /** @var access_guard Enforces the access rules for the current user. */
@@ -53,6 +55,10 @@ class index_service {
         private readonly embedding_model_resolver $modelresolver,
         /** @var source_content_reader Reader of the indexable content of sources. */
         private readonly source_content_reader $contentreader,
+        /** @var vecstore_factory Factory of the vector store drivers. */
+        private readonly vecstore_factory $vecstorefactory,
+        /** @var \core\clock Clock for the modification timestamps. */
+        private readonly \core\clock $clock,
     ) {
     }
 
@@ -98,7 +104,7 @@ class index_service {
         }
 
         if (!$source->get_vecstoreid()) {
-            $source->set_vecstoreid(\core\di::get(vecstore_factory::class)->get_primary_instance()->get_id());
+            $source->set_vecstoreid($this->vecstorefactory->get_primary_instance()->get_id());
         }
 
         // The task must not see the index before it is bound to the task.
@@ -221,7 +227,7 @@ class index_service {
         }
 
         $contenthash = $this->contentreader->get_content_hash($source);
-        $now = \core\di::get(\core\clock::class)->time();
+        $now = $this->clock->time();
         foreach ($indexes as $index) {
             if ($index->get_contenthash() === $contenthash) {
                 continue;
@@ -324,9 +330,8 @@ class index_service {
         $select = 'vecstoreid = :vecstoreid AND sourcetype <> :external';
         $params = ['vecstoreid' => $vecstoreid, 'external' => source::TYPE_EXTERNAL];
 
-        $vecstorefactory = \core\di::get(vecstore_factory::class);
         if ($deletevectors) {
-            $vecstore = $vecstorefactory->get_vecstore_by_id($vecstoreid);
+            $vecstore = $this->vecstorefactory->get_vecstore_by_id($vecstoreid);
             $sourceids = [];
             $records = $DB->get_recordset_select('local_ai_content_sources', $select, $params, 'id', 'id');
             foreach ($records as $record) {
@@ -340,7 +345,7 @@ class index_service {
             $this->delete_from_vecstore($vecstore, $sourceids);
         }
 
-        $now = \core\di::get(\core\clock::class)->time();
+        $now = $this->clock->time();
         // Deleting the indexes makes queued indexing tasks no-ops.
         $DB->delete_records_select('local_ai_content_index',
             "sourceid IN (SELECT id FROM {local_ai_content_sources} WHERE {$select})", $params);
@@ -395,12 +400,11 @@ class index_service {
      * @param int[] $sourceids The source ids.
      */
     public function delete_vectors(int $vecstoreid, array $sourceids): void {
-        $vecstorefactory = \core\di::get(vecstore_factory::class);
         // The instance may have been deleted meanwhile, then there is no vector store left to delete from.
-        if (!$vecstorefactory->instance_exists($vecstoreid)) {
+        if (!$this->vecstorefactory->instance_exists($vecstoreid)) {
             return;
         }
-        $this->delete_from_vecstore($vecstorefactory->get_vecstore_by_id($vecstoreid), $sourceids);
+        $this->delete_from_vecstore($this->vecstorefactory->get_vecstore_by_id($vecstoreid), $sourceids);
     }
 
     /**
@@ -456,8 +460,7 @@ class index_service {
             return;
         }
 
-        $this->delete_from_vecstore(\core\di::get(vecstore_factory::class)->get_vecstore_by_id($vecstoreid), [$source->get_id()],
-            $model);
+        $this->delete_from_vecstore($this->vecstorefactory->get_vecstore_by_id($vecstoreid), [$source->get_id()], $model);
     }
 
     /**

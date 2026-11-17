@@ -17,7 +17,9 @@
 namespace local_ai_content\local;
 
 use local_ai_content\source;
+use local_ai_manager\local\vecstore_factory;
 use local_ai_manager\local\vector_record;
+use local_ai_manager\manager;
 
 /**
  * Manages the indexing of Moodle content into the vector store.
@@ -25,6 +27,8 @@ use local_ai_manager\local\vector_record;
  * Supports module sources (extracted via content extractors) and document sources (indexed directly from their
  * stored plain-text content). External sources are never indexed here: their vectors already live in a vector
  * store instance and are only referenced.
+ *
+ * Obtain it via dependency injection.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
@@ -34,44 +38,43 @@ class indexer_manager {
     /** @var int Smallest chunk length that may still be retried with a split. */
     protected const MIN_RETRYABLE_CHUNK_LENGTH = 200;
 
-    /** @var \context Context the indexing is triggered for. */
-    protected \context $context;
-
-    /** @var \local_ai_manager\manager AI manager instance for embedding requests. */
-    protected $ai_manager;
-
     /**
      * Constructor.
      *
-     * @param int $contextid Any Moodle context ID (system, category, course or module).
-     * @param \local_ai_manager\manager $ai_manager AI manager instance for embedding requests.
+     * @param source_content_reader $contentreader Reader of the indexable content of sources.
+     * @param vecstore_factory $vecstorefactory Factory of the vector store drivers.
+     * @param \core\clock $clock Clock for the indexing timestamp.
      */
-    public function __construct($contextid, $ai_manager) {
-        $this->context = \context::instance_by_id($contextid);
-        $this->ai_manager = $ai_manager;
+    public function __construct(
+        /** @var source_content_reader Reader of the indexable content of sources. */
+        private readonly source_content_reader $contentreader,
+        /** @var vecstore_factory Factory of the vector store drivers. */
+        private readonly vecstore_factory $vecstorefactory,
+        /** @var \core\clock Clock for the indexing timestamp. */
+        private readonly \core\clock $clock,
+    ) {
     }
 
     /**
      * Indexes one source with the embedding model of an index.
      *
-     * The embedding requests are made with the AI manager passed to the constructor, which has to use the embedding model
-     * of the index. Every case in which nothing could be indexed is an error, so a source is never reported as indexed
-     * without having vectors.
+     * The embedding requests are made with the given AI manager, which has to use the embedding model of the index. Every
+     * case in which nothing could be indexed is an error, so a source is never reported as indexed without having vectors.
      *
      * @param source $source The source to index.
      * @param model_index $index The index of the source for the embedding model, updated with the indexing metadata.
+     * @param manager $embeddingmanager AI manager of the embedding purpose for the embedding requests.
      * @throws \moodle_exception If the source cannot be indexed.
      */
-    public function index_single_source(source $source, model_index $index): void {
+    public function index_single_source(source $source, model_index $index, manager $embeddingmanager): void {
         if (!$source->get_allowindex()) {
             return;
         }
 
-        $reader = \core\di::get(source_content_reader::class);
         // Hashed before reading the content: if the content changes meanwhile, the stored hash is the older one and the
         // next change check marks the index outdated.
-        $contenthash = $reader->get_content_hash($source);
-        $this->index_source($source, $index, $reader->get_chunks($source), $contenthash);
+        $contenthash = $this->contentreader->get_content_hash($source);
+        $this->index_source($source, $index, $this->contentreader->get_chunks($source), $contenthash, $embeddingmanager);
     }
 
     /**
@@ -83,9 +86,16 @@ class indexer_manager {
      * @param model_index $index The index of the source for the embedding model.
      * @param string[] $chunks The content chunks to embed and store, as returned by {@see source_content_reader::get_chunks()}.
      * @param string $contenthash The hash of the content, as returned by {@see source_content_reader::get_content_hash()}.
+     * @param manager $embeddingmanager AI manager of the embedding purpose for the embedding requests.
      * @throws \moodle_exception If there is no content to index or an embedding request fails.
      */
-    protected function index_source(source $source, model_index $index, array $chunks, string $contenthash): void {
+    protected function index_source(
+        source $source,
+        model_index $index,
+        array $chunks,
+        string $contenthash,
+        manager $embeddingmanager,
+    ): void {
         if (empty($chunks)) {
             throw new \moodle_exception('indexingerror_nocontent', 'local_ai_content');
         }
@@ -108,7 +118,7 @@ class indexer_manager {
                 continue;
             }
 
-            $vectorrequest = $this->ai_manager->perform_request($chunk, 'local_ai_content', $this->context->id);
+            $vectorrequest = $embeddingmanager->perform_request($chunk, 'local_ai_content', $source->get_contextid());
             if ($vectorrequest->get_code() !== 200) {
                 if (self::should_retry_with_smaller_chunk($vectorrequest, $chunk)) {
                     [$leftchunk, $rightchunk] = self::split_chunk_in_half($chunk);
@@ -161,9 +171,8 @@ class indexer_manager {
 
         // Persist indexing metadata on the index record. The content hash is compared with the hash of the current content
         // of the source to detect changes.
-        $clock = \core\di::get(\core\clock::class);
         $index->set_contenthash($contenthash);
-        $index->set_lastindexed($clock->time());
+        $index->set_lastindexed($this->clock->time());
         $index->store();
     }
 
@@ -227,6 +236,6 @@ class indexer_manager {
             return null;
         }
         // A deleted vector store instance unbinds its sources beforehand, so a bound instance always exists.
-        return \core\di::get(\local_ai_manager\local\vecstore_factory::class)->get_vecstore_by_id($vecstoreid);
+        return $this->vecstorefactory->get_vecstore_by_id($vecstoreid);
     }
 }
