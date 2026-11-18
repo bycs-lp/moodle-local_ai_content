@@ -18,6 +18,7 @@ namespace local_ai_content\local;
 
 use local_ai_manager\base_vecstore;
 use local_ai_manager\hook\additional_prompt_context;
+use local_ai_manager\local\requestoptions\conversationcontext;
 use local_ai_manager\local\vecstore_factory;
 use local_ai_manager\local\vecstore_response;
 use local_ai_manager\local\vector_record;
@@ -26,7 +27,8 @@ use local_ai_manager\manager;
 /**
  * Manager encapsulating the retrieval augmented generation (RAG) retrieval logic.
  *
- * Given a user prompt, this class embeds the user prompt using the "embedding" purpose, performs a similarity search
+ * Given a user prompt, this class embeds the user prompt (in a conversation a search query built from the conversation, see
+ * {@see search_query_builder}) using the "embedding" purpose, performs a similarity search
  * against the relevant vector store(s) and assembles the matching content into a structured result object that is added as
  * context to the AI request (see {@see self::add_rag_context()}). The vector store returns the matches as
  * {@see vector_record} objects, whose document id is the source id.
@@ -69,9 +71,9 @@ class rag_manager {
      */
     private const RAG_PRE_PROMPT = <<<EOF
 The following excerpts were retrieved automatically from the sources selected by the user by a similarity search for the
-user's latest message. Each excerpt is enclosed in an <excerpt> tag which may name its source and its location inside the
-source. The excerpts are fragments of larger documents: they may start or end mid-sentence, may be incomplete, out of
-order, or partly irrelevant to the question.
+user's latest message in the context of the conversation. Each excerpt is enclosed in an <excerpt> tag which may name its
+source and its location inside the source. The excerpts are fragments of larger documents: they may start or end
+mid-sentence, may be incomplete, out of order, or partly irrelevant to the question.
 
 - Base your answer primarily on these excerpts. Combine information from several excerpts where they belong together and
   infer the surrounding context carefully, but do not invent facts that are not supported by them.
@@ -91,6 +93,7 @@ EOF;
      * @param source_selection_store $selectionstore Store of the source selections of contexts.
      * @param source_access $sourceaccess Checks whether a user may retrieve from a source.
      * @param vecstore_factory $vecstorefactory Factory of the vector store drivers.
+     * @param search_query_builder $searchquerybuilder Builder of the text embedded for the similarity search.
      */
     public function __construct(
         private readonly source_selection_service $selectionservice,
@@ -98,6 +101,7 @@ EOF;
         private readonly source_selection_store $selectionstore,
         private readonly source_access $sourceaccess,
         private readonly vecstore_factory $vecstorefactory,
+        private readonly search_query_builder $searchquerybuilder,
     ) {
     }
 
@@ -128,7 +132,9 @@ EOF;
             $hook->requestoptions->get_component(),
             $hook->requestoptions->get_context()->id,
             array_key_exists('minsimilarity', $options) ? (float) $options['minsimilarity'] : null,
-            array_key_exists('maxretrievedchars', $options) ? (int) $options['maxretrievedchars'] : null
+            array_key_exists('maxretrievedchars', $options) ? (int) $options['maxretrievedchars'] : null,
+            // Only purposes with a conversation (e.g. chat, agent) have this option.
+            $options[conversationcontext::OPTION_NAME] ?? []
         );
         $ragcontent = $ragresult->get_retrieved_text();
         if ($ragcontent !== '') {
@@ -143,7 +149,8 @@ EOF;
     /**
      * Retrieves the RAG content for a given user prompt.
      *
-     * Embeds the user prompt via the "embedding" purpose, performs vector searches restricted to the given source
+     * Embeds the search text built from the user prompt and the conversation (see {@see search_query_builder}) via the
+     * "embedding" purpose, performs vector searches restricted to the given source
      * IDs and assembles the matching chunks into a single string. Only source IDs stored as selection for the
      * context are used, and of those only selectable sources the user may access. Selected sources which are not indexed
      * with the embedding model of the user are reported as unavailable in the result.
@@ -156,6 +163,9 @@ EOF;
      * @param ?float $minsimilarity the minimum cosine similarity of a chunk to the prompt, null for the admin setting
      * @param ?int $maxchars the maximum number of characters of the included chunk texts, null for the admin setting. Only the
      *  retrieved chunk texts count, not the pre-prompt, the excerpt tags or the rest of the prompt.
+     * @param array $conversationcontext the conversation history of the request (format of the option
+     *  {@see conversationcontext::OPTION_NAME}), used to build the search text for follow-up messages, see
+     *  {@see search_query_builder}
      * @return rag_result the assembled RAG result
      * @throws \moodle_exception if the selected sources cannot be searched, for example because the embedding request or a
      *  vector store query failed
@@ -166,7 +176,8 @@ EOF;
         string $component,
         int $contextid,
         ?float $minsimilarity = null,
-        ?int $maxchars = null
+        ?int $maxchars = null,
+        array $conversationcontext = []
     ): rag_result {
         $minsimilarity ??= (float) get_config('local_ai_content', 'ragminsimilarity');
         $maxchars ??= (int) get_config('local_ai_content', 'ragmaxretrievedchars');
@@ -205,9 +216,11 @@ EOF;
             return new rag_result('', [], $unavailablesources);
         }
 
-        // Embed the user prompt using the embedding purpose.
+        // Embed the search text using the embedding purpose. It is only built now, so no search query is generated for
+        // requests without searchable sources.
+        $searchtext = $this->searchquerybuilder->build($userprompt, $conversationcontext, $component, $contextid);
         $embeddingmanager = new manager('embedding');
-        $response = $embeddingmanager->perform_request($userprompt, $component, $contextid);
+        $response = $embeddingmanager->perform_request($searchtext, $component, $contextid);
         if ($response->get_code() !== 200) {
             $errormessage = trim($response->get_errormessage());
             throw new \moodle_exception(

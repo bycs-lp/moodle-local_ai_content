@@ -13,6 +13,12 @@
    Global instances require `local/ai_manager:manageglobalvecstores`.
 4. "Test" checks the connection; "Set as primary" defines the vecstore for new indexing runs.
 5. Deleting an instance shows its usage (sources) and offers to delete the vectors as well.
+6. Optional, recommended: assign a (cheap) text generation tool to the internal purpose `searchquery` (section "Internal
+   purposes" of the purpose configuration). For follow-up messages in a chat it rewrites the message and the conversation
+   into a self-contained search query, so the sources are searched for the actual topic. Without a tool (or if the user
+   reached its limit) the search uses the last two user messages instead, which works less well for references to the AI
+   answers ("the second point"). The purpose has no request limit by default; a limit is not recommended, see the warning
+   in the quota configuration.
 
 ## 2. Teachers (local_ai_content)
 1. Course navigation → Manage sources (`/local/ai_content/manage_sources.php?courseid=…`).
@@ -32,7 +38,8 @@
    Selected sources not indexed with the user's embedding model are skipped; the answer lists them after the sources.
    Sources whose content changed since indexing are marked "Outdated" in the selection; if at least one selected source
    is outdated, a small warning triangle is shown at the sources button (answers may be based on the old content).
-2. Every chat request uses the selected sources; the source list with links is shown below the answer.
+2. Every chat request uses the selected sources; the source list with links is shown below the answer. Follow-up messages
+   are searched together with the conversation (see 1.6), so they find the sources of the topic they refer to.
 
 ## 4. Developer tools (not for production)
 | Tool | Purpose |

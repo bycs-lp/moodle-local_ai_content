@@ -146,7 +146,7 @@ management shows a summarized status (failed > running > queued > indexed) plus 
 | Records | `local\source` (record wrapper), `local\source_selection_store` (selection per context), `local\source_citation` |
 | Indexing | `local\index_service` (start/stop/allowindex/release/delete), `task\index_source_adhoc`, `task\delete_vectors_adhoc`, `local\indexer_manager` (chunk, embed, store), `local\index_state` (status DTO for the frontend) |
 | Extraction | `cm_content_extractor` + `contentextractor\cm_content_{page,label,book,lesson,resource,folder}`, `document_extractor` (files → text via ITT backend `local\backend\*`, cached) |
-| Retrieval | `local\rag_manager`, `local\source_access`, `local\rag_result`, `local\source_reference` |
+| Retrieval | `local\rag_manager`, `local\search_query_builder`, `local\source_access`, `local\rag_result`, `local\source_reference` |
 | Selection/management | `local\source_selection_service`, `local\source_management_service` (module/document sources of a course) |
 | Access | `local\access_guard` (enforces capabilities for the current user, HTTP 403), `local\source_access` (may a user retrieve from a source) |
 | Hooks | `local\hook_callbacks` (DI, `vecstore_usage`, `before_vecstore_instance_deleted`, `additional_prompt_context`, `before_course_deleted`) |
@@ -187,9 +187,35 @@ All services are obtained via DI with constructor injection, no static utilities
    The extraction cache (`local_ai_content_cache`, cleaned by `task\cleanup_cache` after `cachettl` days without access)
    keeps the entries of files in modules with an indexable source, so re-indexing does not repeat the AI extraction.
 
-### 3.4 Retrieval (`rag_manager::get_rag_content(prompt, sourceids, component, contextid, ?minsimilarity, ?maxchars)`)
-1. Embed prompt (purpose `embedding`).
-2. Load sources, filter accessible ones (`source_access`: activity `uservisible` + `mod/X:view`; global sources `local/ai_content:useglobalsources`; otherwise `local/ai_content:usesource` in the source context).
+### 3.4 Retrieval (`rag_manager::get_rag_content(prompt, sourceids, component, contextid, ?minsimilarity, ?maxchars, conversationcontext)`)
+1. Load sources, filter accessible ones (`source_access`: activity `uservisible` + `mod/X:view`; global sources `local/ai_content:useglobalsources`; otherwise `local/ai_content:usesource` in the source context).
+2. Build the search text (`local\search_query_builder`, only if there are searchable sources, see step 3) and embed it
+   (purpose `embedding`). Follow-up messages ("What else does the curriculum say about the second point?") usually do not
+   contain the topic they refer to, so embedding only the latest message finds little. `add_rag_context()` therefore passes
+   the `conversationcontext` option of the request (chat, agent; system messages are ignored):
+   - No conversation history (first message, purposes without conversation): the prompt is embedded unchanged, no
+     additional AI request.
+   - History and purpose `searchquery` available for the user (`ai_manager_utils::get_ai_config()`: AI tool assigned by the
+     tenant manager, purpose enabled, not restricted, request limit not reached): the purpose rewrites the prompt into a
+     self-contained search query, using the history including the AI answers (resolves references such as "the second
+     point"). The request runs with the component and context of the original request and is logged as `searchquery`
+     request (prompt and generated query visible in the request log). It has no request limit by default (internal purpose).
+     The purpose passes the conversation as data, not as conversation: one system message with the instructions and the
+     history after the line `═════ CONVERSATION HISTORY ═════` (each message after `───── USER ─────` /
+     `───── ASSISTANT ─────`, system messages of the caller dropped), the latest message after `═════ LATEST MESSAGE ═════`
+     as the only user message. Otherwise models tend to answer the latest message instead of rewriting it and are more
+     prone to follow instructions contained in the messages. The separators use box drawing characters, which practically
+     never occur in chat messages (unlike Markdown headings), so the messages are not escaped.
+     The query is limited to `aipurpose_searchquery\purpose::MAX_QUERY_LENGTH` (500) characters: the system prompt asks
+     for at most 50 words (derived from the constant with 10 characters per word, as models cannot count characters
+     reliably), `format_output()` returns an empty string for longer outputs (most likely the message was answered
+     instead of rewritten; would also risk exceeding the input limit of the embedding model). The builder treats this like
+     a failed request.
+   - Otherwise, or if the `searchquery` request fails or returns no usable query: fallback to the last two user messages (previous user message +
+     prompt, `search_query_builder::FALLBACK_USER_MESSAGES`), joined. Keeps the topic of the previous question, but cannot
+     resolve references to the AI answers. A failed `searchquery` request never fails the original request.
+   The tenant manager switches the generation on or off by assigning an AI tool to the purpose `searchquery` or not; there is
+   no separate setting.
 3. Skip sources without an `indexed` index for the user's embedding model (external: other `externalmodel`) and report
    them in `rag_result` as unavailable (shown after the source list in block_ai_chat). Query modules/documents per
    vecstore in the model collection with filter `documentid IN (...)`, external sources in their collection with their own
