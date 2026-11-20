@@ -86,6 +86,7 @@ $string['indexingerror_embeddingrequestfailed'] = 'Indexing failed because an em
 $string['indexingerror_modelchanged'] = 'Indexing failed because the embedding model "{$a}" is not configured for the user who started the indexing anymore.';
 $string['indexingerror_nocontent'] = 'Indexing failed because no content could be extracted from the source.';
 $string['indexingerror_notsupported'] = 'Indexing failed because the content of this source type is not supported.';
+$string['indexingnotavailable_novecstore'] = 'Content you share can be used by AI features. However, it cannot be made searchable at the moment, because no storage location for searchable content has been set up for your tenant yet. Content that is already searchable can still be searched. If you need this, please contact the person who manages the AI tools of your tenant.';
 $string['indexwithmymodel'] = 'Index with my embedding model ({$a})';
 $string['makesearchable'] = 'Make searchable';
 $string['searchnotavailable'] = 'Content you share can be used by AI features. However, searching in shared content is currently not available to you. This means, for example, that the AI chat cannot look up matching passages in it by itself. If you need this, please contact the person who manages the AI tools at your institution.';

@@ -38,14 +38,14 @@ function formatTimestamp(timestamp) {
   return new Date(timestamp).toLocaleString();
 }
 __name(formatTimestamp, "formatTimestamp");
-function IndexStatusCell({ state, disabled, onIndexCurrentModel }) {
+function IndexStatusCell({ state, indexingAvailable, disabled, onIndexCurrentModel }) {
   const active = isActive(state);
   const failed = state.status === "failed";
   const badgeclass = failed ? "badge-danger" : state.status === "outdated" ? "bg-warning text-dark" : "badge-light";
   return /* @__PURE__ */ jsxDEV(Fragment, { children: [
     /* @__PURE__ */ jsxDEV("span", { className: `badge ${badgeclass}`, children: state.statusLabel }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-      lineNumber: 151,
+      lineNumber: 154,
       columnNumber: 13
     }, this),
     active && /* @__PURE__ */ jsxDEV("div", { className: "mt-1", children: /* @__PURE__ */ jsxDEV(
@@ -64,18 +64,18 @@ function IndexStatusCell({ state, disabled, onIndexCurrentModel }) {
       false,
       {
         fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-        lineNumber: 154,
+        lineNumber: 157,
         columnNumber: 21
       },
       this
     ) }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-      lineNumber: 153,
+      lineNumber: 156,
       columnNumber: 17
     }, this),
     failed && state.message !== "" && /* @__PURE__ */ jsxDEV("div", { className: "small text-danger mt-1", children: state.message }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-      lineNumber: 167,
+      lineNumber: 170,
       columnNumber: 17
     }, this),
     state.models.length > 0 && /* @__PURE__ */ jsxDEV("ul", { className: "list-unstyled small text-muted mt-1 mb-0", children: state.models.map((modelstate) => /* @__PURE__ */ jsxDEV("li", { children: [
@@ -84,14 +84,14 @@ function IndexStatusCell({ state, disabled, onIndexCurrentModel }) {
       modelstate.statusLabel
     ] }, modelstate.model, true, {
       fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-      lineNumber: 172,
+      lineNumber: 175,
       columnNumber: 25
     }, this)) }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-      lineNumber: 170,
+      lineNumber: 173,
       columnNumber: 17
     }, this),
-    state.canIndexCurrentModel && state.currentModel !== null && /* @__PURE__ */ jsxDEV(
+    indexingAvailable && state.canIndexCurrentModel && state.currentModel !== null && /* @__PURE__ */ jsxDEV(
       "button",
       {
         type: "button",
@@ -100,7 +100,7 @@ function IndexStatusCell({ state, disabled, onIndexCurrentModel }) {
         onClick: onIndexCurrentModel,
         children: /* @__PURE__ */ jsxDEV(MoodleString, { identifier: "indexwithmymodel", component: "local_ai_content", params: state.currentModel }, void 0, false, {
           fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-          lineNumber: 183,
+          lineNumber: 186,
           columnNumber: 21
         }, this)
       },
@@ -108,43 +108,55 @@ function IndexStatusCell({ state, disabled, onIndexCurrentModel }) {
       false,
       {
         fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-        lineNumber: 177,
+        lineNumber: 180,
         columnNumber: 17
       },
       this
     )
   ] }, void 0, true, {
     fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-    lineNumber: 150,
+    lineNumber: 153,
     columnNumber: 9
   }, this);
 }
 __name(IndexStatusCell, "IndexStatusCell");
 function SharingStatusCell({ state, indexingAvailable, disabled, onIndex }) {
   if (state.hasIndex) {
-    return /* @__PURE__ */ jsxDEV(IndexStatusCell, { state, disabled, onIndexCurrentModel: onIndex }, void 0, false, {
-      fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-      lineNumber: 201,
-      columnNumber: 16
-    }, this);
+    return /* @__PURE__ */ jsxDEV(
+      IndexStatusCell,
+      {
+        state,
+        indexingAvailable,
+        disabled,
+        onIndexCurrentModel: onIndex
+      },
+      void 0,
+      false,
+      {
+        fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
+        lineNumber: 204,
+        columnNumber: 16
+      },
+      this
+    );
   }
   return /* @__PURE__ */ jsxDEV(Fragment, { children: [
     /* @__PURE__ */ jsxDEV("span", { className: "badge badge-light", children: /* @__PURE__ */ jsxDEV(MoodleString, { identifier: "sharednotsearchable", component: "local_ai_content" }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-      lineNumber: 207,
+      lineNumber: 211,
       columnNumber: 17
     }, this) }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-      lineNumber: 206,
+      lineNumber: 210,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("div", { className: "small text-muted mt-1", children: /* @__PURE__ */ jsxDEV(MoodleString, { identifier: "sharednotsearchable_desc", component: "local_ai_content" }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-      lineNumber: 210,
+      lineNumber: 214,
       columnNumber: 17
     }, this) }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-      lineNumber: 209,
+      lineNumber: 213,
       columnNumber: 13
     }, this),
     indexingAvailable && /* @__PURE__ */ jsxDEV(
@@ -156,7 +168,7 @@ function SharingStatusCell({ state, indexingAvailable, disabled, onIndex }) {
         onClick: onIndex,
         children: /* @__PURE__ */ jsxDEV(MoodleString, { identifier: "makesearchable", component: "local_ai_content" }, void 0, false, {
           fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-          lineNumber: 219,
+          lineNumber: 223,
           columnNumber: 21
         }, this)
       },
@@ -164,14 +176,14 @@ function SharingStatusCell({ state, indexingAvailable, disabled, onIndex }) {
       false,
       {
         fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-        lineNumber: 213,
+        lineNumber: 217,
         columnNumber: 17
       },
       this
     )
   ] }, void 0, true, {
     fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-    lineNumber: 205,
+    lineNumber: 209,
     columnNumber: 9
   }, this);
 }
@@ -193,7 +205,7 @@ function SourceManager({ contextid }) {
   });
   const plusIcon = /* @__PURE__ */ jsxDEV("i", { className: "icon fa fa-plus", "aria-hidden": "true" }, void 0, false, {
     fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-    lineNumber: 240,
+    lineNumber: 244,
     columnNumber: 22
   }, this);
   const loggedDebugInfoReference = useRef({});
@@ -311,14 +323,14 @@ ${state.debugInfo}`, "local_ai_content");
   if (loading) {
     return /* @__PURE__ */ jsxDEV("div", { className: "local-ai-content-source-manager local-ai-content-source-manager--loading", children: "Lade Quellen..." }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-      lineNumber: 383,
+      lineNumber: 387,
       columnNumber: 16
     }, this);
   }
   if (!payload) {
     return /* @__PURE__ */ jsxDEV("div", { className: "text-danger small mt-2", children: error }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-      lineNumber: 387,
+      lineNumber: 391,
       columnNumber: 16
     }, this);
   }
@@ -382,20 +394,29 @@ ${state.debugInfo}`, "local_ai_content");
     }
   }, "handleDeleteDocument");
   return /* @__PURE__ */ jsxDEV("div", { className: "local-ai-content-source-manager", children: [
-    !payload.indexingAvailable && /* @__PURE__ */ jsxDEV("div", { className: "alert alert-info", role: "status", children: /* @__PURE__ */ jsxDEV(MoodleString, { identifier: "searchnotavailable", component: "local_ai_content" }, void 0, false, {
+    payload.indexingUnavailableReason === "novecstore" && /* @__PURE__ */ jsxDEV("div", { className: "alert alert-info", role: "status", children: /* @__PURE__ */ jsxDEV(MoodleString, { identifier: "indexingnotavailable_novecstore", component: "local_ai_content" }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-      lineNumber: 461,
+      lineNumber: 465,
       columnNumber: 21
     }, this) }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-      lineNumber: 460,
+      lineNumber: 464,
+      columnNumber: 17
+    }, this),
+    payload.indexingUnavailableReason === "noembedding" && /* @__PURE__ */ jsxDEV("div", { className: "alert alert-info", role: "status", children: /* @__PURE__ */ jsxDEV(MoodleString, { identifier: "searchnotavailable", component: "local_ai_content" }, void 0, false, {
+      fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
+      lineNumber: 470,
+      columnNumber: 21
+    }, this) }, void 0, false, {
+      fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
+      lineNumber: 469,
       columnNumber: 17
     }, this),
     /* @__PURE__ */ jsxDEV("section", { className: "mb-4", children: [
       /* @__PURE__ */ jsxDEV("div", { className: "d-flex justify-content-between align-items-center mb-2", children: [
         /* @__PURE__ */ jsxDEV("h5", { className: "mb-0", children: "Dokumente" }, void 0, false, {
           fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-          lineNumber: 466,
+          lineNumber: 475,
           columnNumber: 21
         }, this),
         /* @__PURE__ */ jsxDEV(
@@ -412,85 +433,85 @@ ${state.debugInfo}`, "local_ai_content");
           false,
           {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 467,
+            lineNumber: 476,
             columnNumber: 21
           },
           this
         )
       ] }, void 0, true, {
         fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-        lineNumber: 465,
+        lineNumber: 474,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("table", { className: "table table-sm table-striped", children: [
         /* @__PURE__ */ jsxDEV("thead", { children: /* @__PURE__ */ jsxDEV("tr", { children: [
           /* @__PURE__ */ jsxDEV("th", { children: "Name" }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 479,
+            lineNumber: 488,
             columnNumber: 29
           }, this),
           /* @__PURE__ */ jsxDEV("th", { children: "Beschreibung" }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 480,
+            lineNumber: 489,
             columnNumber: 29
           }, this),
           /* @__PURE__ */ jsxDEV("th", { children: "Geltungsbereich" }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 481,
+            lineNumber: 490,
             columnNumber: 29
           }, this),
           /* @__PURE__ */ jsxDEV("th", { children: "F\xFCr KI freigegeben" }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 482,
+            lineNumber: 491,
             columnNumber: 29
           }, this),
           /* @__PURE__ */ jsxDEV("th", { children: "Status" }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 483,
+            lineNumber: 492,
             columnNumber: 29
           }, this),
           /* @__PURE__ */ jsxDEV("th", { children: "Last indexed" }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 484,
+            lineNumber: 493,
             columnNumber: 29
           }, this),
           /* @__PURE__ */ jsxDEV("th", { children: "Aktionen" }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 485,
+            lineNumber: 494,
             columnNumber: 29
           }, this)
         ] }, void 0, true, {
           fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-          lineNumber: 478,
+          lineNumber: 487,
           columnNumber: 25
         }, this) }, void 0, false, {
           fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-          lineNumber: 477,
+          lineNumber: 486,
           columnNumber: 21
         }, this),
         /* @__PURE__ */ jsxDEV("tbody", { children: [
           documentRows.map((row) => /* @__PURE__ */ jsxDEV("tr", { children: [
             /* @__PURE__ */ jsxDEV("td", { children: row.name }, void 0, false, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 491,
+              lineNumber: 500,
               columnNumber: 33
             }, this),
             /* @__PURE__ */ jsxDEV("td", { children: row.description === "" ? "-" : row.description }, void 0, false, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 492,
+              lineNumber: 501,
               columnNumber: 33
             }, this),
             /* @__PURE__ */ jsxDEV("td", { children: row.scope === "global" ? /* @__PURE__ */ jsxDEV("i", { className: "icon fa fa-globe", "aria-label": "Globale Quelle", title: "Globale Quelle" }, void 0, false, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 496,
+              lineNumber: 505,
               columnNumber: 45
             }, this) : /* @__PURE__ */ jsxDEV("i", { className: "icon fa fa-graduation-cap", "aria-label": "Kursquelle", title: "Kursquelle" }, void 0, false, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 499,
+              lineNumber: 508,
               columnNumber: 45
             }, this) }, void 0, false, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 493,
+              lineNumber: 502,
               columnNumber: 33
             }, this),
             /* @__PURE__ */ jsxDEV("td", { children: /* @__PURE__ */ jsxDEV("div", { className: "form-check form-switch m-0", children: /* @__PURE__ */ jsxDEV(
@@ -515,17 +536,17 @@ ${state.debugInfo}`, "local_ai_content");
               false,
               {
                 fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                lineNumber: 504,
+                lineNumber: 513,
                 columnNumber: 41
               },
               this
             ) }, void 0, false, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 503,
+              lineNumber: 512,
               columnNumber: 37
             }, this) }, void 0, false, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 502,
+              lineNumber: 511,
               columnNumber: 33
             }, this),
             /* @__PURE__ */ jsxDEV("td", { children: row.enabled && /* @__PURE__ */ jsxDEV(
@@ -542,18 +563,18 @@ ${state.debugInfo}`, "local_ai_content");
               false,
               {
                 fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                lineNumber: 523,
+                lineNumber: 532,
                 columnNumber: 37
               },
               this
             ) }, void 0, false, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 522,
+              lineNumber: 531,
               columnNumber: 33
             }, this),
             /* @__PURE__ */ jsxDEV("td", { children: row.enabled && row.indexState.hasIndex && formatTimestamp(row.indexState.lastIndexedAt) }, void 0, false, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 532,
+              lineNumber: 541,
               columnNumber: 33
             }, this),
             /* @__PURE__ */ jsxDEV("td", { children: row.canEdit && /* @__PURE__ */ jsxDEV("div", { className: "d-flex gap-1", children: [
@@ -575,7 +596,7 @@ ${state.debugInfo}`, "local_ai_content");
                   title: "Bearbeiten",
                   children: /* @__PURE__ */ jsxDEV("i", { className: "icon fa fa-pencil", "aria-hidden": "true" }, void 0, false, {
                     fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                    lineNumber: 551,
+                    lineNumber: 560,
                     columnNumber: 49
                   }, this)
                 },
@@ -583,7 +604,7 @@ ${state.debugInfo}`, "local_ai_content");
                 false,
                 {
                   fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                  lineNumber: 536,
+                  lineNumber: 545,
                   columnNumber: 45
                 },
                 this
@@ -601,7 +622,7 @@ ${state.debugInfo}`, "local_ai_content");
                   title: "L\xF6schen",
                   children: /* @__PURE__ */ jsxDEV("i", { className: "icon fa fa-trash", "aria-hidden": "true" }, void 0, false, {
                     fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                    lineNumber: 563,
+                    lineNumber: 572,
                     columnNumber: 49
                   }, this)
                 },
@@ -609,101 +630,101 @@ ${state.debugInfo}`, "local_ai_content");
                 false,
                 {
                   fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                  lineNumber: 553,
+                  lineNumber: 562,
                   columnNumber: 45
                 },
                 this
               )
             ] }, void 0, true, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 535,
+              lineNumber: 544,
               columnNumber: 41
             }, this) }, void 0, false, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 533,
+              lineNumber: 542,
               columnNumber: 33
             }, this)
           ] }, row.id, true, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 490,
+            lineNumber: 499,
             columnNumber: 29
           }, this)),
           documentRows.length === 0 && /* @__PURE__ */ jsxDEV("tr", { children: /* @__PURE__ */ jsxDEV("td", { colSpan: 7, className: "text-muted", children: "Keine Dokumente vorhanden." }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 572,
+            lineNumber: 581,
             columnNumber: 33
           }, this) }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 571,
+            lineNumber: 580,
             columnNumber: 29
           }, this)
         ] }, void 0, true, {
           fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-          lineNumber: 488,
+          lineNumber: 497,
           columnNumber: 21
         }, this)
       ] }, void 0, true, {
         fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-        lineNumber: 476,
+        lineNumber: 485,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-      lineNumber: 464,
+      lineNumber: 473,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("section", { className: "mb-4", children: [
       /* @__PURE__ */ jsxDEV("h5", { children: "Aktivit\xE4ten dieses Kurses" }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-        lineNumber: 580,
+        lineNumber: 589,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("table", { className: "table table-sm table-hover", children: [
         /* @__PURE__ */ jsxDEV("thead", { children: /* @__PURE__ */ jsxDEV("tr", { children: [
           /* @__PURE__ */ jsxDEV("th", { children: "Aktivit\xE4t" }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 584,
+            lineNumber: 593,
             columnNumber: 29
           }, this),
           /* @__PURE__ */ jsxDEV("th", { children: "Typ" }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 585,
+            lineNumber: 594,
             columnNumber: 29
           }, this),
           /* @__PURE__ */ jsxDEV("th", { children: "F\xFCr KI freigegeben" }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 586,
+            lineNumber: 595,
             columnNumber: 29
           }, this),
           /* @__PURE__ */ jsxDEV("th", { children: "Status" }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 587,
+            lineNumber: 596,
             columnNumber: 29
           }, this),
           /* @__PURE__ */ jsxDEV("th", { children: "Last indexed" }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 588,
+            lineNumber: 597,
             columnNumber: 29
           }, this)
         ] }, void 0, true, {
           fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-          lineNumber: 583,
+          lineNumber: 592,
           columnNumber: 25
         }, this) }, void 0, false, {
           fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-          lineNumber: 582,
+          lineNumber: 591,
           columnNumber: 21
         }, this),
         /* @__PURE__ */ jsxDEV("tbody", { children: [
           payload.items.modules.map((row) => /* @__PURE__ */ jsxDEV("tr", { children: [
             /* @__PURE__ */ jsxDEV("td", { children: row.name }, void 0, false, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 594,
+              lineNumber: 603,
               columnNumber: 33
             }, this),
             /* @__PURE__ */ jsxDEV("td", { children: row.modDisplayName === "" ? row.modName : row.modDisplayName }, void 0, false, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 595,
+              lineNumber: 604,
               columnNumber: 33
             }, this),
             /* @__PURE__ */ jsxDEV("td", { children: /* @__PURE__ */ jsxDEV("div", { className: "form-check form-switch m-0", children: /* @__PURE__ */ jsxDEV(
@@ -728,17 +749,17 @@ ${state.debugInfo}`, "local_ai_content");
               false,
               {
                 fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                lineNumber: 598,
+                lineNumber: 607,
                 columnNumber: 41
               },
               this
             ) }, void 0, false, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 597,
+              lineNumber: 606,
               columnNumber: 37
             }, this) }, void 0, false, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 596,
+              lineNumber: 605,
               columnNumber: 33
             }, this),
             /* @__PURE__ */ jsxDEV("td", { children: row.enabled && /* @__PURE__ */ jsxDEV(
@@ -755,52 +776,52 @@ ${state.debugInfo}`, "local_ai_content");
               false,
               {
                 fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                lineNumber: 617,
+                lineNumber: 626,
                 columnNumber: 37
               },
               this
             ) }, void 0, false, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 616,
+              lineNumber: 625,
               columnNumber: 33
             }, this),
             /* @__PURE__ */ jsxDEV("td", { children: row.enabled && row.indexState.hasIndex && formatTimestamp(row.indexState.lastIndexedAt) }, void 0, false, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 626,
+              lineNumber: 635,
               columnNumber: 33
             }, this)
           ] }, row.cmId, true, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 593,
+            lineNumber: 602,
             columnNumber: 29
           }, this)),
           payload.items.modules.length === 0 && /* @__PURE__ */ jsxDEV("tr", { children: /* @__PURE__ */ jsxDEV("td", { colSpan: 5, className: "text-muted", children: "Keine unterst\xFCtzten Aktivit\xE4ten gefunden." }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 631,
+            lineNumber: 640,
             columnNumber: 33
           }, this) }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 630,
+            lineNumber: 639,
             columnNumber: 29
           }, this)
         ] }, void 0, true, {
           fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-          lineNumber: 591,
+          lineNumber: 600,
           columnNumber: 21
         }, this)
       ] }, void 0, true, {
         fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-        lineNumber: 581,
+        lineNumber: 590,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("div", { className: "small text-muted", children: "Hier werden nur Aktivit\xE4ten angezeigt, deren Typ aktuell vom Plugin unterst\xFCtzt wird." }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-        lineNumber: 636,
+        lineNumber: 645,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-      lineNumber: 579,
+      lineNumber: 588,
       columnNumber: 13
     }, this),
     newDocumentScope !== null && /* @__PURE__ */ jsxDEV(Fragment, { children: [
@@ -815,7 +836,7 @@ ${state.debugInfo}`, "local_ai_content");
             /* @__PURE__ */ jsxDEV("div", { className: "modal-header", children: [
               /* @__PURE__ */ jsxDEV("h5", { id: "source-create-modal-title", className: "modal-title", children: "Neues Dokument anlegen" }, void 0, false, {
                 fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                lineNumber: 652,
+                lineNumber: 661,
                 columnNumber: 37
               }, this),
               /* @__PURE__ */ jsxDEV(
@@ -828,7 +849,7 @@ ${state.debugInfo}`, "local_ai_content");
                   disabled: saving,
                   children: /* @__PURE__ */ jsxDEV("span", { "aria-hidden": "true", children: "\xD7" }, void 0, false, {
                     fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                    lineNumber: 660,
+                    lineNumber: 669,
                     columnNumber: 41
                   }, this)
                 },
@@ -836,21 +857,21 @@ ${state.debugInfo}`, "local_ai_content");
                 false,
                 {
                   fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                  lineNumber: 653,
+                  lineNumber: 662,
                   columnNumber: 37
                 },
                 this
               )
             ] }, void 0, true, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 651,
+              lineNumber: 660,
               columnNumber: 33
             }, this),
             /* @__PURE__ */ jsxDEV("div", { className: "modal-body", children: [
               payload.canManageGlobalSources && /* @__PURE__ */ jsxDEV("div", { className: "form-group", children: [
                 /* @__PURE__ */ jsxDEV("label", { htmlFor: "source-create-scope", children: "Quelle anlegen in" }, void 0, false, {
                   fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                  lineNumber: 666,
+                  lineNumber: 675,
                   columnNumber: 45
                 }, this),
                 /* @__PURE__ */ jsxDEV(
@@ -865,12 +886,12 @@ ${state.debugInfo}`, "local_ai_content");
                     children: [
                       /* @__PURE__ */ jsxDEV("option", { value: "course", children: "Diesem Kurs" }, void 0, false, {
                         fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                        lineNumber: 675,
+                        lineNumber: 684,
                         columnNumber: 49
                       }, this),
                       /* @__PURE__ */ jsxDEV("option", { value: "global", children: "Systemkontext (global)" }, void 0, false, {
                         fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                        lineNumber: 676,
+                        lineNumber: 685,
                         columnNumber: 49
                       }, this)
                     ]
@@ -879,20 +900,20 @@ ${state.debugInfo}`, "local_ai_content");
                   true,
                   {
                     fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                    lineNumber: 667,
+                    lineNumber: 676,
                     columnNumber: 45
                   },
                   this
                 )
               ] }, void 0, true, {
                 fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                lineNumber: 665,
+                lineNumber: 674,
                 columnNumber: 41
               }, this),
               /* @__PURE__ */ jsxDEV("div", { className: "form-group", children: [
                 /* @__PURE__ */ jsxDEV("label", { children: "Name" }, void 0, false, {
                   fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                  lineNumber: 681,
+                  lineNumber: 690,
                   columnNumber: 41
                 }, this),
                 /* @__PURE__ */ jsxDEV(
@@ -908,20 +929,20 @@ ${state.debugInfo}`, "local_ai_content");
                   false,
                   {
                     fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                    lineNumber: 682,
+                    lineNumber: 691,
                     columnNumber: 41
                   },
                   this
                 )
               ] }, void 0, true, {
                 fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                lineNumber: 680,
+                lineNumber: 689,
                 columnNumber: 37
               }, this),
               /* @__PURE__ */ jsxDEV("div", { className: "form-group", children: [
                 /* @__PURE__ */ jsxDEV("label", { children: "Beschreibung" }, void 0, false, {
                   fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                  lineNumber: 691,
+                  lineNumber: 700,
                   columnNumber: 41
                 }, this),
                 /* @__PURE__ */ jsxDEV(
@@ -937,20 +958,20 @@ ${state.debugInfo}`, "local_ai_content");
                   false,
                   {
                     fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                    lineNumber: 692,
+                    lineNumber: 701,
                     columnNumber: 41
                   },
                   this
                 )
               ] }, void 0, true, {
                 fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                lineNumber: 690,
+                lineNumber: 699,
                 columnNumber: 37
               }, this),
               /* @__PURE__ */ jsxDEV("div", { className: "form-group mb-0", children: [
                 /* @__PURE__ */ jsxDEV("label", { children: "Inhalt" }, void 0, false, {
                   fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                  lineNumber: 701,
+                  lineNumber: 710,
                   columnNumber: 41
                 }, this),
                 /* @__PURE__ */ jsxDEV(
@@ -967,19 +988,19 @@ ${state.debugInfo}`, "local_ai_content");
                   false,
                   {
                     fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                    lineNumber: 702,
+                    lineNumber: 711,
                     columnNumber: 41
                   },
                   this
                 )
               ] }, void 0, true, {
                 fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                lineNumber: 700,
+                lineNumber: 709,
                 columnNumber: 37
               }, this)
             ] }, void 0, true, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 663,
+              lineNumber: 672,
               columnNumber: 33
             }, this),
             /* @__PURE__ */ jsxDEV("div", { className: "modal-footer", children: [
@@ -996,7 +1017,7 @@ ${state.debugInfo}`, "local_ai_content");
                 false,
                 {
                   fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                  lineNumber: 713,
+                  lineNumber: 722,
                   columnNumber: 37
                 },
                 this
@@ -1014,23 +1035,23 @@ ${state.debugInfo}`, "local_ai_content");
                 false,
                 {
                   fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                  lineNumber: 720,
+                  lineNumber: 729,
                   columnNumber: 37
                 },
                 this
               )
             ] }, void 0, true, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 712,
+              lineNumber: 721,
               columnNumber: 33
             }, this)
           ] }, void 0, true, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 650,
+            lineNumber: 659,
             columnNumber: 29
           }, this) }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 649,
+            lineNumber: 658,
             columnNumber: 25
           }, this)
         },
@@ -1038,19 +1059,19 @@ ${state.debugInfo}`, "local_ai_content");
         false,
         {
           fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-          lineNumber: 643,
+          lineNumber: 652,
           columnNumber: 21
         },
         this
       ),
       /* @__PURE__ */ jsxDEV("div", { className: "modal-backdrop fade show", onClick: closeCreateModal }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-        lineNumber: 731,
+        lineNumber: 740,
         columnNumber: 21
       }, this)
     ] }, void 0, true, {
       fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-      lineNumber: 642,
+      lineNumber: 651,
       columnNumber: 17
     }, this),
     editingDocument && /* @__PURE__ */ jsxDEV(Fragment, { children: [
@@ -1065,7 +1086,7 @@ ${state.debugInfo}`, "local_ai_content");
             /* @__PURE__ */ jsxDEV("div", { className: "modal-header", children: [
               /* @__PURE__ */ jsxDEV("h5", { id: "source-edit-modal-title", className: "modal-title", children: "Dokument bearbeiten" }, void 0, false, {
                 fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                lineNumber: 746,
+                lineNumber: 755,
                 columnNumber: 37
               }, this),
               /* @__PURE__ */ jsxDEV(
@@ -1078,7 +1099,7 @@ ${state.debugInfo}`, "local_ai_content");
                   disabled: saving,
                   children: /* @__PURE__ */ jsxDEV("span", { "aria-hidden": "true", children: "\xD7" }, void 0, false, {
                     fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                    lineNumber: 754,
+                    lineNumber: 763,
                     columnNumber: 41
                   }, this)
                 },
@@ -1086,21 +1107,21 @@ ${state.debugInfo}`, "local_ai_content");
                 false,
                 {
                   fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                  lineNumber: 747,
+                  lineNumber: 756,
                   columnNumber: 37
                 },
                 this
               )
             ] }, void 0, true, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 745,
+              lineNumber: 754,
               columnNumber: 33
             }, this),
             /* @__PURE__ */ jsxDEV("div", { className: "modal-body", children: [
               /* @__PURE__ */ jsxDEV("div", { className: "form-group", children: [
                 /* @__PURE__ */ jsxDEV("label", { children: "Name" }, void 0, false, {
                   fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                  lineNumber: 759,
+                  lineNumber: 768,
                   columnNumber: 41
                 }, this),
                 /* @__PURE__ */ jsxDEV(
@@ -1116,20 +1137,20 @@ ${state.debugInfo}`, "local_ai_content");
                   false,
                   {
                     fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                    lineNumber: 760,
+                    lineNumber: 769,
                     columnNumber: 41
                   },
                   this
                 )
               ] }, void 0, true, {
                 fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                lineNumber: 758,
+                lineNumber: 767,
                 columnNumber: 37
               }, this),
               /* @__PURE__ */ jsxDEV("div", { className: "form-group", children: [
                 /* @__PURE__ */ jsxDEV("label", { children: "Beschreibung" }, void 0, false, {
                   fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                  lineNumber: 769,
+                  lineNumber: 778,
                   columnNumber: 41
                 }, this),
                 /* @__PURE__ */ jsxDEV(
@@ -1145,20 +1166,20 @@ ${state.debugInfo}`, "local_ai_content");
                   false,
                   {
                     fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                    lineNumber: 770,
+                    lineNumber: 779,
                     columnNumber: 41
                   },
                   this
                 )
               ] }, void 0, true, {
                 fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                lineNumber: 768,
+                lineNumber: 777,
                 columnNumber: 37
               }, this),
               /* @__PURE__ */ jsxDEV("div", { className: "form-group mb-0", children: [
                 /* @__PURE__ */ jsxDEV("label", { children: "Inhalt" }, void 0, false, {
                   fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                  lineNumber: 779,
+                  lineNumber: 788,
                   columnNumber: 41
                 }, this),
                 /* @__PURE__ */ jsxDEV(
@@ -1175,19 +1196,19 @@ ${state.debugInfo}`, "local_ai_content");
                   false,
                   {
                     fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                    lineNumber: 780,
+                    lineNumber: 789,
                     columnNumber: 41
                   },
                   this
                 )
               ] }, void 0, true, {
                 fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                lineNumber: 778,
+                lineNumber: 787,
                 columnNumber: 37
               }, this)
             ] }, void 0, true, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 757,
+              lineNumber: 766,
               columnNumber: 33
             }, this),
             /* @__PURE__ */ jsxDEV("div", { className: "modal-footer", children: [
@@ -1204,7 +1225,7 @@ ${state.debugInfo}`, "local_ai_content");
                 false,
                 {
                   fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                  lineNumber: 791,
+                  lineNumber: 800,
                   columnNumber: 37
                 },
                 this
@@ -1222,23 +1243,23 @@ ${state.debugInfo}`, "local_ai_content");
                 false,
                 {
                   fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                  lineNumber: 798,
+                  lineNumber: 807,
                   columnNumber: 37
                 },
                 this
               )
             ] }, void 0, true, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 790,
+              lineNumber: 799,
               columnNumber: 33
             }, this)
           ] }, void 0, true, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 744,
+            lineNumber: 753,
             columnNumber: 29
           }, this) }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 743,
+            lineNumber: 752,
             columnNumber: 25
           }, this)
         },
@@ -1246,19 +1267,19 @@ ${state.debugInfo}`, "local_ai_content");
         false,
         {
           fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-          lineNumber: 737,
+          lineNumber: 746,
           columnNumber: 21
         },
         this
       ),
       /* @__PURE__ */ jsxDEV("div", { className: "modal-backdrop fade show", onClick: closeEditModal }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-        lineNumber: 809,
+        lineNumber: 818,
         columnNumber: 21
       }, this)
     ] }, void 0, true, {
       fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-      lineNumber: 736,
+      lineNumber: 745,
       columnNumber: 17
     }, this),
     documentToDelete !== null && /* @__PURE__ */ jsxDEV(Fragment, { children: [
@@ -1273,7 +1294,7 @@ ${state.debugInfo}`, "local_ai_content");
             /* @__PURE__ */ jsxDEV("div", { className: "modal-header", children: [
               /* @__PURE__ */ jsxDEV("h5", { id: "source-delete-modal-title", className: "modal-title", children: "Quelle l\xF6schen" }, void 0, false, {
                 fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                lineNumber: 824,
+                lineNumber: 833,
                 columnNumber: 37
               }, this),
               /* @__PURE__ */ jsxDEV(
@@ -1286,7 +1307,7 @@ ${state.debugInfo}`, "local_ai_content");
                   disabled: saving,
                   children: /* @__PURE__ */ jsxDEV("span", { "aria-hidden": "true", children: "\xD7" }, void 0, false, {
                     fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                    lineNumber: 832,
+                    lineNumber: 841,
                     columnNumber: 41
                   }, this)
                 },
@@ -1294,14 +1315,14 @@ ${state.debugInfo}`, "local_ai_content");
                 false,
                 {
                   fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                  lineNumber: 825,
+                  lineNumber: 834,
                   columnNumber: 37
                 },
                 this
               )
             ] }, void 0, true, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 823,
+              lineNumber: 832,
               columnNumber: 33
             }, this),
             /* @__PURE__ */ jsxDEV("div", { className: "modal-body", children: [
@@ -1310,7 +1331,7 @@ ${state.debugInfo}`, "local_ai_content");
               "\u201C wirklich l\xF6schen?"
             ] }, void 0, true, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 835,
+              lineNumber: 844,
               columnNumber: 33
             }, this),
             /* @__PURE__ */ jsxDEV("div", { className: "modal-footer", children: [
@@ -1327,7 +1348,7 @@ ${state.debugInfo}`, "local_ai_content");
                 false,
                 {
                   fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                  lineNumber: 839,
+                  lineNumber: 848,
                   columnNumber: 37
                 },
                 this
@@ -1345,23 +1366,23 @@ ${state.debugInfo}`, "local_ai_content");
                 false,
                 {
                   fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-                  lineNumber: 846,
+                  lineNumber: 855,
                   columnNumber: 37
                 },
                 this
               )
             ] }, void 0, true, {
               fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-              lineNumber: 838,
+              lineNumber: 847,
               columnNumber: 33
             }, this)
           ] }, void 0, true, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 822,
+            lineNumber: 831,
             columnNumber: 29
           }, this) }, void 0, false, {
             fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-            lineNumber: 821,
+            lineNumber: 830,
             columnNumber: 25
           }, this)
         },
@@ -1369,29 +1390,29 @@ ${state.debugInfo}`, "local_ai_content");
         false,
         {
           fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-          lineNumber: 815,
+          lineNumber: 824,
           columnNumber: 21
         },
         this
       ),
       /* @__PURE__ */ jsxDEV("div", { className: "modal-backdrop fade show", onClick: closeDeleteModal }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-        lineNumber: 857,
+        lineNumber: 866,
         columnNumber: 21
       }, this)
     ] }, void 0, true, {
       fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-      lineNumber: 814,
+      lineNumber: 823,
       columnNumber: 17
     }, this),
     error !== null && /* @__PURE__ */ jsxDEV("div", { className: "text-danger small mt-2", children: error }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-      lineNumber: 861,
+      lineNumber: 870,
       columnNumber: 32
     }, this)
   ] }, void 0, true, {
     fileName: "public/local/ai_content/js/esm/src/source_manager.tsx",
-    lineNumber: 458,
+    lineNumber: 462,
     columnNumber: 9
   }, this);
 }

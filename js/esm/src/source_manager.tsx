@@ -79,6 +79,8 @@ type SourceManagementResponse = {
     courseContextId: number;
     canManageGlobalSources: boolean;
     indexingAvailable: boolean;
+    /** Why sources cannot be indexed, null if they can. */
+    indexingUnavailableReason: 'novecstore' | 'noembedding' | null;
     items: {
         modules: ModuleSource[];
         globalDocuments: DocumentSource[];
@@ -137,8 +139,9 @@ function formatTimestamp(timestamp: string | null): string {
  * Renders the summarized status badge, the progress bar and the error message of one source, the states of the single
  * embedding models and the action to index the source with the embedding model of the current user.
  */
-function IndexStatusCell({state, disabled, onIndexCurrentModel}: {
+function IndexStatusCell({state, indexingAvailable, disabled, onIndexCurrentModel}: {
     state: IndexState;
+    indexingAvailable: boolean;
     disabled: boolean;
     onIndexCurrentModel: () => void;
 }) {
@@ -173,7 +176,7 @@ function IndexStatusCell({state, disabled, onIndexCurrentModel}: {
                     ))}
                 </ul>
             )}
-            {state.canIndexCurrentModel && state.currentModel !== null && (
+            {indexingAvailable && state.canIndexCurrentModel && state.currentModel !== null && (
                 <button
                     type='button'
                     className='btn btn-link btn-sm p-0 mt-1'
@@ -198,7 +201,8 @@ function SharingStatusCell({state, indexingAvailable, disabled, onIndex}: {
     onIndex: () => void;
 }) {
     if (state.hasIndex) {
-        return <IndexStatusCell state={state} disabled={disabled} onIndexCurrentModel={onIndex}/>;
+        return <IndexStatusCell state={state} indexingAvailable={indexingAvailable} disabled={disabled}
+            onIndexCurrentModel={onIndex}/>;
     }
 
     return (
@@ -456,7 +460,12 @@ export default function SourceManager({contextid}: Props) {
 
     return (
         <div className='local-ai-content-source-manager'>
-            {!payload.indexingAvailable && (
+            {payload.indexingUnavailableReason === 'novecstore' && (
+                <div className='alert alert-info' role='status'>
+                    <MoodleString identifier='indexingnotavailable_novecstore' component='local_ai_content'/>
+                </div>
+            )}
+            {payload.indexingUnavailableReason === 'noembedding' && (
                 <div className='alert alert-info' role='status'>
                     <MoodleString identifier='searchnotavailable' component='local_ai_content'/>
                 </div>

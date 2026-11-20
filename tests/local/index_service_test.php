@@ -48,14 +48,17 @@ final class index_service_test extends \advanced_testcase {
     }
 
     /**
-     * Replace the vector store of the test sources by a mock.
+     * Replace the vector store of the test sources by a mock, it is the primary vector store of the tenant.
      *
      * @return base_vecstore&\PHPUnit\Framework\MockObject\MockObject The mocked vector store.
      */
     private function mock_vecstore(): base_vecstore {
         $vecstore = $this->createMock(base_vecstore::class);
+        $instance = $this->createMock(base_vecstore_instance::class);
+        $instance->method('get_id')->willReturn(self::VECSTOREID);
         $vecstorefactory = $this->createMock(vecstore_factory::class);
         $vecstorefactory->method('get_vecstore_by_id')->with(self::VECSTOREID)->willReturn($vecstore);
+        $vecstorefactory->method('get_primary_instance')->willReturn($instance);
         \core\di::set(vecstore_factory::class, $vecstorefactory);
         return $vecstore;
     }
@@ -89,6 +92,7 @@ final class index_service_test extends \advanced_testcase {
         $this->setAdminUser();
         $this->mock_current_model('model-b');
         $source = $this->create_indexed_source(['model-a']);
+        $this->mock_vecstore();
 
         $state = \core\di::get(index_service::class)->start($source)->to_array();
 
@@ -119,6 +123,48 @@ final class index_service_test extends \advanced_testcase {
         \core\di::get(index_service::class)->start($source);
 
         $this->assertSame(self::VECSTOREID, source::get_record(['id' => $source->get_id()])->get_vecstoreid());
+    }
+
+    /**
+     * A source indexed in another vector store than the primary one is moved to the primary vector store when indexing
+     * starts: its vectors in the former vector store are deleted and all its indexes are reset.
+     */
+    public function test_start_moves_source_to_primary_vecstore(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $this->mock_current_model('model-b');
+        $formervecstoreid = self::VECSTOREID + 1;
+        $source = $this->create_indexed_source(['model-a', 'model-b'], $formervecstoreid);
+        $this->mock_vecstore();
+
+        \core\di::get(index_service::class)->start($source);
+
+        $this->assertSame(self::VECSTOREID, source::get_record(['id' => $source->get_id()])->get_vecstoreid());
+        $indexes = model_index::get_for_sources([$source->get_id()])[$source->get_id()];
+        $this->assertSame(['model-b'], array_keys($indexes));
+        $this->assertSame(model_index::STATUS_QUEUED, $indexes['model-b']->get_status());
+        $tasks = $DB->get_records('task_adhoc', ['classname' => '\\' . \local_ai_content\task\delete_vectors_adhoc::class]);
+        $this->assertCount(1, $tasks);
+        $this->assertSame(
+            ['vecstoreid' => $formervecstoreid, 'sourceids' => [$source->get_id()]],
+            json_decode(reset($tasks)->customdata, true)
+        );
+    }
+
+    /**
+     * Without primary vector store no source can be indexed, also not a source already bound to a vector store.
+     */
+    public function test_start_requires_primary_vecstore(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $this->mock_current_model('model-a');
+        $source = $this->create_indexed_source(['model-a']);
+
+        $this->expectException(\moodle_exception::class);
+        $this->expectExceptionMessage(get_string('exception_noprimaryvecstore', 'local_ai_manager'));
+        \core\di::get(index_service::class)->start($source);
     }
 
     /**

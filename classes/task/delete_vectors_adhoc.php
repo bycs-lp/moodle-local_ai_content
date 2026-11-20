@@ -31,7 +31,8 @@ class delete_vectors_adhoc extends \core\task\adhoc_task {
      * Factory with typed custom data.
      *
      * @param int $vecstoreid The vector store instance id holding the vectors.
-     * @param int[] $sourceids The ids of the deleted sources.
+     * @param int[] $sourceids The ids of the sources whose vectors are deleted (deleted sources or sources moved to another
+     *  vector store).
      * @return self Task instance ready to be queued.
      */
     public static function instance(int $vecstoreid, array $sourceids): self {

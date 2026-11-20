@@ -57,16 +57,18 @@ class source_management_service {
      * Return the module and document sources of a course for the management UI.
      *
      * @param \context_course $coursecontext The context of the course whose sources are managed.
-     * @return array Course context id, whether global sources may be managed, whether sources can be indexed and the rows
-     *     of modules, global and course documents.
+     * @return array Course context id, whether global sources may be managed, whether sources can be indexed (and if not,
+     *     why not) and the rows of modules, global and course documents.
      */
     public function get_overview(\context_course $coursecontext): array {
         $canmanageglobalsources = $this->accessguard->can_manage_global_sources();
+        $indexingunavailablereason = $this->indexservice->get_indexing_unavailable_reason($coursecontext->id);
 
         return [
             'courseContextId' => $coursecontext->id,
             'canManageGlobalSources' => $canmanageglobalsources,
-            'indexingAvailable' => $this->indexservice->is_indexing_available($coursecontext->id),
+            'indexingAvailable' => $indexingunavailablereason === null,
+            'indexingUnavailableReason' => $indexingunavailablereason,
             'items' => [
                 'modules' => $this->get_module_rows($coursecontext),
                 'globalDocuments' => $this->get_document_rows(SYSCONTEXTID, $canmanageglobalsources),

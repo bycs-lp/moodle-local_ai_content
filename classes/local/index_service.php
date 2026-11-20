@@ -42,6 +42,12 @@ class index_service {
     /** @var string Name of the purpose creating the embeddings. */
     private const PURPOSE_EMBEDDING = 'embedding';
 
+    /** @var string Reason why indexing is not available: the tenant has no primary vector store. */
+    public const UNAVAILABLE_NOVECSTORE = 'novecstore';
+
+    /** @var string Reason why indexing is not available: the purpose "embedding" is not available for the current user. */
+    public const UNAVAILABLE_NOEMBEDDING = 'noembedding';
+
     /**
      * Constructor.
      *
@@ -68,29 +74,41 @@ class index_service {
     /**
      * Whether the current user can index sources in the given context.
      *
-     * Indexing needs a primary vector store of the tenant and the purpose "embedding" being available for the current user
-     * (assigned AI tool, not restricted, request limit not reached).
-     *
      * @param int $contextid The context id the sources are managed in.
      * @return bool True if sources can be indexed.
      */
     public function is_indexing_available(int $contextid): bool {
+        return $this->get_indexing_unavailable_reason($contextid) === null;
+    }
+
+    /**
+     * Returns why the current user cannot index sources in the given context.
+     *
+     * Indexing needs a primary vector store of the tenant and the purpose "embedding" being available for the current user
+     * (assigned AI tool, not restricted, request limit not reached).
+     *
+     * @param int $contextid The context id the sources are managed in.
+     * @return ?string One of the UNAVAILABLE_* constants, null if sources can be indexed.
+     */
+    public function get_indexing_unavailable_reason(int $contextid): ?string {
         global $USER;
 
         if ($this->vecstorefactory->find_primary_instance() === null) {
-            return false;
+            return self::UNAVAILABLE_NOVECSTORE;
         }
         $aiconfig = ai_manager_utils::get_ai_config($USER, $contextid, null, [self::PURPOSE_EMBEDDING]);
         if ($aiconfig['availability']['available'] !== ai_manager_utils::AVAILABILITY_AVAILABLE) {
-            return false;
+            return self::UNAVAILABLE_NOEMBEDDING;
         }
         foreach ($aiconfig['purposes'] as $purposeconfig) {
             if ($purposeconfig['purpose'] === self::PURPOSE_EMBEDDING) {
-                return $purposeconfig['available'] === ai_manager_utils::AVAILABILITY_AVAILABLE;
+                return $purposeconfig['available'] === ai_manager_utils::AVAILABILITY_AVAILABLE
+                    ? null
+                    : self::UNAVAILABLE_NOEMBEDDING;
             }
         }
         // The purpose subplugin is not installed.
-        return false;
+        return self::UNAVAILABLE_NOEMBEDDING;
     }
 
     /**
@@ -114,13 +132,15 @@ class index_service {
     /**
      * Queue an indexing task for one source with the embedding model of the current user.
      *
-     * A source not bound to a vector store yet is bound to the current primary vector store, all its vectors
-     * are stored there. Indexes of other embedding models are kept.
+     * The vectors of a source are always stored in the current primary vector store. A source not bound to it yet (not
+     * indexed so far or indexed in a former primary vector store) is bound to it: its vectors in the former vector store are
+     * deleted and the indexes of all embedding models are reset, so only the index of the current user is created again.
+     * Otherwise the indexes of other embedding models are kept.
      *
      * @param source $source The source to index.
      * @return index_state The resulting state.
      * @throws \invalid_parameter_exception If the source is disabled.
-     * @throws \moodle_exception If the current user has no embedding model.
+     * @throws \moodle_exception If the current user has no embedding model or the tenant has no primary vector store.
      */
     public function start(source $source): index_state {
         global $DB, $USER;
@@ -132,13 +152,19 @@ class index_service {
         if ($model === null) {
             throw new \moodle_exception('error_noembeddingmodel', 'local_ai_content');
         }
-
-        if (!$source->get_vecstoreid()) {
-            $source->set_vecstoreid($this->vecstorefactory->get_primary_instance()->get_id());
-        }
+        $primaryid = $this->vecstorefactory->get_primary_instance()->get_id();
 
         // The task must not see the index before it is bound to the task.
         $transaction = $DB->start_delegated_transaction();
+        $formervecstoreid = $source->get_vecstoreid();
+        if ($formervecstoreid !== $primaryid) {
+            if ($formervecstoreid !== null) {
+                // Deleted by a task, so an unreachable former vector store does not block the indexing.
+                \core\task\manager::queue_adhoc_task(delete_vectors_adhoc::instance($formervecstoreid, [$source->get_id()]));
+                $DB->delete_records('local_ai_content_index', ['sourceid' => $source->get_id()]);
+            }
+            $source->set_vecstoreid($primaryid);
+        }
         $source->store();
 
         $task = new index_source_adhoc();
