@@ -49,8 +49,9 @@ no `dimensions` field anymore.
 | `contenthash`, `lastindexed` | last successful run |
 | `usermodified` | user who started the last run (pays for it) |
 
-`local_ai_content_sources` keeps `vecstoreid` and `allowindex`: all model indexes of a source live in the same vecstore
-instance, one collection per model. External sources get `externalcollection` and `externalmodel`.
+`local_ai_content_sources` keeps `vecstoreid`: all model indexes of a source live in the same vecstore
+instance, one collection per model. A source is indexed if it has at least one model index. External sources get
+`externalcollection` and `externalmodel`.
 
 ## Vecstore API (`base_vecstore`)
 - `insert_embeddings(string $model, array $embeddings)`: creates and registers the model collection if missing,
@@ -62,13 +63,13 @@ instance, one collection per model. External sources get `externalcollection` an
 - Subplugins (Qdrant, Postgres) only receive the collection name.
 
 ## Indexing (`index_service`)
-- **Start** (switch on, new run or "Index with my embedding model"): queues an index task for the model of the current
+- **Start** (sharing the source, "Make searchable" or "Index with my embedding model"): queues an index task for the model of the current
   user and adds or restarts this model's index. Indexes of other models stay.
 - **Content change** (document sources): the source is re-indexed with the model of the editing user; indexes of other
   models are outdated and get deleted. Managers with these models have to index the source again.
 - **Content change** (module sources, `course_module_updated`): indexes whose `contenthash` differs from the current
   content are marked `outdated`; they stay searchable until a manager re-indexes them with their model.
-- **Stop** (switch off): vectors and indexes of all models are deleted, the source is unbound from its vecstore.
+- **Stop** (stop sharing the source): vectors and indexes of all models are deleted, the source is unbound from its vecstore.
 - The task fails if the user's embedding model changed between queuing and running.
 
 ## Retrieval (`rag_manager`)

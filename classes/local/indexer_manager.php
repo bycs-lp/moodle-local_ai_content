@@ -66,7 +66,7 @@ class indexer_manager {
      * @throws \moodle_exception If the source cannot be indexed.
      */
     public function index_single_source(source $source, model_index $index, manager $embeddingmanager): void {
-        if (!$source->get_allowindex()) {
+        if (!$source->get_enabled()) {
             return;
         }
 

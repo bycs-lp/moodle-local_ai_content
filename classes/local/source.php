@@ -72,11 +72,8 @@ class source {
     /** @var ?int Vector store instance id (local_ai_manager_vecstore.id) holding this source's vectors. */
     protected ?int $vecstoreid = null;
 
-    /** @var bool Whether this source participates in RAG retrieval. */
+    /** @var bool Whether this source is shared with AI (content readable by AI features, indexable, selectable). */
     protected bool $enabled = true;
-
-    /** @var bool Whether this source can be indexed. */
-    protected bool $allowindex = false;
 
     /** @var int User id that last modified this record. */
     protected int $usermodified = 0;
@@ -130,7 +127,6 @@ class source {
         $record->citation = $this->citation !== null ? $this->citation->to_json() : null;
         $record->vecstoreid = $this->vecstoreid;
         $record->enabled = $this->enabled ? 1 : 0;
-        $record->allowindex = $this->allowindex ? 1 : 0;
         $record->usermodified = $this->usermodified ?: (int)$USER->id;
         $record->timemodified = $clock->time();
 
@@ -258,7 +254,6 @@ class source {
         $this->citation = source_citation::from_json($record->citation);
         $this->vecstoreid = $record->vecstoreid === null ? null : (int)$record->vecstoreid;
         $this->enabled = !empty($record->enabled);
-        $this->allowindex = !empty($record->allowindex);
         $this->usermodified = (int)$record->usermodified;
         $this->timecreated = (int)$record->timecreated;
         $this->timemodified = (int)$record->timemodified;
@@ -287,16 +282,6 @@ class source {
     /** @param int $contextid */
     public function set_contextid(int $contextid): void {
         $this->contextid = $contextid;
-    }
-
-    /** @return bool */
-    public function get_allowindex(): bool {
-        return $this->allowindex;
-    }
-
-    /** @param bool $allowindex */
-    public function set_allowindex(bool $allowindex): void {
-        $this->allowindex = $allowindex;
     }
 
     /** @return string */

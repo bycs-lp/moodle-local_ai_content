@@ -72,7 +72,6 @@ final class observer_test extends \advanced_testcase {
             'contextid' => $context->id,
             'sourcetype' => source::TYPE_MODULE,
             'cmid' => $book->cmid,
-            'allowindex' => true,
         ]);
         $generator->create_model_index(['sourceid' => $source->get_id()]);
 

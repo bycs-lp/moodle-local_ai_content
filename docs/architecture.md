@@ -126,7 +126,7 @@ local_ai_manager (infrastructure): embedding purpose/tool, vecstore subplugins (
 | Table | Content |
 |---|---|
 | `local_ai_content_cache` | Cache of extracted file texts (key: contenthash) – existed before RAG |
-| `local_ai_content_sources` | One row per source: `contextid`, `sourcetype`, `name`, `description`, `cmid`, `content`, `externalfilter`, `citation`, `vecstoreid`, `enabled`, `allowindex`, `externalcollection`, `externalmodel` |
+| `local_ai_content_sources` | One row per source: `contextid`, `sourcetype`, `name`, `description`, `cmid`, `content`, `externalfilter`, `citation`, `vecstoreid`, `enabled`, `externalcollection`, `externalmodel` |
 | `local_ai_content_index` | One row per source and embedding model: `status`, `taskid`, `error`, `debuginfo`, `contenthash`, `lastindexed`, `usermodified` |
 | `local_ai_content_selection` | Sources selected for RAG per context (`contextid`, `sourceid`), applies to all users of the context |
 
@@ -136,7 +136,14 @@ Source types (`source::TYPE_*`):
 - `external`: existing vectors in the collection `externalcollection` of a vecstore, created with `externalmodel`,
   identified by `externalfilter` (JSON).
 
-Fields: `enabled` = source active/selectable for AI access; `allowindex` = indexing switched on.
+Fields: `enabled` = source shared with AI (content readable by AI features, indexable, selectable). A source is indexed
+if it has rows in `local_ai_content_index`, there is no separate flag.
+The source management has one switch per source ("shared with AI"): switching it on sets `enabled` and, if indexing is
+available for the current user (primary vecstore of the tenant and purpose `embedding` available), starts the indexing
+right away. Otherwise the source is only shared (content readable via the extractors, not searchable) and can be indexed
+later ("Make searchable"). Switching it off stops the indexing and clears `enabled`.
+Other plugins check whether an activity is shared and read its text via `content_sharing::is_module_shared()` and
+`content_sharing::get_module_content()` (files: `document_extractor`).
 Index status per model: `queued` → `running` → `indexed` | `failed`; without any index the source is `idle`. The source
 management shows a summarized status (failed > running > queued > indexed) plus the status per model.
 
@@ -144,7 +151,8 @@ management shows a summarized status (failed > running > queued > indexed) plus 
 | Area | Classes |
 |---|---|
 | Records | `local\source` (record wrapper), `local\source_selection_store` (selection per context), `local\source_citation` |
-| Indexing | `local\index_service` (start/stop/allowindex/release/delete), `task\index_source_adhoc`, `task\delete_vectors_adhoc`, `local\indexer_manager` (chunk, embed, store), `local\index_state` (status DTO for the frontend) |
+| Public API | `content_sharing` (is an activity shared with AI, its text content; for other plugins), `document_extractor` (text of files) |
+| Indexing | `local\index_service` (start/stop/release/delete, indexing availability), `task\index_source_adhoc`, `task\delete_vectors_adhoc`, `local\indexer_manager` (chunk, embed, store), `local\index_state` (status DTO for the frontend) |
 | Extraction | `cm_content_extractor` + `contentextractor\cm_content_{page,label,book,lesson,resource,folder}`, `document_extractor` (files → text via ITT backend `local\backend\*`, cached) |
 | Retrieval | `local\rag_manager`, `local\search_query_builder`, `local\source_access`, `local\rag_result`, `local\source_reference` |
 | Selection/management | `local\source_selection_service`, `local\source_management_service` (module/document sources of a course) |
@@ -157,7 +165,8 @@ All services are obtained via DI with constructor injection, no static utilities
 | Frontend | `js/esm/src/source_manager.tsx` (management page), `js/esm/src/source_selector.tsx` + `source_selector/data_manager.ts` + `source_selection_modal_manager.ts` (selection), `amd/src/source_selector.js` (AMD shim for block_ai_chat) |
 
 ### 3.3 Indexing
-1. Teacher enables indexing on `manage_sources.php` → `PUT /sources/{id}/index-state` → `index_service::start()`:
+1. Teacher shares a source on `manage_sources.php` (`PATCH …/module-sources/{cmId}` or `…/document-sources/{id}`) or
+   clicks "Make searchable"/"Index with my embedding model" (`POST /sources/{id}/index`) → `index_service::start()`:
    bind primary vecstore, queue `index_source_adhoc` (as triggering user, with the user's embedding model), index of this
    model `queued`. Indexes of other models stay. A content change of a document source re-indexes it with the editing
    user's model and deletes the indexes of other models.
@@ -246,10 +255,10 @@ All services are obtained via DI with constructor injection, no static utilities
 | Method + path | Purpose | Permission |
 |---|---|---|
 | `GET contexts/{contextId}/sources` | Data of the management page | `managesources` (course) |
-| `PATCH contexts/{contextId}/module-sources/{cmId}` | Enable/disable activity (creates source) | `managesources` |
+| `PATCH contexts/{contextId}/module-sources/{cmId}` | Share/stop sharing activity (creates source, indexes if available) | `managesources` |
 | `POST contexts/{contextId}/document-sources` | Create document (`scope`: course/global) | `managesources`, global additionally in system context |
 | `PATCH`/`DELETE contexts/{contextId}/document-sources/{sourceId}` | Update/delete document | as above |
-| `PUT sources/{sourceId}/index-state` | Allow/stop indexing | `managesources` in source context |
+| `POST sources/{sourceId}/index` | Index with the embedding model of the current user | `managesources` in source context |
 | `GET contexts/{contextId}/index-states` | Status polling | `managesources` |
 | `GET contexts/{contextId}/source-selections` | Read selection (`canSelect` flag for the UI) | `usesource` + course access |
 | `PUT contexts/{contextId}/source-selections` | Replace selection | additionally `selectsources` in the selection context |

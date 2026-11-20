@@ -73,7 +73,6 @@ final class index_service_test extends \advanced_testcase {
         $source = $generator->create_source([
             'contextid' => \context_system::instance()->id,
             'content' => 'Sample content',
-            'allowindex' => !empty($models),
             'vecstoreid' => $vecstoreid,
         ]);
         foreach ($models as $model) {
@@ -100,7 +99,7 @@ final class index_service_test extends \advanced_testcase {
         $this->assertNotNull($indexes['model-b']->get_taskid());
         $this->assertSame(model_index::STATUS_QUEUED, $state['status']);
         $this->assertFalse($state['canIndexCurrentModel']);
-        $this->assertTrue(source::get_record(['id' => $source->get_id()])->get_allowindex());
+        $this->assertTrue($state['hasIndex']);
     }
 
     /**
@@ -153,7 +152,6 @@ final class index_service_test extends \advanced_testcase {
         $this->assertSame([], model_index::get_for_sources([$source->get_id()]));
         $reloaded = source::get_record(['id' => $source->get_id()]);
         $this->assertNull($reloaded->get_vecstoreid());
-        $this->assertFalse($reloaded->get_allowindex());
     }
 
     /**
@@ -206,7 +204,6 @@ final class index_service_test extends \advanced_testcase {
         $source = $generator->create_source([
             'contextid' => \context_system::instance()->id,
             'content' => 'Current content',
-            'allowindex' => true,
             'vecstoreid' => self::VECSTOREID,
         ]);
         $currenthash = $reader->get_content_hash($source);
@@ -247,7 +244,6 @@ final class index_service_test extends \advanced_testcase {
             'contextid' => $cm->context->id,
             'sourcetype' => source::TYPE_MODULE,
             'cmid' => $cm->id,
-            'allowindex' => true,
             'vecstoreid' => self::VECSTOREID,
         ]);
         $reader = \core\di::get(source_content_reader::class);

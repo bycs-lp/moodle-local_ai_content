@@ -42,8 +42,8 @@ class cleanup_cache extends \core\task\scheduled_task {
      * Execute the cache cleanup.
      *
      * Deletes cache entries where timelastaccessed is older than the configured TTL. Entries of files in course modules
-     * with an indexable source are kept: indexing them again (e.g. with another embedding model or after a change of
-     * the module) would otherwise repeat the expensive AI extraction of files that have not changed.
+     * with a source shared with AI are kept: reading or indexing them again (e.g. with another embedding model or after a
+     * change of the module) would otherwise repeat the expensive AI extraction of files that have not changed.
      */
     public function execute(): void {
         global $DB;
@@ -60,7 +60,7 @@ class cleanup_cache extends \core\task\scheduled_task {
                          JOIN {context} ctx ON ctx.id = f.contextid AND ctx.contextlevel = :contextlevel
                          JOIN {local_ai_content_sources} s ON s.cmid = ctx.instanceid
                         WHERE f.contenthash = {local_ai_content_cache}.contenthash
-                              AND s.sourcetype = :sourcetype AND s.allowindex = 1
+                              AND s.sourcetype = :sourcetype AND s.enabled = 1
                    )";
         $params = [
             'cutoff' => $cutoff,

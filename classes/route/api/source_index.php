@@ -19,10 +19,7 @@ namespace local_ai_content\route\api;
 use core\output\stored_progress_bar;
 use core\param;
 use core\router\route;
-use core\router\schema\objects\scalar_type;
-use core\router\schema\objects\schema_object;
 use core\router\schema\parameters\path_parameter;
-use core\router\schema\response\content\payload_response_type;
 use core\router\schema\response\payload_response;
 use core\router\schema\response\response as route_response;
 use local_ai_content\local\access_guard;
@@ -56,7 +53,7 @@ class source_index {
     }
 
     /**
-     * Switch indexing on or off for one source.
+     * Index one source with the embedding model of the current user.
      *
      * @param ServerRequestInterface $request The request.
      * @param ResponseInterface $response The response.
@@ -64,10 +61,11 @@ class source_index {
      * @return payload_response
      */
     #[route(
-        path: '/sources/{sourceId}/index-state',
-        method: ['PUT'],
-        title: 'Set source indexing state',
-        description: 'Queues or cancels indexing of one source and returns the resulting index state.',
+        path: '/sources/{sourceId}/index',
+        method: ['POST'],
+        title: 'Index source',
+        description: 'Queues the indexing of one source with the embedding model of the current user and returns the '
+            . 'resulting index state.',
         pathtypes: [
             new path_parameter(
                 name: 'sourceId',
@@ -75,27 +73,17 @@ class source_index {
                 description: 'The source ID.',
             ),
         ],
-        requestbody: new \core\router\schema\request_body(
-            content: new payload_response_type(
-                schema: new schema_object([
-                    'allowIndex' => new scalar_type(param::BOOL, true),
-                ]),
-            ),
-        ),
         responses: [
             new route_response(statuscode: 200, description: 'OK'),
         ],
     )]
-    public function set_index_state(
+    public function index_source(
         ServerRequestInterface $request,
         ResponseInterface $response,
         int $sourceId,
     ): payload_response {
-        $body = (array) $request->getParsedBody();
-        $allowindex = (int) clean_param((string) ($body['allowIndex'] ?? ''), PARAM_BOOL) === 1;
-
         return new payload_response(
-            payload: $this->indexservice->set_allow_index($sourceId, $allowindex)->to_array(),
+            payload: $this->indexservice->start_by_id($sourceId)->to_array(),
             request: $request,
             response: $response,
         );

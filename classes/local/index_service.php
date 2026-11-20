@@ -19,6 +19,7 @@ namespace local_ai_content\local;
 use local_ai_content\task\check_source_changes_adhoc;
 use local_ai_content\task\delete_vectors_adhoc;
 use local_ai_content\task\index_source_adhoc;
+use local_ai_manager\ai_manager_utils;
 use local_ai_manager\base_vecstore;
 use local_ai_manager\local\vecstore_factory;
 
@@ -37,6 +38,9 @@ use local_ai_manager\local\vecstore_factory;
 class index_service {
     /** @var int Number of sources whose vectors are deleted with one vector store request. */
     private const DELETE_CHUNK_SIZE = 500;
+
+    /** @var string Name of the purpose creating the embeddings. */
+    private const PURPOSE_EMBEDDING = 'embedding';
 
     /**
      * Constructor.
@@ -62,22 +66,49 @@ class index_service {
     }
 
     /**
-     * Switch indexing on or off for one source, enforcing management access.
+     * Whether the current user can index sources in the given context.
      *
-     * Switching indexing on while it is already on adds or restarts the index for the embedding model of the current user.
+     * Indexing needs a primary vector store of the tenant and the purpose "embedding" being available for the current user
+     * (assigned AI tool, not restricted, request limit not reached).
+     *
+     * @param int $contextid The context id the sources are managed in.
+     * @return bool True if sources can be indexed.
+     */
+    public function is_indexing_available(int $contextid): bool {
+        global $USER;
+
+        if ($this->vecstorefactory->find_primary_instance() === null) {
+            return false;
+        }
+        $aiconfig = ai_manager_utils::get_ai_config($USER, $contextid, null, [self::PURPOSE_EMBEDDING]);
+        if ($aiconfig['availability']['available'] !== ai_manager_utils::AVAILABILITY_AVAILABLE) {
+            return false;
+        }
+        foreach ($aiconfig['purposes'] as $purposeconfig) {
+            if ($purposeconfig['purpose'] === self::PURPOSE_EMBEDDING) {
+                return $purposeconfig['available'] === ai_manager_utils::AVAILABILITY_AVAILABLE;
+            }
+        }
+        // The purpose subplugin is not installed.
+        return false;
+    }
+
+    /**
+     * Index one source with the embedding model of the current user, enforcing management access.
+     *
+     * Adds or restarts the index for the embedding model of the current user, see {@see self::start()}.
      *
      * @param int $sourceid The source record id.
-     * @param bool $allowindex Whether indexing should be switched on.
      * @return index_state The resulting state.
      */
-    public function set_allow_index(int $sourceid, bool $allowindex): index_state {
+    public function start_by_id(int $sourceid): index_state {
         $source = source::get_record(['id' => $sourceid]);
         if ($source === null) {
             throw new \invalid_parameter_exception('Source not found.');
         }
         $this->accessguard->require_manage_access_for_source($source);
 
-        return $allowindex ? $this->start($source) : $this->stop($source);
+        return $this->start($source);
     }
 
     /**
@@ -108,7 +139,6 @@ class index_service {
 
         // The task must not see the index before it is bound to the task.
         $transaction = $DB->start_delegated_transaction();
-        $source->set_allowindex(true);
         $source->store();
 
         $task = new index_source_adhoc();
@@ -146,7 +176,6 @@ class index_service {
         $DB->delete_records('local_ai_content_index', ['sourceid' => $source->get_id()]);
 
         $source->set_vecstoreid(null);
-        $source->set_allowindex(false);
         $source->store();
 
         return $this->get_state($source);
@@ -191,7 +220,7 @@ class index_service {
         $sourceid = $DB->get_field_sql(
             'SELECT s.id
                FROM {local_ai_content_sources} s
-              WHERE s.cmid = :cmid AND s.sourcetype = :module AND s.allowindex = 1
+              WHERE s.cmid = :cmid AND s.sourcetype = :module
                     AND EXISTS (SELECT 1 FROM {local_ai_content_index} i WHERE i.sourceid = s.id AND i.status = :indexed)',
             ['cmid' => $cmid, 'module' => source::TYPE_MODULE, 'indexed' => model_index::STATUS_INDEXED],
             IGNORE_MULTIPLE
@@ -213,8 +242,8 @@ class index_service {
         global $DB;
 
         $source = source::get_record(['id' => $sourceid]);
-        // The source may have been deleted or switched off since the check has been queued.
-        if ($source === null || !$source->get_allowindex()) {
+        // The source may have been deleted since the check has been queued. Stopping the indexing deletes the indexes.
+        if ($source === null) {
             return;
         }
         $indexes = array_filter(
@@ -350,7 +379,7 @@ class index_service {
             "sourceid IN (SELECT id FROM {local_ai_content_sources} WHERE {$select})", $params);
         $DB->execute(
             "UPDATE {local_ai_content_sources}
-                SET vecstoreid = NULL, allowindex = 0, timemodified = :now
+                SET vecstoreid = NULL, timemodified = :now
               WHERE {$select}",
             $params + ['now' => $now],
         );

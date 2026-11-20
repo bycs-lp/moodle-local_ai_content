@@ -63,7 +63,7 @@ final class index_state_test extends \advanced_testcase {
 
         /** @var \local_ai_content_generator $generator */
         $generator = $this->getDataGenerator()->get_plugin_generator('local_ai_content');
-        $source = $generator->create_source(['contextid' => \context_system::instance()->id, 'allowindex' => true]);
+        $source = $generator->create_source(['contextid' => \context_system::instance()->id]);
         $indexes = [];
         foreach ($statuses as $model => $status) {
             $indexes[$model] = $generator->create_model_index([
@@ -81,14 +81,14 @@ final class index_state_test extends \advanced_testcase {
     }
 
     /**
-     * A failed index of the model of the current user can be restarted, a disabled source cannot be indexed at all.
+     * A failed index of the model of the current user can be restarted, a source without index is not indexed with it.
      */
     public function test_from_source_can_index_current_model(): void {
         $this->resetAfterTest();
 
         /** @var \local_ai_content_generator $generator */
         $generator = $this->getDataGenerator()->get_plugin_generator('local_ai_content');
-        $source = $generator->create_source(['contextid' => \context_system::instance()->id, 'allowindex' => true]);
+        $source = $generator->create_source(['contextid' => \context_system::instance()->id]);
         $failed = $generator->create_model_index([
             'sourceid' => $source->get_id(),
             'embeddingmodel' => 'a',
@@ -98,7 +98,8 @@ final class index_state_test extends \advanced_testcase {
         $this->assertTrue(index_state::from_source($source, ['a' => $failed], 'a')->to_array()['canIndexCurrentModel']);
         $this->assertFalse(index_state::from_source($source, ['a' => $failed], null)->to_array()['canIndexCurrentModel']);
 
-        $source->set_allowindex(false);
-        $this->assertFalse(index_state::from_source($source, [], 'a')->to_array()['canIndexCurrentModel']);
+        $state = index_state::from_source($source, [], 'a')->to_array();
+        $this->assertFalse($state['canIndexCurrentModel']);
+        $this->assertFalse($state['hasIndex']);
     }
 }

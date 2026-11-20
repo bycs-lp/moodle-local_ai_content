@@ -52,7 +52,7 @@ class index_state {
      *
      * @param int $sourceid Source record id, 0 when no source record exists yet.
      * @param string $status Summarized status, one of the model_index::STATUS_* values or self::STATUS_IDLE.
-     * @param bool $allowindex Whether indexing is currently switched on.
+     * @param bool $hasindex Whether the source has an index of any embedding model, i.e. indexing is switched on.
      * @param float $percent Progress of the indexing task of the summarizing index in percent.
      * @param string $message Progress or error message of the summarizing index.
      * @param string $debuginfo Technical failure details, empty unless developer debugging is enabled.
@@ -66,8 +66,8 @@ class index_state {
         private readonly int $sourceid,
         /** @var string Summarized status. */
         private readonly string $status,
-        /** @var bool Whether indexing is switched on. */
-        private readonly bool $allowindex,
+        /** @var bool Whether the source has an index of any embedding model. */
+        private readonly bool $hasindex,
         /** @var float Task progress in percent. */
         private readonly float $percent,
         /** @var string Task progress or error message. */
@@ -106,13 +106,14 @@ class index_state {
             }
         }
 
+        $hasindex = !empty($indexes);
         $currentindex = $currentmodel === null ? null : ($indexes[$currentmodel] ?? null);
-        $canindexcurrentmodel = $source->get_allowindex() && $currentmodel !== null
+        $canindexcurrentmodel = $hasindex && $currentmodel !== null
             && ($currentindex === null
                 || in_array($currentindex->get_status(), [model_index::STATUS_FAILED, model_index::STATUS_OUTDATED], true));
 
         if ($summarizing === null) {
-            return new self($source->get_id(), self::STATUS_IDLE, $source->get_allowindex(), 0.0, '', '', 0, [],
+            return new self($source->get_id(), self::STATUS_IDLE, false, 0.0, '', '', 0, [],
                 $currentmodel, $canindexcurrentmodel);
         }
 
@@ -121,7 +122,7 @@ class index_state {
         return new self(
             $source->get_id(),
             $summarizing->get_status(),
-            $source->get_allowindex(),
+            $hasindex,
             $progress['percent'],
             // A failed run stores its message on the index record because stored progress truncates.
             $failed ? (string) $summarizing->get_error() : $progress['message'],
@@ -152,6 +153,15 @@ class index_state {
     }
 
     /**
+     * Whether the source has an index of any embedding model, i.e. indexing is switched on.
+     *
+     * @return bool True if the source has an index.
+     */
+    public function has_index(): bool {
+        return $this->hasindex;
+    }
+
+    /**
      * Convert this state into the API representation.
      *
      * @return array The API representation.
@@ -161,7 +171,7 @@ class index_state {
             'sourceId' => $this->sourceid,
             'status' => $this->status,
             'statusLabel' => get_string('indexingstatus_' . $this->status, 'local_ai_content'),
-            'allowIndex' => $this->allowindex,
+            'hasIndex' => $this->hasindex,
             'percent' => $this->percent,
             'message' => $this->message,
             'debugInfo' => $this->debuginfo,

@@ -45,7 +45,7 @@ type IndexState = {
     sourceId: number;
     status: 'idle' | 'queued' | 'running' | 'indexed' | 'failed' | 'outdated';
     statusLabel: string;
-    allowIndex: boolean;
+    hasIndex: boolean;
     percent: number;
     message: string;
     debugInfo: string;
@@ -78,6 +78,7 @@ type DocumentSource = {
 type SourceManagementResponse = {
     courseContextId: number;
     canManageGlobalSources: boolean;
+    indexingAvailable: boolean;
     items: {
         modules: ModuleSource[];
         globalDocuments: DocumentSource[];
@@ -180,6 +181,42 @@ function IndexStatusCell({state, disabled, onIndexCurrentModel}: {
                     onClick={onIndexCurrentModel}
                 >
                     <MoodleString identifier='indexwithmymodel' component='local_ai_content' params={state.currentModel}/>
+                </button>
+            )}
+        </>
+    );
+}
+
+/**
+ * Renders the status of a source shared with AI: the indexing state if the source is indexed, otherwise a hint that the
+ * source is only shared but cannot be searched, with the action to index it if indexing is available.
+ */
+function SharingStatusCell({state, indexingAvailable, disabled, onIndex}: {
+    state: IndexState;
+    indexingAvailable: boolean;
+    disabled: boolean;
+    onIndex: () => void;
+}) {
+    if (state.hasIndex) {
+        return <IndexStatusCell state={state} disabled={disabled} onIndexCurrentModel={onIndex}/>;
+    }
+
+    return (
+        <>
+            <span className='badge badge-light'>
+                <MoodleString identifier='sharednotsearchable' component='local_ai_content'/>
+            </span>
+            <div className='small text-muted mt-1'>
+                <MoodleString identifier='sharednotsearchable_desc' component='local_ai_content'/>
+            </div>
+            {indexingAvailable && (
+                <button
+                    type='button'
+                    className='btn btn-link btn-sm p-0 mt-1'
+                    disabled={disabled}
+                    onClick={onIndex}
+                >
+                    <MoodleString identifier='makesearchable' component='local_ai_content'/>
                 </button>
             )}
         </>
@@ -308,14 +345,14 @@ export default function SourceManager({contextid}: Props) {
         }
     };
 
-    /** Start or stop indexing; the response is the new index state of that source. */
-    const handleAllowIndexToggle = async (sourceId: number, allowIndex: boolean) => {
+    /** Index a source with the embedding model of the current user; the response is the new index state of that source. */
+    const handleIndex = async (sourceId: number) => {
         setSaving(true);
         setError(null);
         try {
-            applyIndexStates([await apiRequest<IndexState>('PUT', `sources/${sourceId}/index-state`, {allowIndex})]);
+            applyIndexStates([await apiRequest<IndexState>('POST', `sources/${sourceId}/index`)]);
         } catch (error_) {
-            setError(`Der Indizierungsstatus konnte nicht geändert werden: ${getErrorMessage(error_)}`);
+            setError(`Die Indizierung konnte nicht gestartet werden: ${getErrorMessage(error_)}`);
         } finally {
             setSaving(false);
         }
@@ -419,6 +456,11 @@ export default function SourceManager({contextid}: Props) {
 
     return (
         <div className='local-ai-content-source-manager'>
+            {!payload.indexingAvailable && (
+                <div className='alert alert-info' role='status'>
+                    <MoodleString identifier='searchnotavailable' component='local_ai_content'/>
+                </div>
+            )}
             <section className='mb-4'>
                 <div className='d-flex justify-content-between align-items-center mb-2'>
                     <h5 className='mb-0'>Dokumente</h5>
@@ -437,8 +479,7 @@ export default function SourceManager({contextid}: Props) {
                             <th>Name</th>
                             <th>Beschreibung</th>
                             <th>Geltungsbereich</th>
-                            <th>Für KI-Zugriff aktiv</th>
-                            <th>In Vektorstore indizieren</th>
+                            <th>Für KI freigegeben</th>
                             <th>Status</th>
                             <th>Last indexed</th>
                             <th>Aktionen</th>
@@ -474,38 +515,21 @@ export default function SourceManager({contextid}: Props) {
                                                     {enabled: !row.enabled},
                                                 );
                                             }}
-                                            aria-label={`Dokument ${row.name} für KI-Zugriff aktivieren`}
+                                            aria-label={`Dokument ${row.name} für KI freigeben`}
                                         />
                                     </div>
                                 </td>
-                                <td>
-                                    {row.enabled && (
-                                        <div className='form-check form-switch m-0'>
-                                            <input
-                                                id={`document-index-${row.id}`}
-                                                className='form-check-input'
-                                                type='checkbox'
-                                                role='switch'
-                                                checked={row.indexState.allowIndex}
-                                                disabled={saving || !row.canEdit || isActive(row.indexState)}
-                                                onChange={() => {
-                                                    void handleAllowIndexToggle(row.id, !row.indexState.allowIndex);
-                                                }}
-                                                aria-label={`Dokument ${row.name} in Vektorstore indizieren`}
-                                            />
-                                        </div>
-                                    )}
-                                </td>
                                 <td>{row.enabled && (
-                                    <IndexStatusCell
+                                    <SharingStatusCell
                                         state={row.indexState}
+                                        indexingAvailable={payload.indexingAvailable}
                                         disabled={saving || !row.canEdit}
-                                        onIndexCurrentModel={() => {
-                                            void handleAllowIndexToggle(row.id, true);
+                                        onIndex={() => {
+                                            void handleIndex(row.id);
                                         }}
                                     />
                                 )}</td>
-                                <td>{row.enabled && formatTimestamp(row.indexState.lastIndexedAt)}</td>
+                                <td>{row.enabled && row.indexState.hasIndex && formatTimestamp(row.indexState.lastIndexedAt)}</td>
                                 <td>
                                     {row.canEdit && (
                                         <div className='d-flex gap-1'>
@@ -545,7 +569,7 @@ export default function SourceManager({contextid}: Props) {
                         ))}
                         {documentRows.length === 0 && (
                             <tr>
-                                <td colSpan={8} className='text-muted'>Keine Dokumente vorhanden.</td>
+                                <td colSpan={7} className='text-muted'>Keine Dokumente vorhanden.</td>
                             </tr>
                         )}
                     </tbody>
@@ -559,8 +583,7 @@ export default function SourceManager({contextid}: Props) {
                         <tr>
                             <th>Aktivität</th>
                             <th>Typ</th>
-                            <th>Für KI-Zugriff aktiv</th>
-                            <th>In Vektorstore indizieren</th>
+                            <th>Für KI freigegeben</th>
                             <th>Status</th>
                             <th>Last indexed</th>
                         </tr>
@@ -586,43 +609,26 @@ export default function SourceManager({contextid}: Props) {
                                                     {enabled: !row.enabled},
                                                 );
                                             }}
-                                            aria-label={`Aktivität ${row.name} für KI-Zugriff aktivieren`}
+                                            aria-label={`Aktivität ${row.name} für KI freigeben`}
                                         />
                                     </div>
                                 </td>
-                                <td>
-                                    {row.enabled && (
-                                        <div className='form-check form-switch m-0'>
-                                            <input
-                                                id={`module-index-${row.cmId}`}
-                                                className='form-check-input'
-                                                type='checkbox'
-                                                role='switch'
-                                                checked={row.indexState.allowIndex}
-                                                disabled={saving || isActive(row.indexState)}
-                                                onChange={() => {
-                                                    void handleAllowIndexToggle(row.sourceId, !row.indexState.allowIndex);
-                                                }}
-                                                aria-label={`Aktivität ${row.name} in Vektorstore indizieren`}
-                                            />
-                                        </div>
-                                    )}
-                                </td>
                                 <td>{row.enabled && (
-                                    <IndexStatusCell
+                                    <SharingStatusCell
                                         state={row.indexState}
+                                        indexingAvailable={payload.indexingAvailable}
                                         disabled={saving}
-                                        onIndexCurrentModel={() => {
-                                            void handleAllowIndexToggle(row.sourceId, true);
+                                        onIndex={() => {
+                                            void handleIndex(row.sourceId);
                                         }}
                                     />
                                 )}</td>
-                                <td>{row.enabled && formatTimestamp(row.indexState.lastIndexedAt)}</td>
+                                <td>{row.enabled && row.indexState.hasIndex && formatTimestamp(row.indexState.lastIndexedAt)}</td>
                             </tr>
                         ))}
                         {payload.items.modules.length === 0 && (
                             <tr>
-                                <td colSpan={6} className='text-muted'>Keine unterstützten Aktivitäten gefunden.</td>
+                                <td colSpan={5} className='text-muted'>Keine unterstützten Aktivitäten gefunden.</td>
                             </tr>
                         )}
                     </tbody>

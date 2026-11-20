@@ -17,7 +17,6 @@
 namespace local_ai_content;
 
 use local_ai_content\local\model_index;
-use local_ai_content\local\source;
 use local_ai_content\task\index_source_adhoc;
 
 /**
@@ -45,7 +44,6 @@ final class index_source_adhoc_test extends \advanced_testcase {
         $source = $generator->create_source([
             'contextid' => \context_system::instance()->id,
             'content' => 'Sample content',
-            'allowindex' => true,
         ]);
         return $generator->create_model_index([
             'sourceid' => $source->get_id(),
@@ -158,7 +156,6 @@ final class index_source_adhoc_test extends \advanced_testcase {
 
         $this->assertSame(model_index::STATUS_FAILED, $reloaded->get_status());
         $this->assertSame(get_string('indexingerror_modelchanged', 'local_ai_content', self::MODEL), $reloaded->get_error());
-        $this->assertTrue(source::get_record(['id' => $index->get_sourceid()])->get_allowindex());
     }
 
     /**

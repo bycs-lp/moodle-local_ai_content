@@ -38,7 +38,6 @@ final class source_selection_service_test extends \advanced_testcase {
         $globalsource->set_sourcetype(source::TYPE_DOCUMENT);
         $globalsource->set_name('Global source');
         $globalsource->set_enabled(true);
-        $globalsource->set_allowindex(true);
         $globalsource->store();
         /** @var \local_ai_content_generator $generator */
         $generator = $this->getDataGenerator()->get_plugin_generator('local_ai_content');
@@ -130,7 +129,6 @@ final class source_selection_service_test extends \advanced_testcase {
         $globalsource->set_sourcetype($sourcetype);
         $globalsource->set_name('Global source');
         $globalsource->set_enabled($enabled);
-        $globalsource->set_allowindex(!empty($indexstatuses));
         $globalsource->store();
         /** @var \local_ai_content_generator $generator */
         $generator = $this->getDataGenerator()->get_plugin_generator('local_ai_content');
@@ -184,7 +182,7 @@ final class source_selection_service_test extends \advanced_testcase {
         \core\di::set(embedding_model_resolver::class, $resolver);
         /** @var \local_ai_content_generator $generator */
         $generator = $this->getDataGenerator()->get_plugin_generator('local_ai_content');
-        $globalsource = $generator->create_source(['contextid' => \context_system::instance()->id, 'allowindex' => true]);
+        $globalsource = $generator->create_source(['contextid' => \context_system::instance()->id]);
         foreach ($indexstatuses as $model => $status) {
             $generator->create_model_index([
                 'sourceid' => $globalsource->get_id(),
@@ -212,13 +210,13 @@ final class source_selection_service_test extends \advanced_testcase {
         /** @var \local_ai_content_generator $generator */
         $generator = $this->getDataGenerator()->get_plugin_generator('local_ai_content');
 
-        $valid = $generator->create_source(['contextid' => $systemcontextid, 'allowindex' => true]);
+        $valid = $generator->create_source(['contextid' => $systemcontextid]);
         $generator->create_model_index(['sourceid' => $valid->get_id()]);
         $notindexed = $generator->create_source(['contextid' => $systemcontextid]);
-        $disabled = $generator->create_source(['contextid' => $systemcontextid, 'enabled' => false, 'allowindex' => true]);
+        $disabled = $generator->create_source(['contextid' => $systemcontextid, 'enabled' => false]);
         $generator->create_model_index(['sourceid' => $disabled->get_id()]);
         // The user is not enrolled in the course, so the source is not accessible.
-        $inaccessible = $generator->create_source(['contextid' => $coursecontext->id, 'allowindex' => true]);
+        $inaccessible = $generator->create_source(['contextid' => $coursecontext->id]);
         $generator->create_model_index(['sourceid' => $inaccessible->get_id()]);
         $nonexistentid = $inaccessible->get_id() + 1000;
 
@@ -245,7 +243,7 @@ final class source_selection_service_test extends \advanced_testcase {
         $contextid = \context_system::instance()->id;
         /** @var \local_ai_content_generator $generator */
         $generator = $this->getDataGenerator()->get_plugin_generator('local_ai_content');
-        $source = $generator->create_source(['contextid' => $contextid, 'allowindex' => true]);
+        $source = $generator->create_source(['contextid' => $contextid]);
         $generator->create_model_index(['sourceid' => $source->get_id()]);
         $service = \core\di::get(source_selection_service::class);
         $service->save_selected_sourceids($contextid, (string)$source->get_id());

@@ -57,8 +57,8 @@ class source_management_service {
      * Return the module and document sources of a course for the management UI.
      *
      * @param \context_course $coursecontext The context of the course whose sources are managed.
-     * @return array Course context id, whether global sources may be managed and the rows of modules, global and
-     *     course documents.
+     * @return array Course context id, whether global sources may be managed, whether sources can be indexed and the rows
+     *     of modules, global and course documents.
      */
     public function get_overview(\context_course $coursecontext): array {
         $canmanageglobalsources = $this->accessguard->can_manage_global_sources();
@@ -66,6 +66,7 @@ class source_management_service {
         return [
             'courseContextId' => $coursecontext->id,
             'canManageGlobalSources' => $canmanageglobalsources,
+            'indexingAvailable' => $this->indexservice->is_indexing_available($coursecontext->id),
             'items' => [
                 'modules' => $this->get_module_rows($coursecontext),
                 'globalDocuments' => $this->get_document_rows(SYSCONTEXTID, $canmanageglobalsources),
@@ -75,27 +76,22 @@ class source_management_service {
     }
 
     /**
-     * Switch a module source on or off, creating the source if the module has none yet.
+     * Share a module source with AI or stop sharing it, creating the source if the module has none yet.
      *
-     * Switching a source off stops its indexing.
+     * See {@see self::set_source_enabled()}.
      *
      * @param \context_course $coursecontext The context of the course whose sources are managed.
      * @param int $cmid The course module id.
      * @param bool $enabled Whether the source is enabled.
      */
     public function set_module_enabled(\context_course $coursecontext, int $cmid, bool $enabled): void {
-        $modulesource = $this->get_or_create_module_source($coursecontext, $cmid);
-
-        if (!$enabled) {
-            $this->indexservice->stop($modulesource);
-        }
-
-        $modulesource->set_enabled($enabled);
-        $modulesource->store();
+        $this->set_source_enabled($coursecontext, $this->get_or_create_module_source($coursecontext, $cmid), $enabled);
     }
 
     /**
      * Create a document source in the course or, with the required capability, as global document.
+     *
+     * New documents are shared with AI right away, see {@see self::set_source_enabled()}.
      *
      * @param \context_course $coursecontext The context of the course whose sources are managed.
      * @param string $scope One of the SCOPE_* constants.
@@ -117,28 +113,21 @@ class source_management_service {
         $documentsource->set_name($name);
         $documentsource->set_description($description);
         $documentsource->set_content($content);
-        $documentsource->set_enabled(true);
-        $documentsource->set_allowindex(false);
+        $documentsource->set_enabled(false);
         $documentsource->store();
+        $this->set_source_enabled($coursecontext, $documentsource, true);
         return $documentsource;
     }
 
     /**
-     * Switch a document source on or off. Switching a source off stops its indexing.
+     * Share a document source with AI or stop sharing it, see {@see self::set_source_enabled()}.
      *
      * @param \context_course $coursecontext The context of the course whose sources are managed.
      * @param int $sourceid The document source id.
      * @param bool $enabled Whether the source is enabled.
      */
     public function set_document_enabled(\context_course $coursecontext, int $sourceid, bool $enabled): void {
-        $documentsource = $this->load_managed_document($coursecontext, $sourceid);
-
-        if (!$enabled) {
-            $this->indexservice->stop($documentsource);
-        }
-
-        $documentsource->set_enabled($enabled);
-        $documentsource->store();
+        $this->set_source_enabled($coursecontext, $this->load_managed_document($coursecontext, $sourceid), $enabled);
     }
 
     /**
@@ -172,7 +161,7 @@ class source_management_service {
         }
         $documentsource->store();
 
-        if ($contentchanged && $documentsource->get_allowindex()) {
+        if ($contentchanged && $this->indexservice->get_state($documentsource)->has_index()) {
             $this->indexservice->reindex_changed_source($documentsource);
         }
     }
@@ -282,6 +271,33 @@ class source_management_service {
     }
 
     /**
+     * Share a source with AI or stop sharing it.
+     *
+     * Sharing a source allows AI features to read its content. If the current user can index sources, the source is indexed
+     * right away so that it can also be searched (RAG). Otherwise it is only shared and can be indexed later. Stopping to
+     * share a source also removes its index.
+     *
+     * @param \context_course $coursecontext The context of the course whose sources are managed.
+     * @param source $source The module or document source.
+     * @param bool $enabled Whether the source is shared with AI.
+     */
+    private function set_source_enabled(\context_course $coursecontext, source $source, bool $enabled): void {
+        if ($enabled === $source->get_enabled()) {
+            return;
+        }
+        if (!$enabled) {
+            $this->indexservice->stop($source);
+        }
+
+        $source->set_enabled($enabled);
+        $source->store();
+
+        if ($enabled && $this->indexservice->is_indexing_available($coursecontext->id)) {
+            $this->indexservice->start($source);
+        }
+    }
+
+    /**
      * Load a document source and require the permission to manage it from the course.
      *
      * @param \context_course $coursecontext The context of the course whose sources are managed.
@@ -337,7 +353,6 @@ class source_management_service {
             $modulesource->set_sourcetype(source::TYPE_MODULE);
             $modulesource->set_cmid($cmid);
             $modulesource->set_enabled(false);
-            $modulesource->set_allowindex(false);
         }
         $modulesource->set_contextid($coursecontext->id);
         $modulesource->set_name((string) $cm->name);

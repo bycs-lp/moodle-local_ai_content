@@ -93,9 +93,9 @@ final class cleanup_cache_test extends \advanced_testcase {
     }
 
     /**
-     * Expired entries of files in course modules with an indexable source are kept.
+     * Expired entries of files in course modules with a source shared with AI are kept.
      */
-    public function test_keeps_expired_entries_of_indexable_module_files(): void {
+    public function test_keeps_expired_entries_of_shared_module_files(): void {
         global $DB;
         $this->resetAfterTest();
         $this->setAdminUser();
@@ -106,7 +106,7 @@ final class cleanup_cache_test extends \advanced_testcase {
         $generator = $this->getDataGenerator()->get_plugin_generator('local_ai_content');
         $course = $this->getDataGenerator()->create_course();
         $contenthashes = [];
-        foreach (['indexable' => true, 'notindexable' => false] as $name => $allowindex) {
+        foreach (['shared' => true, 'notshared' => false] as $name => $enabled) {
             $resource = $this->getDataGenerator()->create_module('resource', ['course' => $course->id]);
             $context = \context_module::instance($resource->cmid);
             $files = get_file_storage()->get_area_files($context->id, 'mod_resource', 'content', 0, 'id', false);
@@ -115,20 +115,20 @@ final class cleanup_cache_test extends \advanced_testcase {
                 'contextid' => \context_course::instance($course->id)->id,
                 'sourcetype' => \local_ai_content\local\source::TYPE_MODULE,
                 'cmid' => $resource->cmid,
-                'allowindex' => $allowindex,
+                'enabled' => $enabled,
             ]);
             $generator->create_cache_record([
                 'contenthash' => $contenthashes[$name],
                 'timelastaccessed' => $now - (100 * DAYSECS),
             ]);
         }
-        $this->assertNotSame($contenthashes['indexable'], $contenthashes['notindexable']);
+        $this->assertNotSame($contenthashes['shared'], $contenthashes['notshared']);
 
         ob_start();
         (new cleanup_cache())->execute();
         ob_end_clean();
 
-        $this->assertTrue($DB->record_exists('local_ai_content_cache', ['contenthash' => $contenthashes['indexable']]));
-        $this->assertFalse($DB->record_exists('local_ai_content_cache', ['contenthash' => $contenthashes['notindexable']]));
+        $this->assertTrue($DB->record_exists('local_ai_content_cache', ['contenthash' => $contenthashes['shared']]));
+        $this->assertFalse($DB->record_exists('local_ai_content_cache', ['contenthash' => $contenthashes['notshared']]));
     }
 }

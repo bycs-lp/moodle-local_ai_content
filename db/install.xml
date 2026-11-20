@@ -35,8 +35,7 @@
               <FIELD NAME="externalmodel" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Name of the embedding model which created the vectors of an external source"/>
               <FIELD NAME="citation" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON source-level citation metadata (title, url, author, publisher, date, license, locatortype)"/>
               <FIELD NAME="vecstoreid" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="The local_ai_manager_vecstore instance holding the vectors of this source"/>
-              <FIELD NAME="enabled" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether this source participates in RAG retrieval"/>
-              <FIELD NAME="allowindex" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Is the content allowed to be indexed"/>
+              <FIELD NAME="enabled" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether this source is shared with AI (content readable by AI features, indexable, selectable). It is indexed if it has records in local_ai_content_index"/>
               <FIELD NAME="usermodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
               <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
               <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>

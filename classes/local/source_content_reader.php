@@ -45,8 +45,7 @@ class source_content_reader {
      */
     public function get_chunks(source $source): array {
         if ($source->get_sourcetype() === source::TYPE_MODULE) {
-            [$cm, $extractor] = $this->get_module_and_extractor($source);
-            $chunks = $this->split_into_chunks($extractor->extract($cm));
+            $chunks = $this->split_into_chunks($this->get_module_text($source->get_cmid()));
         } else if ($source->get_sourcetype() === source::TYPE_DOCUMENT) {
             $chunks = $this->split_into_chunks((string) $source->get_content());
         } else {
@@ -54,6 +53,18 @@ class source_content_reader {
         }
 
         return array_values(array_filter(array_map('trim', $chunks), static fn(string $chunk): bool => $chunk !== ''));
+    }
+
+    /**
+     * Extract the current text content of a course module with its content extractor.
+     *
+     * @param int $cmid The course module id.
+     * @return string The extracted plain-text content.
+     * @throws \moodle_exception If the course module does not exist, its type is not supported or extracting fails.
+     */
+    public function get_module_text(int $cmid): string {
+        [$cm, $extractor] = $this->get_module_and_extractor($cmid);
+        return $extractor->extract($cm);
     }
 
     /**
@@ -67,7 +78,7 @@ class source_content_reader {
      */
     public function get_content_hash(source $source): string {
         if ($source->get_sourcetype() === source::TYPE_MODULE) {
-            [$cm, $extractor] = $this->get_module_and_extractor($source);
+            [$cm, $extractor] = $this->get_module_and_extractor($source->get_cmid());
             return $extractor->get_content_hash($cm);
         }
         if ($source->get_sourcetype() === source::TYPE_DOCUMENT) {
@@ -98,22 +109,21 @@ class source_content_reader {
     }
 
     /**
-     * Resolve the course module of a module source and its content extractor.
+     * Resolve a course module and its content extractor.
      *
-     * @param source $source The module source.
+     * @param int $cmid The course module id.
      * @return array{0: \core_course\cm_info, 1: cm_content_extractor} The course module and its extractor.
      * @throws \moodle_exception If the course module does not exist or its type is not supported.
      */
-    private function get_module_and_extractor(source $source): array {
-        $cmid = $source->get_cmid();
+    private function get_module_and_extractor(int $cmid): array {
         $rawcm = get_coursemodule_from_id('', $cmid, 0, false, IGNORE_MISSING);
         if (!$rawcm) {
-            throw new \moodle_exception('indexingerror_sourcenotfound', 'local_ai_content');
+            throw new \moodle_exception('error_modulenotfound', 'local_ai_content');
         }
         $cm = get_fast_modinfo($rawcm->course)->get_cm($cmid);
         $extractor = $this->get_cm_content_extractor($cm);
         if ($extractor === null) {
-            throw new \moodle_exception('indexingerror_notsupported', 'local_ai_content');
+            throw new \moodle_exception('error_modulenotsupported', 'local_ai_content');
         }
         return [$cm, $extractor];
     }
