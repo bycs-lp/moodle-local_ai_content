@@ -16,6 +16,7 @@
 
 namespace local_ai_content\local;
 
+use aipurpose_embedding\purpose as embedding_purpose;
 use local_ai_manager\local\vecstore_factory;
 use local_ai_manager\local\vector_record;
 use local_ai_manager\manager;
@@ -79,7 +80,8 @@ class indexer_manager {
     /**
      * Embeds the given content chunks of a source and stores them in the collection of the embedding model.
      *
-     * Records the content hash and the indexing timestamp on the index record.
+     * Records the content hash and the indexing timestamp on the index record. The chunks are embedded in batches, one
+     * embedding request per batch of the size configured in the admin setting embeddingbatchsize.
      *
      * @param source $source The source to index.
      * @param model_index $index The index of the source for the embedding model.
@@ -95,6 +97,7 @@ class indexer_manager {
         string $contenthash,
         manager $embeddingmanager,
     ): void {
+        $chunks = array_values(array_filter(array_map('trim', $chunks), fn(string $chunk): bool => $chunk !== ''));
         if (empty($chunks)) {
             throw new \moodle_exception('indexingerror_nocontent', 'local_ai_content');
         }
@@ -104,25 +107,24 @@ class indexer_manager {
         if ($vecstore === null) {
             throw new \moodle_exception('error_novecstore', 'local_ai_content');
         }
+        // Config value, an invalid batch size must not break the indexing.
+        $batchsize = max(1, (int) get_config('local_ai_content', 'embeddingbatchsize'));
         $embeddedchunks = [];
-        $pendingchunks = $chunks;
+        $pendingbatches = array_chunk($chunks, $batchsize);
 
-        while (!empty($pendingchunks)) {
-            $chunk = array_shift($pendingchunks);
-            if (!is_string($chunk)) {
-                continue;
-            }
-            $chunk = trim($chunk);
-            if ($chunk === '') {
-                continue;
-            }
+        while (!empty($pendingbatches)) {
+            $batch = array_shift($pendingbatches);
 
-            $vectorrequest = $embeddingmanager->perform_request($chunk, 'local_ai_content', $source->get_contextid());
+            $vectorrequest = $embeddingmanager->perform_request(
+                '',
+                'local_ai_content',
+                $source->get_contextid(),
+                [embedding_purpose::OPTION_PROMPTTEXTS => $batch]
+            );
             if ($vectorrequest->get_code() !== 200) {
-                if (self::should_retry_with_smaller_chunk($vectorrequest, $chunk)) {
-                    [$leftchunk, $rightchunk] = self::split_chunk_in_half($chunk);
-                    // Process the split chunks immediately to preserve source order in stored vectors.
-                    array_unshift($pendingchunks, $rightchunk, $leftchunk);
+                if (self::should_retry_with_smaller_batch($vectorrequest, $batch)) {
+                    // Process the split batches immediately to preserve source order in stored vectors.
+                    array_unshift($pendingbatches, ...self::split_batch_in_half($batch));
                     continue;
                 }
 
@@ -143,10 +145,13 @@ class indexer_manager {
                 throw $exception;
             }
 
-            $embeddedchunks[] = [
-                'vector' => $vectorrequest->get_content(),
-                'chunk' => $chunk,
-            ];
+            // The connector returns one vector per chunk in the order of the chunks.
+            foreach (json_decode($vectorrequest->get_content(), true) as $i => $vector) {
+                $embeddedchunks[] = [
+                    'vector' => json_encode($vector),
+                    'chunk' => $batch[$i],
+                ];
+            }
         }
 
         $maxchunks = count($embeddedchunks);
@@ -176,19 +181,22 @@ class indexer_manager {
     }
 
     /**
-     * Check whether an embedding failure should be retried with smaller chunks.
+     * Check whether an embedding failure should be retried with a smaller batch.
+     *
+     * Only failures caused by too many tokens are retried. A batch of several chunks is retried with fewer chunks, a single
+     * chunk with a shorter text as long as it is not too short already.
      *
      * @param \local_ai_manager\local\prompt_response $vectorrequest Failed prompt response.
-     * @param string $chunk Submitted chunk.
+     * @param string[] $batch Submitted chunks.
      * @return bool
      */
-    protected static function should_retry_with_smaller_chunk(\local_ai_manager\local\prompt_response $vectorrequest,
-            string $chunk): bool {
+    protected static function should_retry_with_smaller_batch(\local_ai_manager\local\prompt_response $vectorrequest,
+            array $batch): bool {
         if ($vectorrequest->get_code() !== 400) {
             return false;
         }
 
-        if (\core_text::strlen($chunk) <= self::MIN_RETRYABLE_CHUNK_LENGTH) {
+        if (count($batch) === 1 && \core_text::strlen($batch[0]) <= self::MIN_RETRYABLE_CHUNK_LENGTH) {
             return false;
         }
 
@@ -205,22 +213,22 @@ class indexer_manager {
     }
 
     /**
-     * Split a chunk into two non-empty chunks at a character midpoint.
+     * Split a batch into two smaller batches, keeping the order of the chunks.
      *
-     * @param string $chunk Chunk to split.
-     * @return string[]
+     * A batch of several chunks is split between the chunks, a single chunk is split into two chunks at a character midpoint.
+     *
+     * @param string[] $batch Batch to split, either several chunks or a single chunk longer than one character.
+     * @return string[][] The two batches.
      */
-    protected static function split_chunk_in_half(string $chunk): array {
-        $length = \core_text::strlen($chunk);
-        $half = (int)max(1, floor($length / 2));
-        $left = trim(\core_text::substr($chunk, 0, $half));
-        $right = trim(\core_text::substr($chunk, $half));
-
-        if ($left === '' || $right === '') {
-            return [trim($chunk), ''];
+    protected static function split_batch_in_half(array $batch): array {
+        if (count($batch) > 1) {
+            return array_chunk($batch, (int) ceil(count($batch) / 2));
         }
 
-        return [$left, $right];
+        $chunk = $batch[0];
+        $half = intdiv(\core_text::strlen($chunk), 2);
+        // The chunk is trimmed, so both halves contain text.
+        return [[trim(\core_text::substr($chunk, 0, $half))], [trim(\core_text::substr($chunk, $half))]];
     }
 
     /**

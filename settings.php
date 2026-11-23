@@ -76,6 +76,15 @@ if ($hassiteconfig) {
         PARAM_INT
     ));
 
+    // Number of chunks embedded in one request when indexing a source.
+    $settings->add(new admin_setting_configtext(
+        'local_ai_content/embeddingbatchsize',
+        get_string('embeddingbatchsize', 'local_ai_content'),
+        get_string('embeddingbatchsize_desc', 'local_ai_content'),
+        '32',
+        PARAM_INT
+    ));
+
     $ADMIN->add('local_ai_content_category', $settings);
 
     // Test extraction admin page.
