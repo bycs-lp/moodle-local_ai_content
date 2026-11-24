@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace local_ai_content\backend;
+namespace local_ai_content\local\backend;
 
 /**
  * Central configuration and factory for AI backend implementations.
@@ -24,7 +24,7 @@ namespace local_ai_content\backend;
  * to instantiate the configured backend.
  *
  * To add a new backend:
- * 1. Create a class in classes/backend/ implementing ai_backend.
+ * 1. Create a class in classes/local/backend/ implementing ai_backend.
  * 2. Add an entry to the BACKENDS constant below.
  * 3. Add a language string 'backend_<key>' in lang/en/local_ai_content.php.
  *

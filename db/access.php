@@ -28,8 +28,46 @@ defined('MOODLE_INTERNAL') || die();
 $capabilities = [
     'local/ai_content:testextraction' => [
         'captype' => 'read',
-        'contextlevel' => CONTEXT_MODULE,
+        'contextlevel' => CONTEXT_SYSTEM,
         'archetypes' => [
+            'manager' => CAP_ALLOW,
+        ],
+        'riskbitmask' => RISK_CONFIG,
+    ],
+    // Allows a user to retrieve (use) sources for RAG in a given context.
+    'local/ai_content:usesource' => [
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => [
+            'student' => CAP_ALLOW,
+            'teacher' => CAP_ALLOW,
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
+        ],
+    ],
+    // Allows a user to retrieve (use) the global sources attached to the system context for RAG.
+    'local/ai_content:useglobalsources' => [
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => [
+            'user' => CAP_ALLOW,
+        ],
+    ],
+    // Allows a user to change the sources selected for a context, which applies to all users of that context.
+    'local/ai_content:selectsources' => [
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => [
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
+        ],
+    ],
+    // Allows a user to create, edit and index sources in a given context.
+    'local/ai_content:managesources' => [
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => [
+            'editingteacher' => CAP_ALLOW,
             'manager' => CAP_ALLOW,
         ],
         'riskbitmask' => RISK_CONFIG,

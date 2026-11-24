@@ -16,7 +16,7 @@
 
 namespace local_ai_content;
 
-use local_ai_content\backend\ai_backend;
+use local_ai_content\local\backend\ai_backend;
 use stored_file;
 
 /**
@@ -69,6 +69,20 @@ class document_extractor {
     private int $logoutputmode = self::LOG_OUTPUT_AUTO;
     /** @var string[] The log messages. */
     private array $logmessages = [];
+
+    /**
+     * Constructor.
+     *
+     * @param ai_backend $backend The configured AI backend for the ITT requests.
+     * @param \core\clock $clock Clock for the cache timestamps.
+     */
+    public function __construct(
+        /** @var ai_backend The configured AI backend for the ITT requests. */
+        private readonly ai_backend $backend,
+        /** @var \core\clock Clock for the cache timestamps. */
+        private readonly \core\clock $clock,
+    ) {
+    }
 
     /**
      * Check whether the current user can test text extraction.
@@ -196,6 +210,11 @@ class document_extractor {
             return $cached;
         }
 
+        // A missing file would only raise a warning and be extracted as empty content, which means "nothing to extract".
+        if (!get_file_storage()->get_file_system()->is_file_readable_remotely_by_storedfile($file)) {
+            throw new \moodle_exception('error_filenotreadable', 'local_ai_content', '', $file->get_filename());
+        }
+
         // Extract based on MIME type.
         $content = $this->extract_by_mimetype($file, $mimetype, $contextid, $userid);
 
@@ -308,12 +327,12 @@ class document_extractor {
 
 
     /**
-     * Get the configured AI backend instance via DI.
+     * Get the configured AI backend.
      *
      * @return ai_backend The active AI backend.
      */
     private function get_backend(): ai_backend {
-        return \core\di::get(ai_backend::class);
+        return $this->backend;
     }
 
     /**
@@ -474,7 +493,7 @@ class document_extractor {
     /**
      * Convert a PDF file into an array of base64-encoded page images.
      *
-     * Uses Poppler's pdftoppm binary to render each page to PNG.
+     * Uses Poppler's pdftoppm binary to render each page to JPEG.
      *
      * @param stored_file $file The PDF file.
      * @return string[] Array of base64-encoded data URLs, one per page.
@@ -496,8 +515,9 @@ class document_extractor {
         $outputprefix = $tmpdir . '/page';
         $file->copy_content_to($tmppdfpath);
 
+        // Use moderate DPI and JPEG quality to keep page images smaller without sacrificing readability.
         $command = \escapeshellarg($pdftoppm)
-            . ' -q -r 150 -png '
+            . ' -q -r 120 -jpeg -jpegopt quality=82,optimize=y,progressive=n '
             . \escapeshellarg($tmppdfpath)
             . ' '
             . \escapeshellarg($outputprefix);
@@ -509,7 +529,7 @@ class document_extractor {
             throw new \moodle_exception('error_pdfrenderingunavailable', 'local_ai_content');
         }
 
-        $images = glob($outputprefix . '-*.png') ?: [];
+        $images = glob($outputprefix . '-*.jpg') ?: [];
         sort($images, SORT_NATURAL);
 
         if (empty($images)) {
@@ -522,7 +542,7 @@ class document_extractor {
             if ($imagecontent === false) {
                 throw new \moodle_exception('error_conversionfailed', 'local_ai_content', '', $file->get_filename());
             }
-            $imagemime = 'image/png';
+            $imagemime = 'image/jpeg';
             $imagearray[] = 'data:' . $imagemime . ';base64,' . base64_encode($imagecontent);
         }
 
@@ -642,8 +662,7 @@ class document_extractor {
         }
 
         // Update last accessed time and hit counter.
-        $clock = \core\di::get(\core\clock::class);
-        $record->timelastaccessed = $clock->now()->getTimestamp();
+        $record->timelastaccessed = $this->clock->now()->getTimestamp();
         $record->cachehit++;
         $DB->update_record('local_ai_content_cache', $record);
 
@@ -663,8 +682,7 @@ class document_extractor {
             return;
         }
 
-        $clock = \core\di::get(\core\clock::class);
-        $now = $clock->now()->getTimestamp();
+        $now = $this->clock->now()->getTimestamp();
 
         $existing = $DB->get_record('local_ai_content_cache', ['contenthash' => $contenthash]);
         if ($existing) {

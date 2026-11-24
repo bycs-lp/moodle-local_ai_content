@@ -17,8 +17,12 @@
 namespace local_ai_content\local;
 
 use core\hook\di_configuration;
-use local_ai_content\backend\ai_backend;
-use local_ai_content\backend\config;
+use core_course\hook\before_course_deleted;
+use local_ai_content\local\backend\ai_backend;
+use local_ai_content\local\backend\config;
+use local_ai_manager\hook\additional_prompt_context;
+use local_ai_manager\hook\before_vecstore_instance_deleted;
+use local_ai_manager\hook\vecstore_usage;
 
 /**
  * Hook callbacks for local_ai_content.
@@ -42,5 +46,51 @@ class hook_callbacks {
             id: ai_backend::class,
             definition: fn() => config::create_backend(),
         );
+    }
+
+    /**
+     * Report the sources depending on a vector store instance.
+     *
+     * @param vecstore_usage $hook The hook.
+     */
+    public static function vecstore_usage(vecstore_usage $hook): void {
+        $usage = \core\di::get(index_service::class)->get_vecstore_usage($hook->instance->get_id());
+        if ($usage['sources'] > 0) {
+            $hook->add_usage_description('local_ai_content',
+                get_string('vecstoreusage_sources', 'local_ai_content', $usage['sources']));
+        }
+        if ($usage['externalsources'] > 0) {
+            $hook->add_usage_description('local_ai_content',
+                get_string('vecstoreusage_externalsources', 'local_ai_content', $usage['externalsources']));
+        }
+    }
+
+    /**
+     * Detach all sources from a vector store instance before it is deleted.
+     *
+     * @param before_vecstore_instance_deleted $hook The hook.
+     */
+    public static function before_vecstore_instance_deleted(before_vecstore_instance_deleted $hook): void {
+        \core\di::get(index_service::class)->release_vecstore($hook->instance->get_id(), $hook->deletevectors, true);
+    }
+
+    /**
+     * Add the content retrieved from the selected sources (RAG) as context to an AI request.
+     *
+     * @param additional_prompt_context $hook The hook.
+     */
+    public static function additional_prompt_context(additional_prompt_context $hook): void {
+        \core\di::get(rag_manager::class)->add_rag_context($hook);
+    }
+
+    /**
+     * Delete all sources of a course (activities and course documents) before the course is deleted.
+     *
+     * Selections of block instances inside the course are removed when the blocks are deleted.
+     *
+     * @param before_course_deleted $hook The hook.
+     */
+    public static function before_course_deleted(before_course_deleted $hook): void {
+        \core\di::get(index_service::class)->delete_sources_in_context(\context_course::instance($hook->course->id)->id);
     }
 }

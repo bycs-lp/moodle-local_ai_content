@@ -1,26 +1,99 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="local/ai_content/db" VERSION="20260715" COMMENT="XMLDB file for Moodle local/ai_content"
+<XMLDB PATH="local/ai_content/db" VERSION="20260812" COMMENT="XMLDB file for Moodle local/ai_content"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
 >
   <TABLES>
-    <TABLE NAME="local_ai_content_cache" COMMENT="Cache for extracted text from files to avoid repeated expensive AI calls">
-      <FIELDS>
-        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
-        <FIELD NAME="contenthash" TYPE="char" LENGTH="40" NOTNULL="true" SEQUENCE="false" COMMENT="SHA1 content hash of the original file"/>
-        <FIELD NAME="extractedcontent" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Text extracted from the file by AI or converter"/>
-        <FIELD NAME="cachehit" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
-        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
-        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
-        <FIELD NAME="timelastaccessed" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
-      </FIELDS>
-      <KEYS>
-        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
-      </KEYS>
-      <INDEXES>
-        <INDEX NAME="contenthash" UNIQUE="true" FIELDS="contenthash"/>
-      </INDEXES>
-    </TABLE>
+      <TABLE NAME="local_ai_content_cache" COMMENT="Cache for extracted text from files to avoid repeated expensive AI calls">
+          <FIELDS>
+              <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+              <FIELD NAME="contenthash" TYPE="char" LENGTH="40" NOTNULL="true" SEQUENCE="false" COMMENT="SHA1 content hash of the original file"/>
+              <FIELD NAME="extractedcontent" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Text extracted from the file by AI or converter"/>
+              <FIELD NAME="cachehit" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+              <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+              <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+              <FIELD NAME="timelastaccessed" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+          </FIELDS>
+          <KEYS>
+              <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+          </KEYS>
+          <INDEXES>
+              <INDEX NAME="contenthash" UNIQUE="true" FIELDS="contenthash"/>
+          </INDEXES>
+      </TABLE>
+      <TABLE NAME="local_ai_content_sources" COMMENT="Table storing all AI content sources">
+          <FIELDS>
+              <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+              <FIELD NAME="contextid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The Moodle context this source is attached to (system, category, course or module)"/>
+              <FIELD NAME="sourcetype" TYPE="char" LENGTH="50" NOTNULL="true" DEFAULT="module" SEQUENCE="false" COMMENT="One of source::TYPE_* (module, document, external)"/>
+              <FIELD NAME="name" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false"/>
+              <FIELD NAME="description" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Optional human-readable description of the source"/>
+              <FIELD NAME="cmid" TYPE="int" LENGTH="11" NOTNULL="false" SEQUENCE="false" COMMENT="Related course module id for module sources"/>
+              <FIELD NAME="content" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Inline plain-text content for document sources"/>
+              <FIELD NAME="externalfilter" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON filter identifying the vectors of an external source inside its vector store instance"/>
+              <FIELD NAME="externalcollection" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Backend name of the collection holding the vectors of an external source"/>
+              <FIELD NAME="externalmodel" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Name of the embedding model which created the vectors of an external source"/>
+              <FIELD NAME="citation" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON source-level citation metadata (title, url, author, publisher, date, license, locatortype)"/>
+              <FIELD NAME="vecstoreid" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="The local_ai_manager_vecstore instance holding the vectors of this source"/>
+              <FIELD NAME="enabled" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether this source is shared with AI (content readable by AI features, indexable, selectable). It is indexed if it has records in local_ai_content_index"/>
+              <FIELD NAME="contentlength" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Number of characters of the last extracted content of a module source, null if never extracted"/>
+              <FIELD NAME="usermodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+              <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+              <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+          </FIELDS>
+          <KEYS>
+              <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+              <KEY NAME="usermodified" TYPE="foreign" FIELDS="usermodified" REFTABLE="user" REFFIELDS="id"/>
+              <KEY NAME="vecstoreid" TYPE="foreign" FIELDS="vecstoreid" REFTABLE="local_ai_manager_vecstore" REFFIELDS="id"/>
+          </KEYS>
+          <INDEXES>
+              <INDEX NAME="contextid" UNIQUE="false" FIELDS="contextid"/>
+              <INDEX NAME="cmid" UNIQUE="false" FIELDS="cmid"/>
+              <INDEX NAME="sourcetype" UNIQUE="false" FIELDS="sourcetype"/>
+          </INDEXES>
+      </TABLE>
+      <TABLE NAME="local_ai_content_index" COMMENT="Index of a source for one embedding model, the vectors live in the collection of this model">
+          <FIELDS>
+              <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+              <FIELD NAME="sourceid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Foreign key to local_ai_content_sources.id"/>
+              <FIELD NAME="embeddingmodel" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Name of the embedding model the source is indexed with"/>
+              <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" SEQUENCE="false" COMMENT="Indexing status (queued, running, indexed, failed, outdated)"/>
+              <FIELD NAME="taskid" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Last queued adhoc task ID used to index the source with this model"/>
+              <FIELD NAME="error" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Error message of the last failed indexing run"/>
+              <FIELD NAME="debuginfo" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Technical details of the last failed indexing run, only filled while developer debugging is enabled"/>
+              <FIELD NAME="contenthash" TYPE="char" LENGTH="64" NOTNULL="false" SEQUENCE="false" COMMENT="SHA-256 of the last indexed content, used for change detection"/>
+              <FIELD NAME="lastindexed" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="The timestamp of the last successful indexing run"/>
+              <FIELD NAME="usermodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="The user who started the last indexing run and pays for its embedding requests"/>
+              <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+              <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+          </FIELDS>
+          <KEYS>
+              <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+              <KEY NAME="sourceid" TYPE="foreign" FIELDS="sourceid" REFTABLE="local_ai_content_sources" REFFIELDS="id"/>
+              <KEY NAME="usermodified" TYPE="foreign" FIELDS="usermodified" REFTABLE="user" REFFIELDS="id"/>
+          </KEYS>
+          <INDEXES>
+              <INDEX NAME="sourceid_embeddingmodel" UNIQUE="true" FIELDS="sourceid, embeddingmodel"/>
+          </INDEXES>
+      </TABLE>
+      <TABLE NAME="local_ai_content_selection" COMMENT="Source selections: which sources are activated for RAG in a given context">
+          <FIELDS>
+              <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+              <FIELD NAME="contextid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The context in which the source is activated for RAG retrieval"/>
+              <FIELD NAME="sourceid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Foreign key to local_ai_content_sources.id"/>
+              <FIELD NAME="mode" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="search" SEQUENCE="false" COMMENT="How the source is added to AI requests: search (relevant excerpts) or full (complete content)"/>
+              <FIELD NAME="usermodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+              <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+              <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+          </FIELDS>
+          <KEYS>
+              <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+              <KEY NAME="sourceid" TYPE="foreign" FIELDS="sourceid" REFTABLE="local_ai_content_sources" REFFIELDS="id"/>
+              <KEY NAME="usermodified" TYPE="foreign" FIELDS="usermodified" REFTABLE="user" REFFIELDS="id"/>
+          </KEYS>
+          <INDEXES>
+              <INDEX NAME="contextid_sourceid" UNIQUE="true" FIELDS="contextid, sourceid"/>
+          </INDEXES>
+      </TABLE>
   </TABLES>
 </XMLDB>
-

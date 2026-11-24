@@ -1,0 +1,67 @@
+<?php
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
+namespace local_ai_content\contentextractor;
+
+use local_ai_content\cm_content_extractor;
+
+/**
+ * Class cm_content_book
+ *
+ * @package    local_ai_content
+ * @copyright  2026 ISB Bayern
+ * @author     Philipp Memmel
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+class cm_content_book extends cm_content_extractor {
+    #[\Override]
+    public function is_cm_supported(\core_course\cm_info $cm): bool {
+        return $cm->modname === 'book';
+    }
+
+    #[\Override]
+    public static function get_content_change_events(): array {
+        // Chapters are created, edited, moved, shown/hidden and deleted outside of the settings form.
+        return array_merge(parent::get_content_change_events(), [
+            \mod_book\event\chapter_created::class,
+            \mod_book\event\chapter_updated::class,
+            \mod_book\event\chapter_deleted::class,
+        ]);
+    }
+
+    #[\Override]
+    public function extract(\core_course\cm_info $cm): string {
+        global $CFG;
+        require_once($CFG->dirroot . '/mod/book/locallib.php');
+
+        $chapters = book_preload_chapters($cm->get_instance_record());
+        $chaptercontents = [];
+        foreach ($chapters as $chapter) {
+            // Subchapters of hidden chapters are marked as hidden by book_preload_chapters() as well.
+            if ($chapter->hidden) {
+                continue;
+            }
+            $chaptercontents[] = s($chapter->title) . '<br/>'
+                . $this->format_module_text($chapter->content, $chapter->contentformat, $cm);
+        }
+
+        return $this->format_with_intro($cm, $chaptercontents);
+    }
+}
+
+
+
+

@@ -54,7 +54,7 @@ if ($form->is_cancelled()) {
         $errormessage = get_string('test_extraction_nofile', 'local_ai_content');
     } else {
         $file = reset($files);
-        $extractor = new \local_ai_content\document_extractor();
+        $extractor = \core\di::get(\local_ai_content\document_extractor::class);
 
         // Collect file metadata.
         $fileinfo = new stdClass();
