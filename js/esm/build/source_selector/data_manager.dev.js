@@ -15,15 +15,17 @@ import Fetch from "@moodle/lms/core/fetch";
 const loadPromises = /* @__PURE__ */ new Map();
 const savePromises = /* @__PURE__ */ new Map();
 const selections = /* @__PURE__ */ new Map();
+const fullSelections = /* @__PURE__ */ new Map();
 const listeners = /* @__PURE__ */ new Map();
 const parseSourceIds = /* @__PURE__ */ __name((sourceIds) => {
   const values = typeof sourceIds === "string" ? sourceIds.split(",") : sourceIds;
   const ids = values.map((id) => Number(String(id).trim())).filter((id) => Number.isSafeInteger(id) && id > 0);
   return [...new Set(ids)];
 }, "parseSourceIds");
-const setSelectedSourceIds = /* @__PURE__ */ __name((contextId, sourceIds) => {
+const setSelectedSourceIds = /* @__PURE__ */ __name((contextId, sourceIds, fullSourceIds) => {
   const ids = parseSourceIds(sourceIds);
   selections.set(contextId, ids);
+  fullSelections.set(contextId, fullSourceIds.filter((id) => ids.includes(id)));
   for (const listener of listeners.get(contextId) ?? []) {
     listener([...ids]);
   }
@@ -39,10 +41,14 @@ const loadSourceSelection = /* @__PURE__ */ __name(async (contextId, reload = fa
       globalDocuments: item.globalDocuments,
       courseActivities: item.courseActivities,
       externalSources: item.externalSources,
+      courseSections: item.courseSections,
       selectedSourceIds: parseSourceIds(item.selectedSourceIds),
-      canSelect: item.canSelect
+      fullSourceIds: parseSourceIds(item.fullSourceIds),
+      canSelect: item.canSelect,
+      fullContentWarnChars: item.fullContentWarnChars,
+      fullContentTotalWarnChars: item.fullContentTotalWarnChars
     };
-    setSelectedSourceIds(contextId, selection.selectedSourceIds);
+    setSelectedSourceIds(contextId, selection.selectedSourceIds, selection.fullSourceIds);
     return selection;
   }).catch((error) => {
     loadPromises.delete(contextId);
@@ -57,12 +63,13 @@ const getSelectedSourceIds = /* @__PURE__ */ __name(async (contextId) => {
   }
   return [...selections.get(contextId)];
 }, "getSelectedSourceIds");
-const saveSelectedSourceIds = /* @__PURE__ */ __name(async (contextId, sourceIds) => {
+const saveSelectedSourceIds = /* @__PURE__ */ __name(async (contextId, sourceIds, fullSourceIds) => {
   const ids = parseSourceIds(sourceIds);
-  setSelectedSourceIds(contextId, ids);
+  const fullIds = parseSourceIds(fullSourceIds ?? fullSelections.get(contextId) ?? []).filter((id) => ids.includes(id));
+  setSelectedSourceIds(contextId, ids, fullIds);
   const previous = savePromises.get(contextId) ?? Promise.resolve();
   const promise = previous.catch(() => void 0).then(async () => Fetch.performPut("local_ai_content", `contexts/${contextId}/source-selections`, {
-    body: { selectedSourceIds: ids.join(",") }
+    body: { selectedSourceIds: ids.join(","), fullSourceIds: fullIds.join(",") }
   })).then(() => {
     loadPromises.delete(contextId);
   });

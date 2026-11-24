@@ -44,15 +44,30 @@ class source_content_reader {
      * @throws \moodle_exception If the content of the source cannot be read.
      */
     public function get_chunks(source $source): array {
-        if ($source->get_sourcetype() === source::TYPE_MODULE) {
-            $chunks = $this->split_into_chunks($this->get_module_text($source->get_cmid()));
-        } else if ($source->get_sourcetype() === source::TYPE_DOCUMENT) {
-            $chunks = $this->split_into_chunks((string) $source->get_content());
-        } else {
+        $chunks = $this->split_into_chunks($this->get_text($source));
+        return array_values(array_filter(array_map('trim', $chunks), static fn(string $chunk): bool => $chunk !== ''));
+    }
+
+    /**
+     * Read the current complete text content of a module or document source.
+     *
+     * For module sources the length of the extracted text is stored on the source (see {@see source::update_contentlength()}),
+     * so the size of the source can be shown without extracting it again.
+     *
+     * @param source $source The source.
+     * @return string The plain-text content.
+     * @throws \moodle_exception If the content of the source cannot be read.
+     */
+    public function get_text(source $source): string {
+        if ($source->get_sourcetype() === source::TYPE_DOCUMENT) {
+            return (string) $source->get_content();
+        }
+        if ($source->get_sourcetype() !== source::TYPE_MODULE) {
             throw new \moodle_exception('indexingerror_notsupported', 'local_ai_content');
         }
-
-        return array_values(array_filter(array_map('trim', $chunks), static fn(string $chunk): bool => $chunk !== ''));
+        $text = $this->get_module_text($source->get_cmid());
+        $source->update_contentlength(\core_text::strlen($text));
+        return $text;
     }
 
     /**

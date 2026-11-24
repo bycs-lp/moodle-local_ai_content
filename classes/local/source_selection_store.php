@@ -28,6 +28,12 @@ namespace local_ai_content\local;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class source_selection_store {
+    /** @var string Selection mode: the excerpts of the source relevant for the request are searched and added. */
+    public const MODE_SEARCH = 'search';
+
+    /** @var string Selection mode: the complete content of the source is added to every request. */
+    public const MODE_FULL = 'full';
+
     /** @var int Number of selection rows deleted with one statement. */
     private const DELETE_CHUNK_SIZE = 500;
 
@@ -72,29 +78,45 @@ class source_selection_store {
     }
 
     /**
-     * Replaces the set of activated sources for a context.
-     *
-     * All existing activations for the context are removed and the given source ids are inserted.
+     * Returns the selected sources of a single context with their selection mode.
      *
      * @param int $contextid The Moodle context id.
-     * @param int[] $sourceids The source ids to activate for the context.
+     * @return array<int, string> The selection mode (one of the MODE_* constants) indexed by source id.
      */
-    public function set_sourceids_for_context(int $contextid, array $sourceids): void {
-        global $DB, $USER;
+    public function get_modes_for_context(int $contextid): array {
+        global $DB;
 
-        $sourceids = array_values(array_unique(array_filter(
-            array_map('intval', $sourceids),
-            static fn(int $id): bool => $id > 0
-        )));
+        $records = $DB->get_records('local_ai_content_selection', ['contextid' => $contextid], '', 'sourceid, mode');
+        $modes = [];
+        foreach ($records as $record) {
+            $modes[(int) $record->sourceid] = $record->mode;
+        }
+        return $modes;
+    }
+
+    /**
+     * Replaces the selected sources of a context.
+     *
+     * All existing selections of the context are removed and the given sources are inserted.
+     *
+     * @param int $contextid The Moodle context id.
+     * @param array<int, string> $modes The selection mode (one of the MODE_* constants) indexed by source id.
+     */
+    public function set_selection_for_context(int $contextid, array $modes): void {
+        global $DB, $USER;
 
         $now = $this->clock->time();
 
         $transaction = $DB->start_delegated_transaction();
         $DB->delete_records('local_ai_content_selection', ['contextid' => $contextid]);
-        foreach ($sourceids as $sourceid) {
+        foreach ($modes as $sourceid => $mode) {
+            if (!in_array($mode, [self::MODE_SEARCH, self::MODE_FULL], true)) {
+                throw new \coding_exception('Invalid source selection mode: ' . $mode);
+            }
             $DB->insert_record('local_ai_content_selection', (object) [
                 'contextid' => $contextid,
-                'sourceid' => $sourceid,
+                'sourceid' => (int) $sourceid,
+                'mode' => $mode,
                 'usermodified' => (int) $USER->id,
                 'timecreated' => $now,
                 'timemodified' => $now,

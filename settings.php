@@ -76,6 +76,22 @@ if ($hassiteconfig) {
         PARAM_INT
     ));
 
+    // Lengths above which the source selection warns about adding the complete content of sources to AI requests.
+    $settings->add(new admin_setting_configtext(
+        'local_ai_content/fullcontentwarnchars',
+        get_string('fullcontentwarnchars', 'local_ai_content'),
+        get_string('fullcontentwarnchars_desc', 'local_ai_content'),
+        '15000',
+        PARAM_INT
+    ));
+    $settings->add(new admin_setting_configtext(
+        'local_ai_content/fullcontenttotalwarnchars',
+        get_string('fullcontenttotalwarnchars', 'local_ai_content'),
+        get_string('fullcontenttotalwarnchars_desc', 'local_ai_content'),
+        '100000',
+        PARAM_INT
+    ));
+
     // Number of chunks embedded in one request when indexing a source.
     $settings->add(new admin_setting_configtext(
         'local_ai_content/embeddingbatchsize',

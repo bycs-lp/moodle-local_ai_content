@@ -75,6 +75,9 @@ class source {
     /** @var bool Whether this source is shared with AI (content readable by AI features, indexable, selectable). */
     protected bool $enabled = true;
 
+    /** @var ?int Number of characters of the last extracted content of a module source, null if never extracted. */
+    protected ?int $contentlength = null;
+
     /** @var int User id that last modified this record. */
     protected int $usermodified = 0;
 
@@ -127,6 +130,7 @@ class source {
         $record->citation = $this->citation !== null ? $this->citation->to_json() : null;
         $record->vecstoreid = $this->vecstoreid;
         $record->enabled = $this->enabled ? 1 : 0;
+        $record->contentlength = $this->contentlength;
         $record->usermodified = $this->usermodified ?: (int)$USER->id;
         $record->timemodified = $clock->time();
 
@@ -254,6 +258,7 @@ class source {
         $this->citation = source_citation::from_json($record->citation);
         $this->vecstoreid = $record->vecstoreid === null ? null : (int)$record->vecstoreid;
         $this->enabled = !empty($record->enabled);
+        $this->contentlength = $record->contentlength === null ? null : (int)$record->contentlength;
         $this->usermodified = (int)$record->usermodified;
         $this->timecreated = (int)$record->timecreated;
         $this->timemodified = (int)$record->timemodified;
@@ -302,6 +307,41 @@ class source {
     /** @param bool $enabled */
     public function set_enabled(bool $enabled): void {
         $this->enabled = $enabled;
+    }
+
+    /**
+     * Return the number of characters of the content of the source.
+     *
+     * Document sources store their content, module sources the length of their last extracted content (see
+     * {@see update_contentlength()}), so the length is known without extracting the content again.
+     *
+     * @return ?int The number of characters, null if the content of a module source has never been extracted or the source
+     *  has no content of its own (external sources).
+     */
+    public function get_contentlength(): ?int {
+        if ($this->sourcetype === self::TYPE_DOCUMENT) {
+            return \core_text::strlen((string) $this->content);
+        }
+        return $this->contentlength;
+    }
+
+    /**
+     * Store the number of characters of the freshly extracted content of the source.
+     *
+     * Only writes the field (no change of timemodified/usermodified), as it is metadata and not a change of the source.
+     *
+     * @param int $contentlength The number of characters of the extracted content.
+     */
+    public function update_contentlength(int $contentlength): void {
+        global $DB;
+
+        if ($this->contentlength === $contentlength) {
+            return;
+        }
+        $this->contentlength = $contentlength;
+        if ($this->id > 0) {
+            $DB->set_field('local_ai_content_sources', 'contentlength', $contentlength, ['id' => $this->id]);
+        }
     }
 
     /** @return ?string */

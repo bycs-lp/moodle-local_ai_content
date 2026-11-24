@@ -90,13 +90,15 @@ class source_selection {
         $this->accessguard->require_use_access($context);
 
         $groupedsources = $this->selectionservice->get_grouped_sources_for_context($contextId);
-        $selectedsourceids = $this->selectionservice->get_selected_sourceids($contextId);
+        $selection = $this->selectionservice->get_selection($contextId);
 
         return new payload_response(
             payload: [
-                'items' => [$groupedsources + [
-                    'selectedSourceIds' => $selectedsourceids,
+                'items' => [$groupedsources + $selection + [
                     'canSelect' => has_capability('local/ai_content:selectsources', $context),
+                    // Config values, the frontend warns about complete contents above these lengths.
+                    'fullContentWarnChars' => (int) get_config('local_ai_content', 'fullcontentwarnchars'),
+                    'fullContentTotalWarnChars' => (int) get_config('local_ai_content', 'fullcontenttotalwarnchars'),
                 ]],
                 'pagination' => [
                     'page' => 1,
@@ -236,8 +238,9 @@ class source_selection {
     #[route(
         path: '/contexts/{contextId}/source-selections',
         method: ['PUT'],
-        title: 'Save selected source IDs for a context',
-        description: 'Persists the comma-separated list of source IDs selected for this context.',
+        title: 'Save the source selection for a context',
+        description: 'Persists the comma-separated list of source IDs selected for this context and the subset of them whose '
+            . 'complete content is used instead of searching them.',
         pathtypes: [
             new \core\router\schema\parameters\path_parameter(
                 name: 'contextId',
@@ -249,6 +252,7 @@ class source_selection {
             content: new payload_response_type(
                 schema: new schema_object([
                     'selectedSourceIds' => new scalar_type(param::SEQUENCE),
+                    'fullSourceIds' => new scalar_type(param::SEQUENCE),
                 ]),
             ),
         ),
@@ -270,13 +274,14 @@ class source_selection {
 
         $body = (array)$request->getParsedBody();
         $selectedsourceids = clean_param((string)($body['selectedSourceIds'] ?? ''), PARAM_SEQUENCE);
+        // Optional, without it all selected sources are searched.
+        $fullsourceids = clean_param((string)($body['fullSourceIds'] ?? ''), PARAM_SEQUENCE);
 
-        $selectedsourceids = $this->selectionservice->save_selected_sourceids($contextId, $selectedsourceids);
+        $selection = $this->selectionservice->save_selection($contextId, $selectedsourceids, $fullsourceids);
 
         return new payload_response(
             payload: [
-                'items' => [[
-                    'selectedSourceIds' => $selectedsourceids,
+                'items' => [$selection + [
                     'success' => true,
                 ]],
                 'pagination' => [

@@ -17,7 +17,8 @@
 namespace local_ai_content\local;
 
 /**
- * DTO holding retrieved RAG context, source references and the selected sources which could not be used.
+ * DTO holding retrieved RAG context, the complete contents of sources, source references and the selected sources which
+ * could not be used.
  *
  * @package    local_ai_content
  * @copyright  2026 ISB Bayern
@@ -30,8 +31,14 @@ class rag_result {
     /** @var string Reason for an unusable source: it is not indexed with the embedding model of the user. */
     public const UNAVAILABLE_OTHERMODEL = 'othermodel';
 
+    /** @var string Reason for an unusable source selected with its full content: its content could not be read. */
+    public const UNAVAILABLE_NOCONTENT = 'nocontent';
+
     /** @var string Retrieved text chunks used as grounding context. */
     protected string $retrievedtext;
+
+    /** @var string Complete contents of the sources selected with their full content. */
+    protected string $includedtext;
 
     /** @var source_reference[] Sources ordered by relevance. */
     protected array $sources;
@@ -46,11 +53,14 @@ class rag_result {
      * @param source_reference[] $sources Source references.
      * @param array[] $unavailablesources Selected sources which could not be used, each with the keys sourceid (int),
      *  name (string) and reason (one of the UNAVAILABLE_* constants).
+     * @param string $includedtext Complete contents of the sources selected with their full content.
      */
-    public function __construct(string $retrievedtext, array $sources = [], array $unavailablesources = []) {
+    public function __construct(string $retrievedtext, array $sources = [], array $unavailablesources = [],
+            string $includedtext = '') {
         $this->retrievedtext = $retrievedtext;
         $this->sources = $sources;
         $this->unavailablesources = $unavailablesources;
+        $this->includedtext = $includedtext;
     }
 
     /**
@@ -60,6 +70,15 @@ class rag_result {
      */
     public function get_retrieved_text(): string {
         return $this->retrievedtext;
+    }
+
+    /**
+     * Get the complete contents of the sources selected with their full content.
+     *
+     * @return string The tagged documents, empty if no such source has been used.
+     */
+    public function get_included_text(): string {
+        return $this->includedtext;
     }
 
     /**
@@ -92,6 +111,8 @@ class rag_result {
     /**
      * Export to API-safe array.
      *
+     * The complete contents are not exported: they can be very long and are available in the sources themselves.
+     *
      * @return array
      */
     public function to_array(): array {
@@ -106,4 +127,3 @@ class rag_result {
         ];
     }
 }
-

@@ -64,9 +64,13 @@ class access_guard {
     /**
      * Require login and, inside a course, course access and the capability to use sources.
      *
+     * Also sets the page context, because the responses contain output rendered with the theme of the page
+     * (e.g. activity icon URLs).
+     *
      * @param \context $context The context the sources are used in.
      */
     public function require_use_access(\context $context): void {
+        global $PAGE;
         require_login();
 
         $coursecontext = $context->get_course_context(false);
@@ -74,6 +78,7 @@ class access_guard {
             $this->require_capability('local/ai_content:usesource', $coursecontext);
             $this->require_course_access($coursecontext);
         }
+        $PAGE->set_context($context);
     }
 
     /**

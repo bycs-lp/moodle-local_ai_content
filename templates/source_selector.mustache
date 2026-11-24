@@ -25,16 +25,22 @@
     Context variables required for this template:
     * contextid (int) - The Moodle context ID for which source selection is managed.
 
+    Optional context variables:
+    * defaultmode (string) - How a newly selected source is used: "search" (look up the relevant passages, default) or
+      "full" (read the complete content), e.g. "full" for plugins which need the whole content like question generation.
+
     Example context (json):
     {
-        "contextid": 42
+        "contextid": 42,
+        "defaultmode": "full"
     }
 }}
 {{#react}}
 {
     "component": "@moodle/lms/local_ai_content/source_selector",
     "props": {
-        "contextId": {{contextid}}
+        "contextId": {{contextid}}{{#defaultmode}},
+        "defaultMode": "{{defaultmode}}"{{/defaultmode}}
     },
     "class": "source-selector-launcher-wrapper"
 }

@@ -22,12 +22,20 @@
  */
 
 import {
+    use,
     useEffect,
     useMemo,
     useRef,
     useState,
 } from 'react';
-import {Button, ProgressBar} from '@moodlehq/design-system';
+import {
+    Badge,
+    Button,
+    CloseButton,
+    ProgressBar,
+    Switch,
+} from '@moodlehq/design-system';
+import {pluginString, StringsProvider} from './strings';
 import Fetch from '@moodle/lms/core/fetch';
 import Log from '@moodle/lms/core/log';
 import MoodleString from '@moodle/lms/core/String';
@@ -147,11 +155,11 @@ function IndexStatusCell({state, indexingAvailable, disabled, onIndexCurrentMode
 }) {
     const active = isActive(state);
     const failed = state.status === 'failed';
-    const badgeclass = failed ? 'badge-danger' : (state.status === 'outdated' ? 'bg-warning text-dark' : 'badge-light');
+    const badgevariant = failed ? 'danger' : (state.status === 'outdated' ? 'warning' : 'secondary');
 
     return (
         <>
-            <span className={`badge ${badgeclass}`}>{state.statusLabel}</span>
+            <Badge variant={badgevariant} subtle={badgevariant === 'secondary'} label={state.statusLabel}/>
             {active && (
                 <div className='mt-1'>
                     <ProgressBar
@@ -177,14 +185,14 @@ function IndexStatusCell({state, indexingAvailable, disabled, onIndexCurrentMode
                 </ul>
             )}
             {indexingAvailable && state.canIndexCurrentModel && state.currentModel !== null && (
-                <button
-                    type='button'
-                    className='btn btn-link btn-sm p-0 mt-1'
+                <Button
+                    variant='ghost'
+                    size='sm'
+                    className='mt-1'
+                    label={use(pluginString('indexwithmymodel', state.currentModel))}
                     disabled={disabled || active}
                     onClick={onIndexCurrentModel}
-                >
-                    <MoodleString identifier='indexwithmymodel' component='local_ai_content' params={state.currentModel}/>
-                </button>
+                />
             )}
         </>
     );
@@ -207,27 +215,33 @@ function SharingStatusCell({state, indexingAvailable, disabled, onIndex}: {
 
     return (
         <>
-            <span className='badge badge-light'>
-                <MoodleString identifier='sharednotsearchable' component='local_ai_content'/>
-            </span>
+            <Badge variant='secondary' subtle label={use(pluginString('sharednotsearchable'))}/>
             <div className='small text-muted mt-1'>
                 <MoodleString identifier='sharednotsearchable_desc' component='local_ai_content'/>
             </div>
             {indexingAvailable && (
-                <button
-                    type='button'
-                    className='btn btn-link btn-sm p-0 mt-1'
+                <Button
+                    variant='ghost'
+                    size='sm'
+                    className='mt-1'
+                    label={use(pluginString('makesearchable'))}
                     disabled={disabled}
                     onClick={onIndex}
-                >
-                    <MoodleString identifier='makesearchable' component='local_ai_content'/>
-                </button>
+                />
             )}
         </>
     );
 }
 
-export default function SourceManager({contextid}: Props) {
+export default function SourceManager(props: Props) {
+    return (
+        <StringsProvider>
+            <SourceManagerContent {...props}/>
+        </StringsProvider>
+    );
+}
+
+function SourceManagerContent({contextid}: Props) {
     const [payload, setPayload] = useState<SourceManagementResponse | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const [saving, setSaving] = useState<boolean>(false);
@@ -509,24 +523,20 @@ export default function SourceManager({contextid}: Props) {
                                         )}
                                 </td>
                                 <td>
-                                    <div className='form-check form-switch m-0'>
-                                        <input
-                                            id={`document-enabled-${row.id}`}
-                                            className='form-check-input'
-                                            type='checkbox'
-                                            role='switch'
-                                            checked={row.enabled}
-                                            disabled={saving || !row.canEdit}
-                                            onChange={() => {
-                                                void performWrite(
-                                                    'PATCH',
-                                                    `contexts/${contextid}/document-sources/${row.id}`,
-                                                    {enabled: !row.enabled},
-                                                );
-                                            }}
-                                            aria-label={`Dokument ${row.name} für KI freigeben`}
-                                        />
-                                    </div>
+                                    <Switch
+                                        id={`document-enabled-${row.id}`}
+                                        checked={row.enabled}
+                                        disabled={saving || !row.canEdit}
+                                        onChange={() => {
+                                            void performWrite(
+                                                'PATCH',
+                                                `contexts/${contextid}/document-sources/${row.id}`,
+                                                {enabled: !row.enabled},
+                                            );
+                                        }}
+                                        hideLabel
+                                        label={`Dokument ${row.name} für KI freigeben`}
+                                    />
                                 </td>
                                 <td>{row.enabled && (
                                     <SharingStatusCell
@@ -542,9 +552,9 @@ export default function SourceManager({contextid}: Props) {
                                 <td>
                                     {row.canEdit && (
                                         <div className='d-flex gap-1'>
-                                            <button
-                                                type='button'
-                                                className='btn btn-link p-0'
+                                            <Button
+                                                variant='ghost'
+                                                size='sm'
                                                 disabled={saving}
                                                 onClick={() => {
                                                     setEditingDocument({
@@ -556,21 +566,20 @@ export default function SourceManager({contextid}: Props) {
                                                 }}
                                                 aria-label={`Dokument ${row.name} bearbeiten`}
                                                 title='Bearbeiten'
-                                            >
-                                                <i className='icon fa fa-pencil' aria-hidden='true'/>
-                                            </button>
-                                            <button
-                                                type='button'
-                                                className='btn btn-link text-danger p-0'
+                                                startIcon={<i className='icon fa fa-pencil m-0' aria-hidden='true'/>}
+                                            />
+                                            <Button
+                                                variant='ghost'
+                                                size='sm'
+                                                className='text-danger'
                                                 disabled={saving}
                                                 onClick={() => {
                                                     setDocumentToDelete(row);
                                                 }}
                                                 aria-label={`Dokument ${row.name} löschen`}
                                                 title='Löschen'
-                                            >
-                                                <i className='icon fa fa-trash' aria-hidden='true'/>
-                                            </button>
+                                                startIcon={<i className='icon fa fa-trash m-0' aria-hidden='true'/>}
+                                            />
                                         </div>
                                     )}
                                 </td>
@@ -603,24 +612,20 @@ export default function SourceManager({contextid}: Props) {
                                 <td>{row.name}</td>
                                 <td>{row.modDisplayName === '' ? row.modName : row.modDisplayName}</td>
                                 <td>
-                                    <div className='form-check form-switch m-0'>
-                                        <input
-                                            id={`module-enabled-${row.cmId}`}
-                                            className='form-check-input'
-                                            type='checkbox'
-                                            role='switch'
-                                            checked={row.enabled}
-                                            disabled={saving}
-                                            onChange={() => {
-                                                void performWrite(
-                                                    'PATCH',
-                                                    `contexts/${contextid}/module-sources/${row.cmId}`,
-                                                    {enabled: !row.enabled},
-                                                );
-                                            }}
-                                            aria-label={`Aktivität ${row.name} für KI freigeben`}
-                                        />
-                                    </div>
+                                    <Switch
+                                        id={`module-enabled-${row.cmId}`}
+                                        checked={row.enabled}
+                                        disabled={saving}
+                                        onChange={() => {
+                                            void performWrite(
+                                                'PATCH',
+                                                `contexts/${contextid}/module-sources/${row.cmId}`,
+                                                {enabled: !row.enabled},
+                                            );
+                                        }}
+                                        hideLabel
+                                        label={`Aktivität ${row.name} für KI freigeben`}
+                                    />
                                 </td>
                                 <td>{row.enabled && (
                                     <SharingStatusCell
@@ -659,15 +664,7 @@ export default function SourceManager({contextid}: Props) {
                             <div className='modal-content'>
                                 <div className='modal-header'>
                                     <h5 id='source-create-modal-title' className='modal-title'>Neues Dokument anlegen</h5>
-                                    <button
-                                        type='button'
-                                        className='close'
-                                        aria-label='Close'
-                                        onClick={closeCreateModal}
-                                        disabled={saving}
-                                    >
-                                        <span aria-hidden='true'>&times;</span>
-                                    </button>
+                                    <CloseButton aria-label='Close' onClick={closeCreateModal} disabled={saving}/>
                                 </div>
                                 <div className='modal-body'>
                                     {payload.canManageGlobalSources && (
@@ -753,15 +750,7 @@ export default function SourceManager({contextid}: Props) {
                             <div className='modal-content'>
                                 <div className='modal-header'>
                                     <h5 id='source-edit-modal-title' className='modal-title'>Dokument bearbeiten</h5>
-                                    <button
-                                        type='button'
-                                        className='close'
-                                        aria-label='Close'
-                                        onClick={closeEditModal}
-                                        disabled={saving}
-                                    >
-                                        <span aria-hidden='true'>&times;</span>
-                                    </button>
+                                    <CloseButton aria-label='Close' onClick={closeEditModal} disabled={saving}/>
                                 </div>
                                 <div className='modal-body'>
                                     <div className='form-group'>
@@ -831,15 +820,7 @@ export default function SourceManager({contextid}: Props) {
                             <div className='modal-content'>
                                 <div className='modal-header'>
                                     <h5 id='source-delete-modal-title' className='modal-title'>Quelle löschen</h5>
-                                    <button
-                                        type='button'
-                                        className='close'
-                                        aria-label='Close'
-                                        onClick={closeDeleteModal}
-                                        disabled={saving}
-                                    >
-                                        <span aria-hidden='true'>&times;</span>
-                                    </button>
+                                    <CloseButton aria-label='Close' onClick={closeDeleteModal} disabled={saving}/>
                                 </div>
                                 <div className='modal-body'>
                                     Möchtest du die Quelle „{documentToDelete.name}“ wirklich löschen?

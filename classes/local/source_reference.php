@@ -35,7 +35,9 @@ class source_reference {
         /** @var string Link to the source or chunk location. */
         private readonly string $url = '',
         /** @var string Optional locator (e.g. page/section). */
-        private readonly string $locator = ''
+        private readonly string $locator = '',
+        /** @var bool Whether the complete content of the source has been used instead of excerpts. */
+        private readonly bool $complete = false,
     ) {
     }
 
@@ -76,6 +78,15 @@ class source_reference {
     }
 
     /**
+     * Whether the complete content of the source has been used instead of excerpts.
+     *
+     * @return bool
+     */
+    public function is_complete(): bool {
+        return $this->complete;
+    }
+
+    /**
      * Export to API-safe array.
      *
      * @return array
@@ -86,6 +97,7 @@ class source_reference {
             'title' => $this->title,
             'url' => $this->url,
             'locator' => $this->locator,
+            'complete' => $this->complete,
         ];
     }
 }

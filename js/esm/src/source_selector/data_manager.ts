@@ -27,24 +27,53 @@
 
 import Fetch from '@moodle/lms/core/fetch';
 
+/** How a selected source is used: search the relevant passages or add the complete content. */
+export type SelectionMode = 'search' | 'full';
+
 /** A single selectable source returned by the API. */
 export type SourceOption = {
     id: number;
     cmId: number | null;
     name: string;
     sourceType: string;
+    /** Human-readable type of the source, for module sources the activity type. */
+    typeName: string;
+    /** Url of the activity icon for module sources, empty otherwise. */
+    iconUrl: string;
+    /** Name of the course or system the source belongs to. */
+    origin: string;
+    /** The modes the source can be selected with. */
+    modes: SelectionMode[];
+    /** Number of characters of the content, null if unknown. */
+    contentLength: number | null;
+    /** Id of the course section of an activity in a course format with sections, null otherwise. */
+    sectionId: number | null;
     /** Whether the content changed since the source was indexed with the embedding model of the current user. */
     outdated: boolean;
 };
 
-/** The available sources and the selected source ids of a context. */
+/** A course section containing selectable activities. */
+export type CourseSection = {
+    id: number;
+    name: string;
+};
+
+/** The available sources and the selection of a context. */
 export type ContextSourceSelection = {
     globalDocuments: SourceOption[];
     courseActivities: SourceOption[];
     externalSources: SourceOption[];
+    /** The sections of the course activities in course order, empty if the course format has no sections. */
+    courseSections: CourseSection[];
     selectedSourceIds: number[];
+    /** The selected sources whose complete content is used. */
+    fullSourceIds: number[];
     /** Whether the current user may change the selection of the context. */
     canSelect: boolean;
+    /** Number of characters of a complete content above which a warning is shown, 0 for no warning. */
+    fullContentWarnChars: number;
+    /** Number of characters of all complete contents above which a warning is shown, 0 for no warning. */
+    fullContentTotalWarnChars: number;
 };
 
 /** Callback being notified about changes of the selected source ids of a context. */
@@ -56,14 +85,19 @@ type ContextSourceSelectionResponse = {
         globalDocuments: SourceOption[];
         courseActivities: SourceOption[];
         externalSources: SourceOption[];
+        courseSections: CourseSection[];
         selectedSourceIds: string;
+        fullSourceIds: string;
         canSelect: boolean;
+        fullContentWarnChars: number;
+        fullContentTotalWarnChars: number;
     }>;
 };
 
 const loadPromises = new Map<number, Promise<ContextSourceSelection>>();
 const savePromises = new Map<number, Promise<void>>();
 const selections = new Map<number, number[]>();
+const fullSelections = new Map<number, number[]>();
 const listeners = new Map<number, Set<SelectionListener>>();
 
 /**
@@ -85,10 +119,16 @@ export const parseSourceIds = (sourceIds: Array<number | string> | string): numb
  *
  * @param contextId Id of the context the selection belongs to.
  * @param sourceIds Ids of the selected sources, as array or comma-separated string.
+ * @param fullSourceIds Ids of the selected sources whose complete content is used.
  */
-const setSelectedSourceIds = (contextId: number, sourceIds: Array<number | string> | string): void => {
+const setSelectedSourceIds = (
+    contextId: number,
+    sourceIds: Array<number | string> | string,
+    fullSourceIds: number[],
+): void => {
     const ids = parseSourceIds(sourceIds);
     selections.set(contextId, ids);
+    fullSelections.set(contextId, fullSourceIds.filter(id => ids.includes(id)));
     for (const listener of listeners.get(contextId) ?? []) {
         listener([...ids]);
     }
@@ -117,10 +157,14 @@ export const loadSourceSelection = async (contextId: number, reload = false): Pr
                 globalDocuments: item.globalDocuments,
                 courseActivities: item.courseActivities,
                 externalSources: item.externalSources,
+                courseSections: item.courseSections,
                 selectedSourceIds: parseSourceIds(item.selectedSourceIds),
+                fullSourceIds: parseSourceIds(item.fullSourceIds),
                 canSelect: item.canSelect,
+                fullContentWarnChars: item.fullContentWarnChars,
+                fullContentTotalWarnChars: item.fullContentTotalWarnChars,
             };
-            setSelectedSourceIds(contextId, selection.selectedSourceIds);
+            setSelectedSourceIds(contextId, selection.selectedSourceIds, selection.fullSourceIds);
             return selection;
         })
         .catch((error: unknown) => {
@@ -147,25 +191,32 @@ export const getSelectedSourceIds = async (contextId: number): Promise<number[]>
 };
 
 /**
- * Persist the selected source ids of a context.
+ * Persist the selection of a context.
  *
  * The new selection is applied immediately. Saves of the same context are sent one after another,
  * so the last selection always wins on the server.
  *
  * @param contextId Id of the context to store the selection for.
  * @param sourceIds Ids of the sources to select.
+ * @param fullSourceIds Ids of the selected sources whose complete content is used, the other ones are searched.
+ * Without them the modes of the sources staying selected are kept.
  * @returns Resolves when saved, rejects on failure.
  */
-export const saveSelectedSourceIds = async (contextId: number, sourceIds: number[]): Promise<void> => {
+export const saveSelectedSourceIds = async (
+    contextId: number,
+    sourceIds: number[],
+    fullSourceIds?: number[],
+): Promise<void> => {
     const ids = parseSourceIds(sourceIds);
-    setSelectedSourceIds(contextId, ids);
+    const fullIds = parseSourceIds(fullSourceIds ?? fullSelections.get(contextId) ?? []).filter(id => ids.includes(id));
+    setSelectedSourceIds(contextId, ids, fullIds);
 
     const previous = savePromises.get(contextId) ?? Promise.resolve();
     const promise = previous
         // A failed previous save must not prevent this one.
         .catch(() => undefined)
         .then(async () => Fetch.performPut('local_ai_content', `contexts/${contextId}/source-selections`, {
-            body: {selectedSourceIds: ids.join(',')},
+            body: {selectedSourceIds: ids.join(','), fullSourceIds: fullIds.join(',')},
         }))
         .then(() => {
             // The cached source lists (e.g. external sources) depend on the selection, so reload them next time.

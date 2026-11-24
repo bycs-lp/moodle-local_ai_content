@@ -57,12 +57,17 @@ class source_selection_service {
      * Only sources passing {@see is_selectable()} are returned.
      *
      * Each entry in the returned array contains:
-     *  - id         (int)     the local_ai_content_sources record ID
-     *  - cmId       (?int)    the course module ID for module sources, null otherwise
-     *  - name       (string)  the source display name
-     *  - sourceType (string)  one of source::TYPE_*
-     *  - origin     (string)  the name of the course or system the source belongs to
-     *  - outdated   (bool)    whether the index for the embedding model of the current user is outdated
+     *  - id            (int)     the local_ai_content_sources record ID
+     *  - cmId          (?int)    the course module ID for module sources, null otherwise
+     *  - name          (string)  the source display name
+     *  - sourceType    (string)  one of source::TYPE_*
+     *  - typeName      (string)  the human-readable type of the source (activity type for module sources)
+     *  - iconUrl       (string)  the url of the activity icon for module sources, empty otherwise
+     *  - origin        (string)  the name of the course or system the source belongs to
+     *  - modes         (string[]) the selection modes the source can be selected with, see {@see get_selectable_modes()}
+     *  - contentLength (?int)    the number of characters of the content, null if unknown
+     *  - sectionId     (?int)    the id of the course section of activities in a course format with sections, null otherwise
+     *  - outdated      (bool)    whether the index for the embedding model of the current user is outdated
      *
      * @param int $contextid Any Moodle context ID.
      * @return array Array of associative arrays as described above.
@@ -79,13 +84,16 @@ class source_selection_service {
     /**
      * Return grouped selectable sources for the source-selection UI.
      *
-     * The entries have the format described in {@see get_available_sources_for_context()}.
+     * The entries have the format described in {@see get_available_sources_for_context()}. The course activities are in
+     * the order of the course page. In course formats with sections, courseSections lists the sections containing at least
+     * one of the activities in course order, the activities reference them by sectionId.
      *
      * @param int $contextid Any Moodle context ID.
      * @return array{
      *   globalDocuments: array,
      *   courseActivities: array,
-     *   externalSources: array
+     *   externalSources: array,
+     *   courseSections: array<int, array{id: int, name: string}>
      * }
      */
     public function get_grouped_sources_for_context(int $contextid): array {
@@ -101,10 +109,10 @@ class source_selection_service {
                 'globalDocuments' => $globaldocuments,
                 'courseActivities' => [],
                 'externalSources' => [],
-            ]);
+            ]) + ['courseSections' => []];
         }
 
-        $courseactivities = $this->get_course_activity_sources($coursecontext, $userid);
+        [$courseactivities, $coursesections] = $this->get_course_activity_sources($coursecontext, $userid);
 
         $selectedsourceids = $this->selectionstore->get_sourceids_for_context($contextid);
         $externalsources = $this->get_selected_external_sources($selectedsourceids, $coursecontext, $globaldocuments, $courseactivities, $userid);
@@ -113,7 +121,7 @@ class source_selection_service {
             'globalDocuments' => $globaldocuments,
             'courseActivities' => $courseactivities,
             'externalSources' => $externalsources,
-        ]);
+        ]) + ['courseSections' => $coursesections];
     }
 
     /**
@@ -178,34 +186,10 @@ class source_selection_service {
         $this->accessguard->require_course_access($sourcecoursecontext);
 
         $userid = (int)$USER->id;
-        $courseactivities = [];
         $modinfo = get_fast_modinfo($sourcecourseid, $userid);
-        $cms = $modinfo->get_cms();
-        if (!empty($cms)) {
-            $cmids = array_map(static fn($cm): int => (int)$cm->id, $cms);
-            $modulesources = source::get_records_by_cmids($cmids);
-            $sourcebycmid = [];
-            foreach ($modulesources as $modulesource) {
-                $sourcebycmid[$modulesource->get_cmid()] = $modulesource;
-            }
-
-            foreach ($cms as $cm) {
-                if (!$cm->uservisible) {
-                    continue;
-                }
-                $modulesource = $sourcebycmid[(int)$cm->id] ?? null;
-                if ($modulesource === null || !$this->is_selectable($modulesource)) {
-                    continue;
-                }
-                $courseactivities[] = [
-                    'id' => (int)$modulesource->get_id(),
-                    'cmId' => (int)$cm->id,
-                    'name' => format_string($cm->name, true, ['context' => $cm->context]),
-                    'sourceType' => $modulesource->get_sourcetype(),
-                    'origin' => format_string($modinfo->get_course()->fullname, true, ['context' => $sourcecoursecontext]),
-                ];
-            }
-        }
+        $origin = format_string($modinfo->get_course()->fullname, true, ['context' => $sourcecoursecontext]);
+        // The import list is flat, so the sections are not needed.
+        [$courseactivities] = $this->get_module_entries($modinfo, $origin);
 
         $coursedocuments = [];
         $sources = source::get_records_by_contextids([$sourcecoursecontext->id]);
@@ -216,16 +200,9 @@ class source_selection_service {
             if (!$this->sourceaccess->can_access_source($documentsource, $userid)) {
                 continue;
             }
-            $coursedocuments[] = [
-                'id' => (int)$documentsource->get_id(),
-                'cmId' => $documentsource->get_cmid(),
-                'name' => (string)$documentsource->get_name(),
-                'sourceType' => (string)$documentsource->get_sourcetype(),
-                'origin' => format_string($modinfo->get_course()->fullname, true, ['context' => $sourcecoursecontext]),
-            ];
+            $coursedocuments[] = $this->build_entry($documentsource, (string)$documentsource->get_name(), $origin);
         }
 
-        usort($courseactivities, static fn(array $a, array $b): int => strcmp((string)$a['name'], (string)$b['name']));
         usort($coursedocuments, static fn(array $a, array $b): int => strcmp((string)$a['name'], (string)$b['name']));
 
         return $this->add_outdated_flags([
@@ -281,13 +258,7 @@ class source_selection_service {
             if ($pathsource->get_sourcetype() === source::TYPE_MODULE || !$this->is_selectable($pathsource)) {
                 continue;
             }
-            $result[] = [
-                'id' => (int)$pathsource->get_id(),
-                'cmId' => $pathsource->get_cmid(),
-                'name' => (string)$pathsource->get_name(),
-                'sourceType' => (string)$pathsource->get_sourcetype(),
-                'origin' => get_string('coresystem'),
-            ];
+            $result[] = $this->build_entry($pathsource, (string)$pathsource->get_name(), get_string('coresystem'));
         }
 
         usort($result, static fn(array $a, array $b): int => strcmp((string)$a['name'], (string)$b['name']));
@@ -295,47 +266,120 @@ class source_selection_service {
     }
 
     /**
-     * Return indexed module sources (current course only) that are usable for RAG.
+     * Return the selectable module sources of the current course in the order of the course page.
      *
-     * @param \context_course $coursecontext
+     * @param \context_course $coursecontext The context of the course.
      * @param int $userid User ID.
-     * @return array
+     * @return array{0: array[], 1: array[]} The source entries and the course sections containing them, see
+     *  {@see get_module_entries()}.
      */
     private function get_course_activity_sources(\context_course $coursecontext, int $userid): array {
         $course = get_course($coursecontext->instanceid);
         $modinfo = get_fast_modinfo($course, $userid);
+        return $this->get_module_entries($modinfo, format_string($course->fullname, true, ['context' => $coursecontext]));
+    }
+
+    /**
+     * Build the entries of the selectable module sources of a course in the order of the course page.
+     *
+     * Activities of delegated sections (e.g. subsections) are listed after the module delegating the section, as part of
+     * the section listed on the course page.
+     *
+     * @param \core_course\modinfo $modinfo The course module info of the course for the current user.
+     * @param string $origin The formatted name of the course.
+     * @return array{0: array[], 1: array<int, array{id: int, name: string}>} The source entries and, if the course format
+     *  uses sections, the sections containing at least one entry (empty otherwise).
+     */
+    private function get_module_entries(\core_course\modinfo $modinfo, string $origin): array {
         $cms = $modinfo->get_cms();
         if (empty($cms)) {
-            return [];
+            return [[], []];
         }
 
-        $cmids = array_map(static fn($cm): int => (int)$cm->id, $cms);
-        $modulesources = source::get_records_by_cmids($cmids);
         $sourcebycmid = [];
-        foreach ($modulesources as $modulesource) {
+        foreach (source::get_records_by_cmids(array_keys($cms)) as $modulesource) {
             $sourcebycmid[$modulesource->get_cmid()] = $modulesource;
         }
 
-        $result = [];
-        foreach ($cms as $cm) {
-            if (!$cm->uservisible) {
-                continue;
+        $format = course_get_format($modinfo->get_course());
+        $usessections = $format->uses_sections();
+        $entries = [];
+        $sections = [];
+        foreach ($modinfo->get_listed_section_info_all() as $section) {
+            $sectionhasentries = false;
+            foreach ($this->get_section_cms($section) as $cm) {
+                $modulesource = $sourcebycmid[$cm->id] ?? null;
+                if (!$cm->uservisible || $modulesource === null || !$this->is_selectable($modulesource)) {
+                    continue;
+                }
+                $entry = $this->build_entry($modulesource, format_string($cm->name, true, ['context' => $cm->context]), $origin,
+                    $cm);
+                $entry['sectionId'] = $usessections ? (int) $section->id : null;
+                $entries[] = $entry;
+                $sectionhasentries = true;
             }
-            $modulesource = $sourcebycmid[(int)$cm->id] ?? null;
-            if ($modulesource === null || !$this->is_selectable($modulesource)) {
-                continue;
+            if ($usessections && $sectionhasentries) {
+                $sections[] = ['id' => (int) $section->id, 'name' => $format->get_section_name($section)];
             }
-            $result[] = [
-                'id' => (int)$modulesource->get_id(),
-                'cmId' => (int)$cm->id,
-                'name' => format_string($cm->name, true, ['context' => $cm->context]),
-                'sourceType' => (string)$modulesource->get_sourcetype(),
-                'origin' => format_string($course->fullname, true, ['context' => $coursecontext]),
-            ];
         }
+        return [$entries, $sections];
+    }
 
-        usort($result, static fn(array $a, array $b): int => strcmp((string)$a['name'], (string)$b['name']));
-        return $result;
+    /**
+     * Return the course modules of a section in course page order, including the modules of delegated sections.
+     *
+     * @param \core_course\section_info $section The section.
+     * @return \core_course\cm_info[] The course modules.
+     */
+    private function get_section_cms(\core_course\section_info $section): array {
+        $cms = [];
+        foreach ($section->get_sequence_cm_infos() as $cm) {
+            $cms[] = $cm;
+            $delegatedsection = $cm->get_delegated_section_info();
+            if ($delegatedsection !== null) {
+                array_push($cms, ...$this->get_section_cms($delegatedsection));
+            }
+        }
+        return $cms;
+    }
+
+    /**
+     * Build the entry of a source for the source-selection UI.
+     *
+     * @param source $source The source.
+     * @param string $name The formatted display name.
+     * @param string $origin The formatted name of the course or system the source belongs to.
+     * @param ?\core_course\cm_info $cm The course module of a module source, null for other sources.
+     * @return array The entry in the format described in {@see get_available_sources_for_context()}.
+     */
+    private function build_entry(source $source, string $name, string $origin, ?\core_course\cm_info $cm = null): array {
+        $typename = match ($source->get_sourcetype()) {
+            source::TYPE_MODULE => $cm !== null ? $this->get_module_type_name($cm->modname) : '',
+            source::TYPE_DOCUMENT => get_string('sourcetype_document', 'local_ai_content'),
+            default => get_string('sourcetype_external', 'local_ai_content'),
+        };
+        return [
+            'id' => $source->get_id(),
+            'cmId' => $source->get_cmid(),
+            'name' => $name,
+            'sourceType' => $source->get_sourcetype(),
+            'typeName' => $typename,
+            'iconUrl' => $cm !== null ? $cm->get_icon_url()->out(false) : '',
+            'origin' => $origin,
+            'modes' => $this->get_selectable_modes($source),
+            'contentLength' => $source->get_contentlength(),
+            'sectionId' => null,
+        ];
+    }
+
+    /**
+     * Return the human-readable name of an activity type.
+     *
+     * @param string $modname The module type, e.g. 'page'.
+     * @return string The name of the activity type.
+     */
+    private function get_module_type_name(string $modname): string {
+        return get_string('modulename', 'mod_' . $modname);
     }
 
     /**
@@ -376,13 +420,8 @@ class source_selection_service {
             if (!$this->is_external_to_course($selectedsource, $coursecontext)) {
                 continue;
             }
-            $externalsources[] = [
-                'id' => $sourceid,
-                'cmId' => $selectedsource->get_cmid(),
-                'name' => (string)$selectedsource->get_name(),
-                'sourceType' => (string)$selectedsource->get_sourcetype(),
-                'origin' => $this->resolve_source_origin_label($selectedsource),
-            ];
+            $externalsources[] = $this->build_entry($selectedsource, (string)$selectedsource->get_name(),
+                $this->resolve_source_origin_label($selectedsource), $this->get_module_cm($selectedsource));
         }
 
         usort($externalsources, static fn(array $a, array $b): int => strcmp((string)$a['name'], (string)$b['name']));
@@ -390,21 +429,53 @@ class source_selection_service {
     }
 
     /**
-     * Whether a source may be offered in the source selection.
-     *
-     * Only enabled sources with retrievable vectors are offered: Moodle sources (module/document) once they have been
-     * indexed with at least one embedding model, external sources always as their vectors are managed outside of Moodle.
-     * Whether a source can be searched with the embedding model of a user is only decided on retrieval.
+     * Return the course module of a module source of another course.
      *
      * @param source $source The source.
-     * @return bool True if the source is selectable.
+     * @return ?\core_course\cm_info The course module, null for other source types.
+     */
+    private function get_module_cm(source $source): ?\core_course\cm_info {
+        if ($source->get_sourcetype() !== source::TYPE_MODULE) {
+            return null;
+        }
+        // The source has been checked to be accessible, so its course module exists.
+        $cm = get_coursemodule_from_id('', $source->get_cmid(), 0, false, MUST_EXIST);
+        return get_fast_modinfo($cm->course)->get_cm($cm->id);
+    }
+
+    /**
+     * Return the selection modes a source can be selected with.
+     *
+     * Only enabled (shared) sources can be selected. The complete content can be added for Moodle sources (module/document),
+     * which have content of their own. Searching needs retrievable vectors: Moodle sources once they have been indexed with
+     * at least one embedding model, external sources always as their vectors are managed outside of Moodle. Whether a source
+     * can be searched with the embedding model of a user is only decided on retrieval.
+     *
+     * @param source $source The source.
+     * @return string[] The selection modes (source_selection_store::MODE_*), empty if the source cannot be selected.
+     */
+    public function get_selectable_modes(source $source): array {
+        if (!$source->get_enabled()) {
+            return [];
+        }
+        if ($source->get_sourcetype() === source::TYPE_EXTERNAL) {
+            return [source_selection_store::MODE_SEARCH];
+        }
+        $modes = [source_selection_store::MODE_FULL];
+        if (model_index::is_source_indexed($source->get_id())) {
+            $modes[] = source_selection_store::MODE_SEARCH;
+        }
+        return $modes;
+    }
+
+    /**
+     * Whether a source may be offered in the source selection with at least one selection mode.
+     *
+     * @param source $source The source.
+     * @return bool True if the source is selectable, see {@see get_selectable_modes()}.
      */
     public function is_selectable(source $source): bool {
-        if (!$source->get_enabled()) {
-            return false;
-        }
-        return $source->get_sourcetype() === source::TYPE_EXTERNAL
-            || model_index::is_source_indexed($source->get_id());
+        return !empty($this->get_selectable_modes($source));
     }
 
     /**
@@ -486,39 +557,63 @@ class source_selection_service {
     }
 
     /**
-     * Return the currently saved selected source IDs for a context.
+     * Return the currently saved selection of a context.
      *
      * @param int $contextid The Moodle context ID.
-     * @return string The stored comma-separated IDs, empty if nothing is saved.
+     * @return array{selectedSourceIds: string, fullSourceIds: string} The comma-separated ids of all selected sources and
+     *  of the sources selected with their complete content, empty if nothing is saved.
      */
-    public function get_selected_sourceids(int $contextid): string {
-        return implode(',', $this->selectionstore->get_sourceids_for_context($contextid));
+    public function get_selection(int $contextid): array {
+        return $this->format_selection($this->selectionstore->get_modes_for_context($contextid));
     }
 
     /**
-     * Save (replace) the selected source IDs for a context.
+     * Save (replace) the selection of a context.
      *
-     * Ids of sources which do not exist, are not selectable or are not accessible for the current user are dropped.
+     * Selected sources are searched unless they are listed in $fullsourceids, then their complete content is used. Ids of
+     * sources which do not exist, are not accessible for the current user or cannot be selected with the requested mode are
+     * dropped.
      *
      * @param int $contextid The Moodle context ID.
-     * @param string $sourceids Comma-separated list of local_ai_content_sources record IDs.
-     * @return string The comma-separated IDs which have actually been stored.
+     * @param string $sourceids Comma-separated list of the selected local_ai_content_sources record IDs.
+     * @param string $fullsourceids Comma-separated list of the selected source IDs whose complete content is used.
+     * @return array{selectedSourceIds: string, fullSourceIds: string} The selection which has actually been stored, in the
+     *  format of {@see get_selection()}.
      */
-    public function save_selected_sourceids(int $contextid, string $sourceids): string {
+    public function save_selection(int $contextid, string $sourceids, string $fullsourceids = ''): array {
         global $USER;
 
         $requestedids = $sourceids === '' ? [] : explode(',', $sourceids);
+        $fullids = $fullsourceids === '' ? [] : array_flip(array_map('intval', explode(',', $fullsourceids)));
         $sources = source::get_records_by_ids($requestedids);
 
-        $validids = [];
-        foreach ($sources as $source) {
-            if ($this->is_selectable($source) && $this->sourceaccess->can_access_source($source, (int)$USER->id)) {
-                $validids[] = $source->get_id();
+        $modes = [];
+        foreach ($sources as $sourceid => $source) {
+            $mode = isset($fullids[$sourceid]) ? source_selection_store::MODE_FULL : source_selection_store::MODE_SEARCH;
+            if (!in_array($mode, $this->get_selectable_modes($source), true)) {
+                continue;
+            }
+            if ($this->sourceaccess->can_access_source($source, (int)$USER->id)) {
+                $modes[$sourceid] = $mode;
             }
         }
-        sort($validids);
 
-        $this->selectionstore->set_sourceids_for_context($contextid, $validids);
-        return implode(',', $validids);
+        $this->selectionstore->set_selection_for_context($contextid, $modes);
+        return $this->format_selection($modes);
+    }
+
+    /**
+     * Format a selection for the API.
+     *
+     * @param array<int, string> $modes The selection mode indexed by source id.
+     * @return array{selectedSourceIds: string, fullSourceIds: string} See {@see get_selection()}.
+     */
+    private function format_selection(array $modes): array {
+        ksort($modes);
+        $fullmodes = array_filter($modes, static fn(string $mode): bool => $mode === source_selection_store::MODE_FULL);
+        return [
+            'selectedSourceIds' => implode(',', array_keys($modes)),
+            'fullSourceIds' => implode(',', array_keys($fullmodes)),
+        ];
     }
 }
