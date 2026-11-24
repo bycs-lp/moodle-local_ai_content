@@ -112,21 +112,30 @@ class index_service {
     }
 
     /**
-     * Index one source with the embedding model of the current user, enforcing management access.
+     * Index sources with the embedding model of the current user, enforcing management access.
      *
-     * Adds or restarts the index for the embedding model of the current user, see {@see self::start()}.
+     * Adds or restarts the index for the embedding model of the current user, see {@see self::start()}. The access to all
+     * sources is checked before any indexing is queued, and either all or none of them are queued.
      *
-     * @param int $sourceid The source record id.
-     * @return index_state The resulting state.
+     * @param int[] $sourceids The source record ids.
+     * @return index_state[] The resulting states, one per source.
+     * @throws \invalid_parameter_exception If a source does not exist.
      */
-    public function start_by_id(int $sourceid): index_state {
-        $source = source::get_record(['id' => $sourceid]);
-        if ($source === null) {
+    public function start_by_ids(array $sourceids): array {
+        global $DB;
+
+        $sources = source::get_records_by_ids($sourceids);
+        if (count($sources) !== count(array_unique($sourceids))) {
             throw new \invalid_parameter_exception('Source not found.');
         }
-        $this->accessguard->require_manage_access_for_source($source);
+        foreach ($sources as $source) {
+            $this->accessguard->require_manage_access_for_source($source);
+        }
 
-        return $this->start($source);
+        $transaction = $DB->start_delegated_transaction();
+        $states = array_map(fn(source $source): index_state => $this->start($source), array_values($sources));
+        $transaction->allow_commit();
+        return $states;
     }
 
     /**

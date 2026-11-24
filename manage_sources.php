@@ -40,12 +40,5 @@ $PAGE->set_title(get_string('managesourcespage', 'local_ai_content'));
 $PAGE->set_heading(format_string($course->fullname, true, ['context' => $context]));
 
 echo $OUTPUT->header();
-
-echo $OUTPUT->render_from_template('local_ai_content/source_manager', [
-    'contextid' => $context->id,
-]);
-
+echo \core\output\html_writer::react_component('@moodle/lms/local_ai_content/source_manager', ['contextid' => $context->id]);
 echo $OUTPUT->footer();
-
-
-

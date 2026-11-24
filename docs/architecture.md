@@ -162,11 +162,11 @@ management shows a summarized status (failed > running > queued > indexed) plus 
 | REST | `route\api\source_management`, `route\api\source_index`, `route\api\source_selection` (thin: access check, request parsing, response; logic in the services; JSON fields in camelCase) |
 
 All services are obtained via DI with constructor injection, no static utilities. Only the record wrappers (`local\source`, `local\model_index`) have static loaders.
-| Frontend | `js/esm/src/source_manager.tsx` (management page), `js/esm/src/source_selector.tsx` + `source_selector/data_manager.ts` + `source_selection_modal_manager.ts` (selection), `amd/src/source_selector.js` (AMD shim for block_ai_chat) |
+| Frontend | `js/esm/src/source_manager.tsx` + `source_manager/repository.ts` (management page, mounted with `html_writer::react_component()`), `js/esm/src/source_selector.tsx` + `source_selector/data_manager.ts` (selection), shared: `source_ui.tsx` (section toggle, selected count, source label), `modal.ts` (core modals with React body), `strings.tsx` (string preload), `amd/src/source_selector.js` (AMD shim for block_ai_chat) |
 
 ### 3.3 Indexing
-1. Teacher shares a source on `manage_sources.php` (`PATCH …/module-sources/{cmId}` or `…/document-sources/{id}`) or
-   clicks "Make searchable"/"Index with my embedding model" (`POST /sources/{id}/index`) → `index_service::start()`:
+1. Teacher shares sources on `manage_sources.php` (`PATCH …/contexts/{contextId}/sources`, single or bulk) or
+   clicks "Make searchable"/"Index with my embedding model" (`POST /source-indexes`, single or bulk) → `index_service::start()`:
    bind primary vecstore, queue `index_source_adhoc` (as triggering user, with the user's embedding model), index of this
    model `queued`. Indexes of other models stay. A content change of a document source re-indexes it with the editing
    user's model and deletes the indexes of other models.
@@ -255,10 +255,10 @@ All services are obtained via DI with constructor injection, no static utilities
 | Method + path | Purpose | Permission |
 |---|---|---|
 | `GET contexts/{contextId}/sources` | Data of the management page | `managesources` (course) |
-| `PATCH contexts/{contextId}/module-sources/{cmId}` | Share/stop sharing activity (creates source, indexes if available) | `managesources` |
+| `PATCH contexts/{contextId}/sources` | Share/stop sharing activities (`cmIds`, creates missing sources) and documents (`documentIds`), `enabled`; all or nothing, indexes if available | `managesources`, global documents additionally in system context |
 | `POST contexts/{contextId}/document-sources` | Create document (`scope`: course/global) | `managesources`, global additionally in system context |
-| `PATCH`/`DELETE contexts/{contextId}/document-sources/{sourceId}` | Update/delete document | as above |
-| `POST sources/{sourceId}/index` | Index with the embedding model of the current user | `managesources` in source context |
+| `PATCH`/`DELETE contexts/{contextId}/document-sources/{sourceId}` | Update name/description/content / delete document | as above |
+| `POST source-indexes` | Index sources (`sourceIds`) with the embedding model of the current user; all or nothing | `managesources` in source context |
 | `GET contexts/{contextId}/index-states` | Status polling | `managesources` |
 | `GET contexts/{contextId}/source-selections` | Read selection (`canSelect` flag for the UI) | `usesource` + course access |
 | `PUT contexts/{contextId}/source-selections` | Replace selection | additionally `selectsources` in the selection context |

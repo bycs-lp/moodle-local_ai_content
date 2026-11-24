@@ -42,6 +42,7 @@ class source_management_service {
      * @param index_service $indexservice Service controlling the indexing of sources.
      * @param source_content_reader $contentreader Reader of the indexable content of sources.
      * @param access_guard $accessguard Enforces the access rules for the current user.
+     * @param course_structure $coursestructure Reader of the course structure.
      */
     public function __construct(
         /** @var index_service Service controlling the indexing of sources. */
@@ -50,6 +51,8 @@ class source_management_service {
         private readonly source_content_reader $contentreader,
         /** @var access_guard Enforces the access rules for the current user. */
         private readonly access_guard $accessguard,
+        /** @var course_structure Reader of the course structure. */
+        private readonly course_structure $coursestructure,
     ) {
     }
 
@@ -58,19 +61,22 @@ class source_management_service {
      *
      * @param \context_course $coursecontext The context of the course whose sources are managed.
      * @return array Course context id, whether global sources may be managed, whether sources can be indexed (and if not,
-     *     why not) and the rows of modules, global and course documents.
+     *     why not), the rows of modules (in course page order), global and course documents and, in course formats with
+     *     sections, the sections containing module rows.
      */
     public function get_overview(\context_course $coursecontext): array {
         $canmanageglobalsources = $this->accessguard->can_manage_global_sources();
         $indexingunavailablereason = $this->indexservice->get_indexing_unavailable_reason($coursecontext->id);
+        [$modulerows, $coursesections] = $this->get_module_rows($coursecontext);
 
         return [
             'courseContextId' => $coursecontext->id,
             'canManageGlobalSources' => $canmanageglobalsources,
             'indexingAvailable' => $indexingunavailablereason === null,
             'indexingUnavailableReason' => $indexingunavailablereason,
+            'courseSections' => $coursesections,
             'items' => [
-                'modules' => $this->get_module_rows($coursecontext),
+                'modules' => $modulerows,
                 'globalDocuments' => $this->get_document_rows(SYSCONTEXTID, $canmanageglobalsources),
                 'courseDocuments' => $this->get_document_rows($coursecontext->id, true),
             ],
@@ -78,16 +84,32 @@ class source_management_service {
     }
 
     /**
-     * Share a module source with AI or stop sharing it, creating the source if the module has none yet.
+     * Share module and document sources with AI or stop sharing them, creating the sources of modules without one.
      *
-     * See {@see self::set_source_enabled()}.
+     * Either all or none of the sources are changed, see {@see self::set_source_enabled()}.
      *
      * @param \context_course $coursecontext The context of the course whose sources are managed.
-     * @param int $cmid The course module id.
-     * @param bool $enabled Whether the source is enabled.
+     * @param int[] $cmids The ids of the course modules.
+     * @param int[] $documentids The ids of the document sources.
+     * @param bool $enabled Whether the sources are shared with AI.
      */
-    public function set_module_enabled(\context_course $coursecontext, int $cmid, bool $enabled): void {
-        $this->set_source_enabled($coursecontext, $this->get_or_create_module_source($coursecontext, $cmid), $enabled);
+    public function set_sources_enabled(\context_course $coursecontext, array $cmids, array $documentids, bool $enabled): void {
+        global $DB;
+
+        $documents = array_map(
+            fn(int $documentid): source => $this->load_managed_document($coursecontext, $documentid),
+            array_unique($documentids),
+        );
+        $indexingavailable = $enabled && $this->indexservice->is_indexing_available($coursecontext->id);
+
+        $transaction = $DB->start_delegated_transaction();
+        foreach (array_unique($cmids) as $cmid) {
+            $this->set_source_enabled($this->get_or_create_module_source($coursecontext, $cmid), $enabled, $indexingavailable);
+        }
+        foreach ($documents as $document) {
+            $this->set_source_enabled($document, $enabled, $indexingavailable);
+        }
+        $transaction->allow_commit();
     }
 
     /**
@@ -117,19 +139,12 @@ class source_management_service {
         $documentsource->set_content($content);
         $documentsource->set_enabled(false);
         $documentsource->store();
-        $this->set_source_enabled($coursecontext, $documentsource, true);
+        $this->set_source_enabled(
+            $documentsource,
+            true,
+            $this->indexservice->is_indexing_available($coursecontext->id),
+        );
         return $documentsource;
-    }
-
-    /**
-     * Share a document source with AI or stop sharing it, see {@see self::set_source_enabled()}.
-     *
-     * @param \context_course $coursecontext The context of the course whose sources are managed.
-     * @param int $sourceid The document source id.
-     * @param bool $enabled Whether the source is enabled.
-     */
-    public function set_document_enabled(\context_course $coursecontext, int $sourceid, bool $enabled): void {
-        $this->set_source_enabled($coursecontext, $this->load_managed_document($coursecontext, $sourceid), $enabled);
     }
 
     /**
@@ -197,15 +212,17 @@ class source_management_service {
     }
 
     /**
-     * Build the rows of all modules of the course that have a content extractor.
+     * Build the rows of all modules of the course that have a content extractor, in course page order.
      *
      * @param \context_course $coursecontext The context of the course.
-     * @return array[] The module rows sorted by name.
+     * @return array{0: array[], 1: array<int, array{id: int, name: string}>} The module rows and, if the course format
+     *     uses sections, the sections containing at least one row (empty otherwise).
      */
     private function get_module_rows(\context_course $coursecontext): array {
-        $cms = get_fast_modinfo($coursecontext->instanceid)->get_cms();
+        $modinfo = get_fast_modinfo($coursecontext->instanceid);
+        $cms = $modinfo->get_cms();
         if (empty($cms)) {
-            return [];
+            return [[], []];
         }
 
         $cmids = array_map(static fn($cm): int => (int) $cm->id, $cms);
@@ -216,30 +233,41 @@ class source_management_service {
         }
         $states = $this->indexservice->get_states($modulesources);
 
+        $structure = $this->coursestructure->get_sections($modinfo);
+        $usessections = $structure['usessections'];
         $rows = [];
-        foreach ($cms as $cm) {
-            if (!empty($cm->deletioninprogress)) {
-                continue;
+        $sections = [];
+        foreach ($structure['sections'] as $section) {
+            $sectionhasrows = false;
+            foreach ($section['cms'] as $cm) {
+                if (!empty($cm->deletioninprogress)) {
+                    continue;
+                }
+                if ($this->contentreader->get_extractor_class((string) $cm->modname) === null) {
+                    continue;
+                }
+                $modulesource = $sourcebycmid[(int) $cm->id] ?? null;
+                $rows[] = [
+                    'cmId' => (int) $cm->id,
+                    'modName' => (string) $cm->modname,
+                    'modDisplayName' => $this->get_module_display_name((string) $cm->modname),
+                    'iconUrl' => $cm->get_icon_url()->out(false),
+                    'name' => format_string($cm->name, true, ['context' => $cm->context]),
+                    'sectionId' => $usessections ? $section['id'] : null,
+                    'sourceId' => $modulesource ? $modulesource->get_id() : 0,
+                    'enabled' => $modulesource ? $modulesource->get_enabled() : false,
+                    'indexState' => $modulesource
+                        ? $states[$modulesource->get_id()]->to_array()
+                        : index_state::unmanaged()->to_array(),
+                ];
+                $sectionhasrows = true;
             }
-            if ($this->contentreader->get_extractor_class((string) $cm->modname) === null) {
-                continue;
+            if ($usessections && $sectionhasrows) {
+                $sections[] = ['id' => $section['id'], 'name' => $section['name']];
             }
-            $modulesource = $sourcebycmid[(int) $cm->id] ?? null;
-            $rows[] = [
-                'cmId' => (int) $cm->id,
-                'modName' => (string) $cm->modname,
-                'modDisplayName' => $this->get_module_display_name((string) $cm->modname),
-                'name' => format_string($cm->name, true, ['context' => $cm->context]),
-                'sourceId' => $modulesource ? $modulesource->get_id() : 0,
-                'enabled' => $modulesource ? $modulesource->get_enabled() : false,
-                'indexState' => $modulesource
-                    ? $states[$modulesource->get_id()]->to_array()
-                    : index_state::unmanaged()->to_array(),
-            ];
         }
 
-        usort($rows, static fn(array $a, array $b): int => strcmp($a['name'], $b['name']));
-        return $rows;
+        return [$rows, $sections];
     }
 
     /**
@@ -279,11 +307,11 @@ class source_management_service {
      * right away so that it can also be searched (RAG). Otherwise it is only shared and can be indexed later. Stopping to
      * share a source also removes its index.
      *
-     * @param \context_course $coursecontext The context of the course whose sources are managed.
      * @param source $source The module or document source.
      * @param bool $enabled Whether the source is shared with AI.
+     * @param bool $indexingavailable Whether the current user can index sources in the managed course.
      */
-    private function set_source_enabled(\context_course $coursecontext, source $source, bool $enabled): void {
+    private function set_source_enabled(source $source, bool $enabled, bool $indexingavailable): void {
         if ($enabled === $source->get_enabled()) {
             return;
         }
@@ -294,7 +322,7 @@ class source_management_service {
         $source->set_enabled($enabled);
         $source->store();
 
-        if ($enabled && $this->indexservice->is_indexing_available($coursecontext->id)) {
+        if ($enabled && $indexingavailable) {
             $this->indexservice->start($source);
         }
     }

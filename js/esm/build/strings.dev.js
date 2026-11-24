@@ -19,7 +19,20 @@ import {
   getStrings
 } from "@moodle/lms/core/stringUtils";
 const COMPONENT = "local_ai_content";
-const CORE_STRINGS = ["add", "back", "cancel", "loading"];
+const CORE_STRINGS = [
+  "actions",
+  "add",
+  "back",
+  "cancel",
+  "content",
+  "delete",
+  "description",
+  "loading",
+  "name",
+  "required",
+  "savechanges",
+  "status"
+];
 let preloadPromise = null;
 const preloadStrings = /* @__PURE__ */ __name(() => {
   preloadPromise ??= Promise.all([
@@ -34,7 +47,7 @@ function Preloaded({ children }) {
   use(preloadStrings());
   return /* @__PURE__ */ jsxDEV(Fragment, { children }, void 0, false, {
     fileName: "public/local/ai_content/js/esm/src/strings.tsx",
-    lineNumber: 79,
+    lineNumber: 92,
     columnNumber: 12
   }, this);
 }
@@ -42,11 +55,11 @@ __name(Preloaded, "Preloaded");
 function StringsProvider({ children, fallback = null }) {
   return /* @__PURE__ */ jsxDEV(Suspense, { fallback, children: /* @__PURE__ */ jsxDEV(Preloaded, { children }, void 0, false, {
     fileName: "public/local/ai_content/js/esm/src/strings.tsx",
-    lineNumber: 91,
+    lineNumber: 104,
     columnNumber: 13
   }, this) }, void 0, false, {
     fileName: "public/local/ai_content/js/esm/src/strings.tsx",
-    lineNumber: 90,
+    lineNumber: 103,
     columnNumber: 9
   }, this);
 }

@@ -37,7 +37,20 @@ import {
 export const COMPONENT = 'local_ai_content';
 
 /** The core strings used by the UIs of this plugin. */
-const CORE_STRINGS = ['add', 'back', 'cancel', 'loading'];
+const CORE_STRINGS = [
+    'actions',
+    'add',
+    'back',
+    'cancel',
+    'content',
+    'delete',
+    'description',
+    'loading',
+    'name',
+    'required',
+    'savechanges',
+    'status',
+];
 
 /** The preload promise, created once per page. */
 let preloadPromise: Promise<unknown> | null = null;

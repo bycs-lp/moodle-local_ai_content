@@ -39,11 +39,7 @@ import {
     Checkbox,
     type ButtonProps,
 } from '@moodlehq/design-system';
-import {
-    closeSourceSelectorModal,
-    openSourceSelectorModal,
-    type MoodleModal,
-} from './source_selector/source_selection_modal_manager';
+import {closeModal, openModal, type MoodleModal} from './modal';
 import {
     loadSourceSelection,
     saveSelectedSourceIds,
@@ -51,6 +47,7 @@ import {
     type SelectionMode,
     type SourceOption,
 } from './source_selector/data_manager';
+import {SectionToggle, SelectedCount, SourceLabel} from './source_ui';
 import {COMPONENT, pluginString, StringsProvider} from './strings';
 import Fetch from '@moodle/lms/core/fetch';
 import MoodleString from '@moodle/lms/core/String';
@@ -121,7 +118,7 @@ function StringButton({identifier, component = COMPONENT, ...props}: Omit<Button
     identifier: string;
     component?: string;
 }) {
-    return <Button size='sm' {...props} label={use(getString(identifier, component))} />;
+    return <Button {...props} label={use(getString(identifier, component))} />;
 }
 
 /**
@@ -261,14 +258,12 @@ function SourceRow({source, context}: {source: SourceOption; context: RowContext
                 hideLabel
                 label={source.name}
             />
-            <label
+            <SourceLabel
                 htmlFor={id}
-                className='flex-grow-1 mb-0 d-flex align-items-center gap-2'
-            >
-                {source.iconUrl !== '' && <img src={source.iconUrl} className='icon activityicon m-0' alt='' />}
-                <span className='d-flex flex-column'>
-                    <span>{source.name}</span>
-                    <span className='small text-muted'>
+                iconUrl={source.iconUrl}
+                name={source.name}
+                details={(
+                    <>
                         {source.typeName}
                         {source.sourceType !== 'external' && (
                             <span title={sizeTitle}>
@@ -276,9 +271,9 @@ function SourceRow({source, context}: {source: SourceOption; context: RowContext
                                 <MoodleString identifier={sizeIdentifier} component={COMPONENT} params={sizeParameter} />
                             </span>
                         )}
-                    </span>
-                </span>
-            </label>
+                    </>
+                )}
+            />
             {source.outdated && <OutdatedBadge />}
             {mode !== undefined && onModeChange && (
                 <ModeSwitch
@@ -337,19 +332,14 @@ function BulkCheckbox({id, name, sources, context}: {id: string; name: string; s
 }
 
 /**
- * Render the number of selected sources of a group.
+ * Return the number of selected sources of a list.
  *
- * @param props The sources of the group and the selection.
- * @returns Count UI.
+ * @param sources The sources of a group or section.
+ * @param selection The selected sources with their mode.
+ * @returns The number of selected sources.
  */
-function SelectedCount({sources, selection}: {sources: SourceOption[]; selection: Selection}) {
-    const selected = sources.filter(source => selection.has(source.id)).length;
-    return (
-        <span className='small text-muted text-nowrap'>
-            <MoodleString identifier='selector_selectedcount' component={COMPONENT} params={{selected, total: sources.length}} />
-        </span>
-    );
-}
+const countSelected = (sources: SourceOption[], selection: Selection): number =>
+    sources.filter(source => selection.has(source.id)).length;
 
 /**
  * Render the sources of one course section as collapsible group.
@@ -371,21 +361,15 @@ function CourseSectionGroup({section, sources, initiallyExpanded, context}: {
         <div className='border-top'>
             <div className='d-flex align-items-center gap-2 py-2'>
                 <BulkCheckbox id={`${listId}-all`} name={section.name} sources={sources} context={context} />
-                <button
-                    type='button'
-                    className='btn btn-link text-reset text-decoration-none p-0 flex-grow-1 d-flex align-items-center gap-2
-                        text-start'
-                    aria-expanded={expanded}
-                    aria-controls={listId}
-                    title={use(pluginString('selector_toggle', section.name))}
-                    onClick={() => {
+                <SectionToggle
+                    name={section.name}
+                    expanded={expanded}
+                    controls={listId}
+                    onToggle={() => {
                         setExpanded(!expanded);
                     }}
-                >
-                    <i className={`icon fa fa-fw m-0 fa-chevron-${expanded ? 'down' : 'right'}`} aria-hidden='true' />
-                    <span className='fw-semibold'>{section.name}</span>
-                </button>
-                <SelectedCount sources={sources} selection={context.selection} />
+                />
+                <SelectedCount selected={countSelected(sources, context.selection)} total={sources.length} />
             </div>
             {expanded && (
                 <ul id={listId} className='list-unstyled mb-0 ps-4'>
@@ -420,7 +404,9 @@ function SourceGroup({titleIdentifier, emptyIdentifier, sources, sections = [], 
             <div className='d-flex align-items-center gap-2 pb-1 border-bottom'>
                 {sources.length > 0 && <BulkCheckbox id={`${groupId}-all`} name={title} sources={sources} context={context} />}
                 <h6 className='mb-0 flex-grow-1'>{title}</h6>
-                {sources.length > 0 && <SelectedCount sources={sources} selection={context.selection} />}
+                {sources.length > 0 && (
+                    <SelectedCount selected={countSelected(sources, context.selection)} total={sources.length} />
+                )}
             </div>
             {sources.length === 0 && (
                 <div className='text-muted small mt-2'><MoodleString identifier={emptyIdentifier} component={COMPONENT} /></div>
@@ -519,6 +505,7 @@ function SourceSelectorContent({contextId, defaultMode = 'search'}: Props) {
     const [globalDocuments, setGlobalDocuments] = useState<SourceOption[]>([]);
     const [courseActivities, setCourseActivities] = useState<SourceOption[]>([]);
     const [courseSections, setCourseSections] = useState<CourseSection[]>([]);
+    const [courseDocuments, setCourseDocuments] = useState<SourceOption[]>([]);
     const [externalSources, setExternalSources] = useState<SourceOption[]>([]);
     const [selection, setSelection] = useState<Selection>(new Map());
     const [canSelect, setCanSelect] = useState<boolean>(false);
@@ -542,7 +529,7 @@ function SourceSelectorContent({contextId, defaultMode = 'search'}: Props) {
     const modalReference = useRef<MoodleModal | null>(null);
     const pendingSaves = useRef<number>(0);
 
-    const listedSources = [...globalDocuments, ...courseActivities, ...externalSources];
+    const listedSources = [...globalDocuments, ...courseActivities, ...courseDocuments, ...externalSources];
     // Chat requests use the selected sources, so warn if at least one of them is answered from outdated content.
     const hasOutdatedSelection = listedSources.some(source => source.outdated && selection.has(source.id));
     const hasOutdatedSources = listedSources.some(source => source.outdated);
@@ -576,6 +563,7 @@ function SourceSelectorContent({contextId, defaultMode = 'search'}: Props) {
                 setGlobalDocuments(loaded.globalDocuments);
                 setCourseActivities(loaded.courseActivities);
                 setCourseSections(loaded.courseSections);
+                setCourseDocuments(loaded.courseDocuments);
                 setExternalSources(loaded.externalSources);
                 setSelection(new Map(loaded.selectedSourceIds.map(id => [
                     id,
@@ -760,7 +748,7 @@ function SourceSelectorContent({contextId, defaultMode = 'search'}: Props) {
 
     const addSelectedExternalSources = () => {
         const importableSources = [...importCourseActivities, ...importCourseDocuments];
-        const localIds = new Set([...globalDocuments, ...courseActivities].map(source => source.id));
+        const localIds = new Set([...globalDocuments, ...courseActivities, ...courseDocuments].map(source => source.id));
 
         setExternalSources(previous => {
             const existingIds = new Set(previous.map(source => source.id));
@@ -783,11 +771,11 @@ function SourceSelectorContent({contextId, defaultMode = 'search'}: Props) {
             return;
         }
 
-        void closeSourceSelectorModal(modalReference.current);
+        void closeModal(modalReference.current);
         modalReference.current = null;
     }, []);
 
-    const openModal = async () => {
+    const openSelectorModal = async () => {
         if (modalReference.current) {
             return;
         }
@@ -797,7 +785,7 @@ function SourceSelectorContent({contextId, defaultMode = 'search'}: Props) {
             loadSelection(true);
         }
 
-        const modalResult = await openSourceSelectorModal({
+        const modalResult = await openModal({
             title: await pluginString('selector_launcher'),
             onShown() {
                 setIsModalOpen(true);
@@ -911,16 +899,16 @@ function SourceSelectorContent({contextId, defaultMode = 'search'}: Props) {
                 </div>
 
                 <SourceGroup
-                    titleIdentifier='selector_coursedocuments'
-                    emptyIdentifier='selector_nocoursedocuments'
-                    sources={importCourseDocuments}
-                    context={importRowContext('documents')}
-                />
-                <SourceGroup
                     titleIdentifier='selector_courseactivities'
                     emptyIdentifier='selector_nocourseactivities'
                     sources={importCourseActivities}
                     context={importRowContext('activities')}
+                />
+                <SourceGroup
+                    titleIdentifier='selector_coursedocuments'
+                    emptyIdentifier='selector_nocoursedocuments'
+                    sources={importCourseDocuments}
+                    context={importRowContext('documents')}
                 />
 
                 <div className='d-flex gap-2 mt-3'>
@@ -969,6 +957,12 @@ function SourceSelectorContent({contextId, defaultMode = 'search'}: Props) {
                 sources={courseActivities}
                 sections={courseSections}
                 context={rowContext('activities')}
+            />
+            <SourceGroup
+                titleIdentifier='selector_coursedocuments'
+                emptyIdentifier='selector_nocoursedocuments'
+                sources={courseDocuments}
+                context={rowContext('documents')}
             />
             <SourceGroup
                 titleIdentifier='selector_globaldocuments'
@@ -1033,7 +1027,7 @@ function SourceSelectorContent({contextId, defaultMode = 'search'}: Props) {
                 title={launcherTitle}
                 aria-label={launcherTitle}
                 onClick={() => {
-                    void openModal();
+                    void openSelectorModal();
                 }}
             >
                 <i className='fa fa-paperclip' aria-hidden='true' />

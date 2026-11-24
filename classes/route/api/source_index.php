@@ -19,11 +19,16 @@ namespace local_ai_content\route\api;
 use core\output\stored_progress_bar;
 use core\param;
 use core\router\route;
+use core\router\schema\objects\array_of_things;
+use core\router\schema\objects\schema_object;
 use core\router\schema\parameters\path_parameter;
+use core\router\schema\request_body;
+use core\router\schema\response\content\payload_response_type;
 use core\router\schema\response\payload_response;
 use core\router\schema\response\response as route_response;
 use local_ai_content\local\access_guard;
 use local_ai_content\local\index_service;
+use local_ai_content\local\index_state;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -53,37 +58,44 @@ class source_index {
     }
 
     /**
-     * Index one source with the embedding model of the current user.
+     * Index sources with the embedding model of the current user.
      *
      * @param ServerRequestInterface $request The request.
      * @param ResponseInterface $response The response.
-     * @param int $sourceId The source id.
      * @return payload_response
      */
     #[route(
-        path: '/sources/{sourceId}/index',
+        path: '/source-indexes',
         method: ['POST'],
-        title: 'Index source',
-        description: 'Queues the indexing of one source with the embedding model of the current user and returns the '
-            . 'resulting index state.',
-        pathtypes: [
-            new path_parameter(
-                name: 'sourceId',
-                type: param::INT,
-                description: 'The source ID.',
+        title: 'Index sources',
+        description: 'Queues the indexing of the given sources with the embedding model of the current user and returns the '
+            . 'resulting index states. Either all or none of them are queued.',
+        requestbody: new request_body(
+            content: new payload_response_type(
+                schema: new schema_object([
+                    'sourceIds' => new array_of_things(thingtype: param::INT),
+                ]),
             ),
-        ],
+        ),
         responses: [
             new route_response(statuscode: 200, description: 'OK'),
         ],
     )]
-    public function index_source(
+    public function index_sources(
         ServerRequestInterface $request,
         ResponseInterface $response,
-        int $sourceId,
     ): payload_response {
+        $body = (array)$request->getParsedBody();
+        if (!array_key_exists('sourceIds', $body)) {
+            throw new \invalid_parameter_exception('Missing field sourceIds.');
+        }
+
+        $states = $this->indexservice->start_by_ids(array_map('intval', $body['sourceIds']));
+
         return new payload_response(
-            payload: $this->indexservice->start_by_id($sourceId)->to_array(),
+            payload: [
+                'items' => array_map(static fn(index_state $state): array => $state->to_array(), $states),
+            ],
             request: $request,
             response: $response,
         );

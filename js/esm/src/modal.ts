@@ -14,19 +14,21 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Legacy Moodle modal manager for the source selector React component.
+ * Moodle core modals with a mount target for React content.
  *
- * @module     local_ai_content/source_selector/source_selection_modal_manager
+ * @module     local_ai_content/modal
  * @copyright  2026 ISB Bayern
+ * @author     Philipp Memmel
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 import {requireAsync} from '@moodle/lms/core/amd';
+import {getString} from '@moodle/lms/core/stringUtils';
 
 /** The parts of the jQuery wrapped modal root element used here. */
 type ModalRoot = {
     [index: number]: HTMLElement;
-    on: (event: string, handler: () => void) => void;
+    on: (event: string, handler: (event: {preventDefault: () => void}) => void) => void;
 };
 
 export type MoodleModal = {
@@ -36,59 +38,66 @@ export type MoodleModal = {
     hide: () => Promise<void>;
 };
 
-/** The parts of the AMD module core/modal_cancel used here. */
-type ModalCancelModule = {
+/** The parts of the AMD modules core/modal_cancel and core/modal_save_cancel used here. */
+type ModalModule = {
     create: (config: {
         title: string;
         body: string;
         large: boolean;
         removeOnClose: boolean;
-        buttons: {cancel: string};
+        buttons: Record<string, string>;
     }) => Promise<MoodleModal>;
-};
-
-/** The parts of the AMD module core/str used here. */
-type StringModule = {
-    getString: (key: string, component: string) => Promise<string>;
 };
 
 /** The parts of the AMD module core/modal_events used here. */
 type ModalEventsModule = {
     shown: string;
     hidden: string;
+    save: string;
 };
 
-/** Options for opening the source selector modal. */
+/** Options for opening a modal. */
 type ModalOptions = {
     title: string;
+    /** Label of the save button. Without it, the modal only has a close button. */
+    saveLabel?: string;
+    /** Called on save; the modal stays open, close it with {@link closeModal} once saved. */
+    onSave?: () => void;
     onShown?: () => void;
     onHidden?: () => void;
 };
 
-/**
- * Open a Moodle core modal and provide a mount target for React content.
- *
- * @param options Title of the modal and callbacks for its shown and hidden events.
- * @returns Modal and mount root.
- */
-export const openSourceSelectorModal = async (options: ModalOptions): Promise<{modal: MoodleModal; bodyRoot: HTMLElement}> => {
-    const modalCancel = await requireAsync<ModalCancelModule>('core/modal_cancel');
-    const modalEvents = await requireAsync<ModalEventsModule>('core/modal_events');
-    const string_ = await requireAsync<StringModule>('core/str');
+/** The region the React content is mounted into. */
+const BODY_REGION = 'local_ai_content-modal-body';
 
-    // Changes are saved immediately, so the footer button only closes the modal.
-    const modal = await modalCancel.create({
+/**
+ * Open a large Moodle core modal and provide a mount target for React content.
+ *
+ * @param options Title, save button and callbacks of the modal.
+ * @returns The modal and the element to render its body into.
+ */
+export const openModal = async (options: ModalOptions): Promise<{modal: MoodleModal; bodyRoot: HTMLElement}> => {
+    const withSave = options.saveLabel !== undefined;
+    const modalType = await requireAsync<ModalModule>(withSave ? 'core/modal_save_cancel' : 'core/modal_cancel');
+    const modalEvents = await requireAsync<ModalEventsModule>('core/modal_events');
+
+    const modal = await modalType.create({
         title: options.title,
         body: '',
         large: true,
         removeOnClose: true,
-        buttons: {cancel: await string_.getString('closebuttontitle', 'core')},
+        buttons: withSave ? {save: options.saveLabel!} : {cancel: await getString('closebuttontitle', 'core')},
     });
 
     const root = modal.getRoot();
-    modal.setBody('<div data-local_ai_content-region="source-selector-modal-body"></div>');
-    const bodyRoot = root[0].querySelector<HTMLElement>('[data-local_ai_content-region="source-selector-modal-body"]')!;
+    modal.setBody(`<div data-region="${BODY_REGION}"></div>`);
+    const bodyRoot = root[0].querySelector<HTMLElement>(`[data-region="${CSS.escape(BODY_REGION)}"]`)!;
 
+    root.on(modalEvents.save, event => {
+        // Keep the modal open, e.g. to show validation errors.
+        event.preventDefault();
+        options.onSave?.();
+    });
     if (options.onShown) {
         root.on(modalEvents.shown, options.onShown);
     }
@@ -98,16 +107,14 @@ export const openSourceSelectorModal = async (options: ModalOptions): Promise<{m
     }
 
     await modal.show();
-
     return {modal, bodyRoot};
 };
 
 /**
- * Close a Moodle core modal instance.
+ * Close a modal opened with {@link openModal}.
  *
- * @param modal Modal instance.
- * @returns Resolves when modal is closed.
+ * @param modal The modal to close.
  */
-export const closeSourceSelectorModal = async (modal: MoodleModal): Promise<void> => {
+export const closeModal = async (modal: MoodleModal): Promise<void> => {
     await modal.hide();
 };

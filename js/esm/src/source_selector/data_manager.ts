@@ -62,6 +62,8 @@ export type CourseSection = {
 export type ContextSourceSelection = {
     globalDocuments: SourceOption[];
     courseActivities: SourceOption[];
+    /** The document sources of the course of the context. */
+    courseDocuments: SourceOption[];
     externalSources: SourceOption[];
     /** The sections of the course activities in course order, empty if the course format has no sections. */
     courseSections: CourseSection[];
@@ -84,6 +86,7 @@ type ContextSourceSelectionResponse = {
     items: Array<{
         globalDocuments: SourceOption[];
         courseActivities: SourceOption[];
+        courseDocuments: SourceOption[];
         externalSources: SourceOption[];
         courseSections: CourseSection[];
         selectedSourceIds: string;
@@ -156,6 +159,7 @@ export const loadSourceSelection = async (contextId: number, reload = false): Pr
             const selection: ContextSourceSelection = {
                 globalDocuments: item.globalDocuments,
                 courseActivities: item.courseActivities,
+                courseDocuments: item.courseDocuments,
                 externalSources: item.externalSources,
                 courseSections: item.courseSections,
                 selectedSourceIds: parseSourceIds(item.selectedSourceIds),

@@ -18,6 +18,7 @@ namespace local_ai_content\route\api;
 
 use core\param;
 use core\router\route;
+use core\router\schema\objects\array_of_things;
 use core\router\schema\objects\scalar_type;
 use core\router\schema\objects\schema_object;
 use core\router\schema\response\content\payload_response_type;
@@ -91,35 +92,32 @@ class source_management {
     }
 
     /**
-     * Update module source flags.
+     * Share module and document sources with AI or stop sharing them.
      *
      * @param ServerRequestInterface $request
      * @param ResponseInterface $response
      * @param int $contextId The active context id.
-     * @param int $cmId The target module id.
      * @return payload_response
      */
     #[route(
-        path: '/contexts/{contextId}/module-sources/{cmId}',
+        path: '/contexts/{contextId}/sources',
         method: ['PATCH'],
-        title: 'Update module source',
-        description: 'Updates enabled and indexing flags for one module source.',
+        title: 'Update sources',
+        description: 'Shares the given module and document sources with AI or stops sharing them. Either all or none of '
+            . 'them are changed.',
         pathtypes: [
             new \core\router\schema\parameters\path_parameter(
                 name: 'contextId',
                 type: param::INT,
                 description: 'The Moodle context ID.',
             ),
-            new \core\router\schema\parameters\path_parameter(
-                name: 'cmId',
-                type: param::INT,
-                description: 'The course module ID.',
-            ),
         ],
         requestbody: new \core\router\schema\request_body(
             content: new payload_response_type(
                 schema: new schema_object([
-                    'enabled' => new scalar_type(param::BOOL),
+                    'cmIds' => new array_of_things(thingtype: param::INT),
+                    'documentIds' => new array_of_things(thingtype: param::INT),
+                    'enabled' => new scalar_type(param::BOOL, true),
                 ]),
             ),
         ),
@@ -130,16 +128,24 @@ class source_management {
             ),
         ],
     )]
-    public function update_module_source(
+    public function update_sources(
         ServerRequestInterface $request,
         ResponseInterface $response,
         int $contextId,
-        int $cmId,
     ): payload_response {
         $coursecontext = $this->accessguard->require_manage_access(\context_helper::instance_by_id($contextId, MUST_EXIST));
         $body = (array)$request->getParsedBody();
+        if (!array_key_exists('enabled', $body)) {
+            throw new \invalid_parameter_exception('Missing field enabled.');
+        }
 
-        $this->managementservice->set_module_enabled($coursecontext, $cmId, self::as_bool($body['enabled']));
+        // Both lists are optional, e.g. only documents are changed.
+        $this->managementservice->set_sources_enabled(
+            $coursecontext,
+            array_map('intval', $body['cmIds'] ?? []),
+            array_map('intval', $body['documentIds'] ?? []),
+            self::as_bool($body['enabled']),
+        );
 
         return new payload_response(
             payload: $this->build_payload($coursecontext),
@@ -226,7 +232,7 @@ class source_management {
         path: '/contexts/{contextId}/document-sources/{sourceId}',
         method: ['PATCH'],
         title: 'Update document source',
-        description: 'Updates one document source and/or toggles indexing flags.',
+        description: 'Updates the name, description and/or content of one document source.',
         pathtypes: [
             new \core\router\schema\parameters\path_parameter(
                 name: 'contextId',
@@ -242,7 +248,6 @@ class source_management {
         requestbody: new \core\router\schema\request_body(
             content: new payload_response_type(
                 schema: new schema_object([
-                    'enabled' => new scalar_type(param::BOOL),
                     'name' => new scalar_type(param::RAW),
                     'description' => new scalar_type(param::RAW),
                     'content' => new scalar_type(param::RAW),
@@ -264,10 +269,6 @@ class source_management {
     ): payload_response {
         $coursecontext = $this->accessguard->require_manage_access(\context_helper::instance_by_id($contextId, MUST_EXIST));
         $body = (array)$request->getParsedBody();
-
-        if (array_key_exists('enabled', $body)) {
-            $this->managementservice->set_document_enabled($coursecontext, $sourceId, self::as_bool($body['enabled']));
-        }
 
         if (array_key_exists('name', $body) || array_key_exists('description', $body) || array_key_exists('content', $body)) {
             // Fields missing in the request body are kept.

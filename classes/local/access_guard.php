@@ -89,12 +89,15 @@ class access_guard {
      * @throws access_denied_exception If the context does not belong to a course.
      */
     public function require_manage_access(\context $context): \context_course {
+        global $PAGE;
         require_login();
         $coursecontext = $context->get_course_context(false);
         if (!$coursecontext) {
             throw new access_denied_exception('nopermissions', 'error', '', get_capability_string(self::CAP_MANAGESOURCES));
         }
         $this->require_capability(self::CAP_MANAGESOURCES, $coursecontext);
+        // The responses use output APIs (e.g. activity icons), which need the page context.
+        $PAGE->set_context($coursecontext);
         return $coursecontext;
     }
 

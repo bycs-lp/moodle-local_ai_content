@@ -33,6 +33,7 @@ class source_selection_service {
      * @param source_selection_store $selectionstore Store of the source selections of contexts.
      * @param source_access $sourceaccess Checks whether a user may retrieve from a source.
      * @param access_guard $accessguard Enforces the access rules for the current user.
+     * @param course_structure $coursestructure Reader of the course structure.
      */
     public function __construct(
         /** @var embedding_model_resolver Resolver of the embedding model of the current user. */
@@ -43,6 +44,8 @@ class source_selection_service {
         private readonly source_access $sourceaccess,
         /** @var access_guard Enforces the access rules for the current user. */
         private readonly access_guard $accessguard,
+        /** @var course_structure Reader of the course structure. */
+        private readonly course_structure $coursestructure,
     ) {
     }
 
@@ -77,6 +80,7 @@ class source_selection_service {
         return array_values(array_merge(
             $groups['globalDocuments'],
             $groups['courseActivities'],
+            $groups['courseDocuments'],
             $groups['externalSources'],
         ));
     }
@@ -92,6 +96,7 @@ class source_selection_service {
      * @return array{
      *   globalDocuments: array,
      *   courseActivities: array,
+     *   courseDocuments: array,
      *   externalSources: array,
      *   courseSections: array<int, array{id: int, name: string}>
      * }
@@ -108,18 +113,26 @@ class source_selection_service {
             return $this->add_outdated_flags([
                 'globalDocuments' => $globaldocuments,
                 'courseActivities' => [],
+                'courseDocuments' => [],
                 'externalSources' => [],
             ]) + ['courseSections' => []];
         }
 
         [$courseactivities, $coursesections] = $this->get_course_activity_sources($coursecontext, $userid);
+        $coursedocuments = $this->get_course_document_sources($coursecontext, $this->get_course_origin($coursecontext), $userid);
 
         $selectedsourceids = $this->selectionstore->get_sourceids_for_context($contextid);
-        $externalsources = $this->get_selected_external_sources($selectedsourceids, $coursecontext, $globaldocuments, $courseactivities, $userid);
+        $externalsources = $this->get_selected_external_sources(
+            $selectedsourceids,
+            $coursecontext,
+            array_merge($globaldocuments, $courseactivities, $coursedocuments),
+            $userid,
+        );
 
         return $this->add_outdated_flags([
             'globalDocuments' => $globaldocuments,
             'courseActivities' => $courseactivities,
+            'courseDocuments' => $coursedocuments,
             'externalSources' => $externalsources,
         ]) + ['courseSections' => $coursesections];
     }
@@ -191,9 +204,23 @@ class source_selection_service {
         // The import list is flat, so the sections are not needed.
         [$courseactivities] = $this->get_module_entries($modinfo, $origin);
 
+        return $this->add_outdated_flags([
+            'courseActivities' => $courseactivities,
+            'courseDocuments' => $this->get_course_document_sources($sourcecoursecontext, $origin, $userid),
+        ]);
+    }
+
+    /**
+     * Return the selectable document sources of a course the user may use, sorted by name.
+     *
+     * @param \context_course $coursecontext The context of the course.
+     * @param string $origin The formatted name of the course.
+     * @param int $userid User ID.
+     * @return array[] The source entries.
+     */
+    private function get_course_document_sources(\context_course $coursecontext, string $origin, int $userid): array {
         $coursedocuments = [];
-        $sources = source::get_records_by_contextids([$sourcecoursecontext->id]);
-        foreach ($sources as $documentsource) {
+        foreach (source::get_records_by_contextids([$coursecontext->id]) as $documentsource) {
             if ($documentsource->get_sourcetype() === source::TYPE_MODULE || !$this->is_selectable($documentsource)) {
                 continue;
             }
@@ -204,11 +231,17 @@ class source_selection_service {
         }
 
         usort($coursedocuments, static fn(array $a, array $b): int => strcmp((string)$a['name'], (string)$b['name']));
+        return $coursedocuments;
+    }
 
-        return $this->add_outdated_flags([
-            'courseActivities' => $courseactivities,
-            'courseDocuments' => $coursedocuments,
-        ]);
+    /**
+     * Return the formatted name of a course as origin of its sources.
+     *
+     * @param \context_course $coursecontext The context of the course.
+     * @return string The formatted course name.
+     */
+    private function get_course_origin(\context_course $coursecontext): string {
+        return format_string(get_course($coursecontext->instanceid)->fullname, true, ['context' => $coursecontext]);
     }
 
     /**
@@ -301,46 +334,28 @@ class source_selection_service {
             $sourcebycmid[$modulesource->get_cmid()] = $modulesource;
         }
 
-        $format = course_get_format($modinfo->get_course());
-        $usessections = $format->uses_sections();
+        $structure = $this->coursestructure->get_sections($modinfo);
+        $usessections = $structure['usessections'];
         $entries = [];
         $sections = [];
-        foreach ($modinfo->get_listed_section_info_all() as $section) {
+        foreach ($structure['sections'] as $section) {
             $sectionhasentries = false;
-            foreach ($this->get_section_cms($section) as $cm) {
+            foreach ($section['cms'] as $cm) {
                 $modulesource = $sourcebycmid[$cm->id] ?? null;
                 if (!$cm->uservisible || $modulesource === null || !$this->is_selectable($modulesource)) {
                     continue;
                 }
                 $entry = $this->build_entry($modulesource, format_string($cm->name, true, ['context' => $cm->context]), $origin,
                     $cm);
-                $entry['sectionId'] = $usessections ? (int) $section->id : null;
+                $entry['sectionId'] = $usessections ? $section['id'] : null;
                 $entries[] = $entry;
                 $sectionhasentries = true;
             }
             if ($usessections && $sectionhasentries) {
-                $sections[] = ['id' => (int) $section->id, 'name' => $format->get_section_name($section)];
+                $sections[] = ['id' => $section['id'], 'name' => $section['name']];
             }
         }
         return [$entries, $sections];
-    }
-
-    /**
-     * Return the course modules of a section in course page order, including the modules of delegated sections.
-     *
-     * @param \core_course\section_info $section The section.
-     * @return \core_course\cm_info[] The course modules.
-     */
-    private function get_section_cms(\core_course\section_info $section): array {
-        $cms = [];
-        foreach ($section->get_sequence_cm_infos() as $cm) {
-            $cms[] = $cm;
-            $delegatedsection = $cm->get_delegated_section_info();
-            if ($delegatedsection !== null) {
-                array_push($cms, ...$this->get_section_cms($delegatedsection));
-            }
-        }
-        return $cms;
     }
 
     /**
@@ -387,20 +402,18 @@ class source_selection_service {
      *
      * @param int[] $selectedsourceids
      * @param \context_course $coursecontext
-     * @param array $globaldocuments
-     * @param array $courseactivities
+     * @param array $localsources The entries of the sources already listed as global documents or sources of the course.
      * @param int $userid
      * @return array
      */
     private function get_selected_external_sources(
         array $selectedsourceids,
         \context_course $coursecontext,
-        array $globaldocuments,
-        array $courseactivities,
+        array $localsources,
         int $userid,
     ): array {
         $localids = [];
-        foreach (array_merge($globaldocuments, $courseactivities) as $localsource) {
+        foreach ($localsources as $localsource) {
             $localids[(int)$localsource['id']] = true;
         }
 

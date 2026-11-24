@@ -40,6 +40,7 @@ const loadSourceSelection = /* @__PURE__ */ __name(async (contextId, reload = fa
     const selection = {
       globalDocuments: item.globalDocuments,
       courseActivities: item.courseActivities,
+      courseDocuments: item.courseDocuments,
       externalSources: item.externalSources,
       courseSections: item.courseSections,
       selectedSourceIds: parseSourceIds(item.selectedSourceIds),
