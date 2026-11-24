@@ -55,71 +55,74 @@ final class source_selection_service_test extends \advanced_testcase {
     }
 
     /**
-     * Data provider for test_only_selectable_global_sources_are_offered.
+     * Data provider for test_selectable_modes_of_global_sources.
      *
-     * @return array Datasets with source type, enabled flag, statuses of the model indexes and expected visibility.
+     * @return array Datasets with source type, enabled flag, statuses of the model indexes and expected selection modes.
      */
-    public static function only_selectable_global_sources_are_offered_provider(): array {
+    public static function selectable_modes_of_global_sources_provider(): array {
+        $full = source_selection_store::MODE_FULL;
+        $search = source_selection_store::MODE_SEARCH;
         return [
             'document_indexed' => [
                 'sourcetype' => source::TYPE_DOCUMENT,
                 'enabled' => true,
                 'indexstatuses' => [model_index::STATUS_INDEXED],
-                'expected' => true,
+                'expectedmodes' => [$full, $search],
             ],
             'document_not_indexed' => [
                 'sourcetype' => source::TYPE_DOCUMENT,
                 'enabled' => true,
                 'indexstatuses' => [],
-                'expected' => false,
+                'expectedmodes' => [$full],
             ],
             'document_running' => [
                 'sourcetype' => source::TYPE_DOCUMENT,
                 'enabled' => true,
                 'indexstatuses' => [model_index::STATUS_RUNNING],
-                'expected' => false,
+                'expectedmodes' => [$full],
             ],
             'document_failed' => [
                 'sourcetype' => source::TYPE_DOCUMENT,
                 'enabled' => true,
                 'indexstatuses' => [model_index::STATUS_FAILED],
-                'expected' => false,
+                'expectedmodes' => [$full],
             ],
             'document_indexed_with_one_of_two_models' => [
                 'sourcetype' => source::TYPE_DOCUMENT,
                 'enabled' => true,
                 'indexstatuses' => [model_index::STATUS_FAILED, model_index::STATUS_INDEXED],
-                'expected' => true,
+                'expectedmodes' => [$full, $search],
             ],
             'document_indexed_but_disabled' => [
                 'sourcetype' => source::TYPE_DOCUMENT,
                 'enabled' => false,
                 'indexstatuses' => [model_index::STATUS_INDEXED],
-                'expected' => false,
+                'expectedmodes' => [],
             ],
             'external_not_indexed_by_moodle' => [
                 'sourcetype' => source::TYPE_EXTERNAL,
                 'enabled' => true,
                 'indexstatuses' => [],
-                'expected' => true,
+                'expectedmodes' => [$search],
             ],
         ];
     }
 
     /**
-     * Ensure only enabled sources indexed with at least one embedding model (or external sources) are offered.
+     * Ensure only enabled sources are offered, with the complete content for Moodle sources and searching for sources
+     * indexed with at least one embedding model or external sources.
      *
      * @param string $sourcetype The source type.
      * @param bool $enabled Whether the source is enabled.
      * @param string[] $indexstatuses The statuses of the indexes of the source, one index per embedding model.
-     * @param bool $expected Whether the source is expected to be offered.
+     * @param string[] $expectedmodes The expected selection modes, empty if the source is not expected to be offered.
      */
-    #[\PHPUnit\Framework\Attributes\DataProvider('only_selectable_global_sources_are_offered_provider')]
-    public function test_only_selectable_global_sources_are_offered(
+    #[\PHPUnit\Framework\Attributes\DataProvider('selectable_modes_of_global_sources_provider')]
+    public function test_selectable_modes_of_global_sources(
         string $sourcetype,
         bool $enabled,
         array $indexstatuses,
-        bool $expected,
+        array $expectedmodes,
     ): void {
         $this->resetAfterTest();
         $this->setAdminUser();
@@ -140,9 +143,14 @@ final class source_selection_service_test extends \advanced_testcase {
             ]);
         }
 
-        $ids = \core\di::get(source_selection_service::class)->get_available_sourceids_for_context(\context_system::instance()->id);
+        $groups = \core\di::get(source_selection_service::class)->get_grouped_sources_for_context(\context_system::instance()->id);
 
-        $this->assertSame($expected, in_array($globalsource->get_id(), $ids));
+        $entries = array_column($groups['globalDocuments'], null, 'id');
+        if ($expectedmodes === []) {
+            $this->assertArrayNotHasKey($globalsource->get_id(), $entries);
+        } else {
+            $this->assertSame($expectedmodes, $entries[$globalsource->get_id()]['modes']);
+        }
     }
 
     /**
@@ -198,9 +206,10 @@ final class source_selection_service_test extends \advanced_testcase {
     }
 
     /**
-     * Ensure only existing, selectable and accessible sources are stored as selection and the stored ids are returned.
+     * Ensure only existing, accessible sources selectable with the requested mode are stored and the stored selection is
+     * returned.
      */
-    public function test_save_selected_sourceids_drops_invalid_ids(): void {
+    public function test_save_selection_drops_invalid_ids(): void {
         $this->resetAfterTest();
         $course = $this->getDataGenerator()->create_course();
         $user = $this->getDataGenerator()->create_user();
@@ -212,7 +221,9 @@ final class source_selection_service_test extends \advanced_testcase {
 
         $valid = $generator->create_source(['contextid' => $systemcontextid]);
         $generator->create_model_index(['sourceid' => $valid->get_id()]);
-        $notindexed = $generator->create_source(['contextid' => $systemcontextid]);
+        // Sources without index can only be selected with their complete content.
+        $notindexedsearch = $generator->create_source(['contextid' => $systemcontextid]);
+        $notindexedfull = $generator->create_source(['contextid' => $systemcontextid]);
         $disabled = $generator->create_source(['contextid' => $systemcontextid, 'enabled' => false]);
         $generator->create_model_index(['sourceid' => $disabled->get_id()]);
         // The user is not enrolled in the course, so the source is not accessible.
@@ -224,20 +235,26 @@ final class source_selection_service_test extends \advanced_testcase {
             $nonexistentid,
             $inaccessible->get_id(),
             $disabled->get_id(),
-            $notindexed->get_id(),
+            $notindexedsearch->get_id(),
+            $notindexedfull->get_id(),
             $valid->get_id(),
         ]);
+        $requestedfull = implode(',', [$disabled->get_id(), $notindexedfull->get_id()]);
         $service = \core\di::get(source_selection_service::class);
-        $saved = $service->save_selected_sourceids($coursecontext->id, $requested);
+        $saved = $service->save_selection($coursecontext->id, $requested, $requestedfull);
 
-        $this->assertSame((string)$valid->get_id(), $saved);
-        $this->assertSame((string)$valid->get_id(), $service->get_selected_sourceids($coursecontext->id));
+        $expected = [
+            'selectedSourceIds' => $valid->get_id() . ',' . $notindexedfull->get_id(),
+            'fullSourceIds' => (string)$notindexedfull->get_id(),
+        ];
+        $this->assertSame($expected, $saved);
+        $this->assertSame($expected, $service->get_selection($coursecontext->id));
     }
 
     /**
      * Ensure an empty selection clears the stored selection.
      */
-    public function test_save_selected_sourceids_with_empty_string_clears_selection(): void {
+    public function test_save_selection_with_empty_string_clears_selection(): void {
         $this->resetAfterTest();
         $this->setAdminUser();
         $contextid = \context_system::instance()->id;
@@ -246,11 +263,12 @@ final class source_selection_service_test extends \advanced_testcase {
         $source = $generator->create_source(['contextid' => $contextid]);
         $generator->create_model_index(['sourceid' => $source->get_id()]);
         $service = \core\di::get(source_selection_service::class);
-        $service->save_selected_sourceids($contextid, (string)$source->get_id());
+        $service->save_selection($contextid, (string)$source->get_id());
 
-        $saved = $service->save_selected_sourceids($contextid, '');
+        $saved = $service->save_selection($contextid, '');
 
-        $this->assertSame('', $saved);
-        $this->assertSame('', $service->get_selected_sourceids($contextid));
+        $expected = ['selectedSourceIds' => '', 'fullSourceIds' => ''];
+        $this->assertSame($expected, $saved);
+        $this->assertSame($expected, $service->get_selection($contextid));
     }
 }
