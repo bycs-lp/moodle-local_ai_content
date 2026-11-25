@@ -29,19 +29,17 @@ namespace local_ai_content\local;
 #[\PHPUnit\Framework\Attributes\CoversClass(source_reference::class)]
 final class rag_result_test extends \advanced_testcase {
     /**
-     * Ensure rag_result exports retrieved text and references in API-safe form.
+     * Ensure rag_result exports the references in API-safe form, but not the retrieved or complete contents.
      */
-    public function test_to_array_contains_retrieved_text_and_sources(): void {
-        $this->resetAfterTest();
-
+    public function test_to_array_contains_sources_without_contents(): void {
         $result = new rag_result('Chunk A\n\n---\n\nChunk B', [
             new source_reference(123, 'Resource 1', 'https://example.org/r1', 'p. 2'),
             new source_reference(456, 'Resource 2', '', ''),
-        ]);
+        ], [], 'Complete content');
 
         $array = $result->to_array();
 
-        $this->assertEquals('Chunk A\n\n---\n\nChunk B', $array['retrievedText']);
+        $this->assertSame(['sources', 'unavailableSources'], array_keys($array));
         $this->assertCount(2, $array['sources']);
         $this->assertEquals(123, $array['sources'][0]['sourceId']);
         $this->assertEquals('Resource 1', $array['sources'][0]['title']);

@@ -126,8 +126,10 @@ EOF;
      *
      * Does nothing if the request has no selected sources. Sources selected with their full content are added completely,
      * the other ones are searched for the excerpts relevant for the request (RAG). The RAG result (sources used and
-     * unavailable sources) is added as result data, so the calling component can show it next to the response. The general
-     * request options 'minsimilarity' and 'maxretrievedchars' override the admin settings for this request.
+     * unavailable sources) is added as result data, so the calling component can show it next to the response. The result
+     * data does not contain the retrieved or complete contents, they are only part of the prompt context (see
+     * {@see rag_result::to_array()}). The general request options 'minsimilarity' and 'maxretrievedchars' override the
+     * admin settings for this request.
      *
      * @param additional_prompt_context $hook The hook of the AI request.
      * @throws \moodle_exception if the selected sources cannot be searched

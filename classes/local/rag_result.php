@@ -111,13 +111,22 @@ class rag_result {
     /**
      * Export to API-safe array.
      *
-     * The complete contents are not exported: they can be very long and are available in the sources themselves.
+     * The array is the result data of the RAG context (see {@see rag_manager::add_rag_context()}). It is stored in the
+     * request log with the request options (key 'contextdata') and used by the calling component to show the sources next
+     * to the response, also when the conversation is loaded again later.
      *
-     * @return array
+     * Only the metadata of the sources is exported, never their content: neither the retrieved excerpts
+     * ({@see get_retrieved_text()}) nor the complete contents ({@see get_included_text()}). Both are added as prompt
+     * context and therefore already end up in the request log as part of the request that has been sent to the AI tool
+     * (system message of the conversation context or prompt text). Exporting them here as well would only store a second
+     * copy of possibly very long texts with every request.
+     *
+     * @return array{sources: array[], unavailableSources: array[]} the references of the sources used (see
+     *  {@see source_reference::to_array()}) and the selected sources which could not be used, each with the keys sourceId,
+     *  name and reason
      */
     public function to_array(): array {
         return [
-            'retrievedText' => $this->retrievedtext,
             'sources' => array_map(static fn(source_reference $source): array => $source->to_array(), $this->sources),
             'unavailableSources' => array_map(static fn(array $source): array => [
                 'sourceId' => $source['sourceid'],
