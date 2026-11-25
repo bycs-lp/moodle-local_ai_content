@@ -22,11 +22,12 @@
  * @author     Philipp Memmel
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
+
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->version  = 2026081800;
 $plugin->requires = 2025041400;
-$plugin->supported = [500, 502];
+$plugin->supported = [500, 503];
 $plugin->release = '0.1.1';
 $plugin->component = 'local_ai_content';
 $plugin->maturity = MATURITY_BETA;
