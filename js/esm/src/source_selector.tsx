@@ -27,6 +27,7 @@
 
 import {
     Fragment,
+    type ReactNode,
     use,
     useEffect,
     useRef,
@@ -47,7 +48,14 @@ import {
     type SelectionMode,
     type SourceOption,
 } from './source_selector/data_manager';
-import {SectionToggle, SelectedCount, SourceLabel} from './source_ui';
+import {
+    isFiltering,
+    matchesFilter,
+    NoFilterMatch,
+    SectionToggle,
+    SourceFilter,
+    SourceLabel,
+} from './source_ui';
 import {COMPONENT, pluginString, StringsProvider} from './strings';
 import Fetch from '@moodle/lms/core/fetch';
 import MoodleString from '@moodle/lms/core/String';
@@ -332,30 +340,36 @@ function BulkCheckbox({id, name, sources, context}: {id: string; name: string; s
 }
 
 /**
- * Return the number of selected sources of a list.
- *
- * @param sources The sources of a group or section.
- * @param selection The selected sources with their mode.
- * @returns The number of selected sources.
- */
-const countSelected = (sources: SourceOption[], selection: Selection): number =>
-    sources.filter(source => selection.has(source.id)).length;
-
-/**
  * Render the sources of one course section as collapsible group.
  *
- * @param props The section, its sources and the row context.
+ * @param props The section, its sources, whether it is expanded initially, the filter and the row context.
  * @returns Section UI.
  */
-function CourseSectionGroup({section, sources, initiallyExpanded, context}: {
+function CourseSectionGroup({section, sources, initiallyExpanded, filter, context}: {
     section: CourseSection;
     sources: SourceOption[];
     initiallyExpanded: boolean;
+    filter: string;
     context: RowContext;
 }) {
     const initiallyOpen = initiallyExpanded || sources.some(source => context.selection.has(source.id));
     const [expanded, setExpanded] = useState<boolean>(initiallyOpen);
     const listId = `${context.idPrefix}-section-${section.id}`;
+
+    // Show the matching sources right away; the section can still be collapsed while filtering. Clearing the filter
+    // restores whether the section was expanded before.
+    const expandedBeforeFilterReference = useRef<boolean | null>(null);
+    useEffect(() => {
+        if (isFiltering(filter)) {
+            setExpanded(current => {
+                expandedBeforeFilterReference.current ??= current;
+                return true;
+            });
+        } else if (expandedBeforeFilterReference.current !== null) {
+            setExpanded(expandedBeforeFilterReference.current);
+            expandedBeforeFilterReference.current = null;
+        }
+    }, [filter]);
 
     return (
         <div className='border-top'>
@@ -369,7 +383,6 @@ function CourseSectionGroup({section, sources, initiallyExpanded, context}: {
                         setExpanded(!expanded);
                     }}
                 />
-                <SelectedCount selected={countSelected(sources, context.selection)} total={sources.length} />
             </div>
             {expanded && (
                 <ul id={listId} className='list-unstyled mb-0 ps-4'>
@@ -381,32 +394,61 @@ function CourseSectionGroup({section, sources, initiallyExpanded, context}: {
 }
 
 /**
+ * Return the sources matching the filter: by name and type, activities also by their course section.
+ *
+ * @param filter The filter as typed by the user.
+ * @param sources The sources of a group.
+ * @param sections The course sections of the activities, empty if the group is not split into sections.
+ * @returns The matching sources and their course sections, no sections if the sources are not grouped by section.
+ */
+const filterSources = (filter: string, sources: SourceOption[], sections: CourseSection[] = []) => {
+    const grouped = sections.some(section => sources.some(source => source.sectionId === section.id));
+    if (!grouped) {
+        return {visible: sources.filter(source => matchesFilter(filter, source.name, source.typeName)), sectionsWithSources: []};
+    }
+
+    const sectionsWithSources = sections
+        .map(section => ({
+            section,
+            sources: sources.filter(source => source.sectionId === section.id
+                && matchesFilter(filter, source.name, source.typeName, section.name)),
+        }))
+        .filter(entry => entry.sources.length > 0);
+    return {visible: sectionsWithSources.flatMap(entry => entry.sources), sectionsWithSources};
+};
+
+/**
  * Render one group of sources with a bulk checkbox, optionally split into course sections.
  *
- * @param props The string identifiers of the title and the empty text, the sources, the sections and the row context.
+ * While filtering, only the matching sources are listed and a group without matching sources is hidden.
+ *
+ * @param props The title and empty text identifiers, the sources, the sections, the filter, the row context and the
+ * actions shown in the group header.
  * @returns Group UI.
  */
-function SourceGroup({titleIdentifier, emptyIdentifier, sources, sections = [], context}: {
+function SourceGroup({titleIdentifier, emptyIdentifier, sources, sections = [], filter, context, actions}: {
     titleIdentifier: string;
     emptyIdentifier: string;
     sources: SourceOption[];
     sections?: CourseSection[];
+    filter: string;
     context: RowContext;
+    actions?: ReactNode;
 }) {
     const title = use(pluginString(titleIdentifier));
     const groupId = `${context.idPrefix}-group`;
-    const sectionsWithSources = sections
-        .map(section => ({section, sources: sources.filter(source => source.sectionId === section.id)}))
-        .filter(entry => entry.sources.length > 0);
+    const {visible, sectionsWithSources} = filterSources(filter, sources, sections);
+
+    if (isFiltering(filter) && visible.length === 0) {
+        return null;
+    }
 
     return (
         <section className='mb-4'>
             <div className='d-flex align-items-center gap-2 pb-1 border-bottom'>
-                {sources.length > 0 && <BulkCheckbox id={`${groupId}-all`} name={title} sources={sources} context={context} />}
+                {visible.length > 0 && <BulkCheckbox id={`${groupId}-all`} name={title} sources={visible} context={context} />}
                 <h6 className='mb-0 flex-grow-1'>{title}</h6>
-                {sources.length > 0 && (
-                    <SelectedCount selected={countSelected(sources, context.selection)} total={sources.length} />
-                )}
+                {actions}
             </div>
             {sources.length === 0 && (
                 <div className='text-muted small mt-2'><MoodleString identifier={emptyIdentifier} component={COMPONENT} /></div>
@@ -417,12 +459,13 @@ function SourceGroup({titleIdentifier, emptyIdentifier, sources, sections = [], 
                     section={entry.section}
                     sources={entry.sources}
                     initiallyExpanded={sectionsWithSources.length === 1}
+                    filter={filter}
                     context={context}
                 />
             ))}
-            {sources.length > 0 && sectionsWithSources.length === 0 && (
+            {visible.length > 0 && sectionsWithSources.length === 0 && (
                 <ul className='list-unstyled mb-0'>
-                    {sources.map(source => <SourceRow key={source.id} source={source} context={context} />)}
+                    {visible.map(source => <SourceRow key={source.id} source={source} context={context} />)}
                 </ul>
             )}
         </section>
@@ -518,6 +561,9 @@ function SourceSelectorContent({contextId, defaultMode = 'search'}: Props) {
     const [importCourseActivities, setImportCourseActivities] = useState<SourceOption[]>([]);
     const [importCourseDocuments, setImportCourseDocuments] = useState<SourceOption[]>([]);
     const [stagedImportSelection, setStagedImportSelection] = useState<Selection>(new Map());
+    /** The filters of the main view and of the import view, empty for all sources. */
+    const [filter, setFilter] = useState<string>('');
+    const [importFilter, setImportFilter] = useState<string>('');
 
     const [loading, setLoading] = useState<boolean>(true);
     const [loadingImportView, setLoadingImportView] = useState<boolean>(false);
@@ -738,6 +784,8 @@ function SourceSelectorContent({contextId, defaultMode = 'search'}: Props) {
             setImportCourseActivities(activities);
             setImportCourseDocuments(documents);
             setStagedImportSelection(nextStaged);
+            // The filter field of the import view starts empty for every course.
+            setImportFilter('');
             setMode('sources');
         } catch {
             showError('selector_loadimportsourceserror');
@@ -898,16 +946,23 @@ function SourceSelectorContent({contextId, defaultMode = 'search'}: Props) {
                     />
                 </div>
 
+                <SourceFilter id={`local_ai_content-source-selector-${contextId}-import-filter`} onChange={setImportFilter} />
+                {isFiltering(importFilter) && [
+                    filterSources(importFilter, importCourseActivities),
+                    filterSources(importFilter, importCourseDocuments),
+                ].every(result => result.visible.length === 0) && <NoFilterMatch />}
                 <SourceGroup
                     titleIdentifier='selector_courseactivities'
                     emptyIdentifier='selector_nocourseactivities'
                     sources={importCourseActivities}
+                    filter={importFilter}
                     context={importRowContext('activities')}
                 />
                 <SourceGroup
                     titleIdentifier='selector_coursedocuments'
                     emptyIdentifier='selector_nocoursedocuments'
                     sources={importCourseDocuments}
+                    filter={importFilter}
                     context={importRowContext('documents')}
                 />
 
@@ -951,34 +1006,46 @@ function SourceSelectorContent({contextId, defaultMode = 'search'}: Props) {
                 </div>
             )}
             {totalWarnChars > 0 && fullLength > totalWarnChars && <TotalWarning length={fullLength} />}
+            <SourceFilter
+                id={`local_ai_content-source-selector-${contextId}-filter`}
+                initialQuery={filter}
+                onChange={setFilter}
+            />
+            {isFiltering(filter) && [
+                filterSources(filter, courseActivities, courseSections),
+                filterSources(filter, courseDocuments),
+                filterSources(filter, globalDocuments),
+                filterSources(filter, externalSources),
+            ].every(result => result.visible.length === 0) && <NoFilterMatch />}
             <SourceGroup
                 titleIdentifier='selector_courseactivities'
                 emptyIdentifier='selector_nocourseactivities'
                 sources={courseActivities}
                 sections={courseSections}
+                filter={filter}
                 context={rowContext('activities')}
             />
             <SourceGroup
                 titleIdentifier='selector_coursedocuments'
                 emptyIdentifier='selector_nocoursedocuments'
                 sources={courseDocuments}
+                filter={filter}
                 context={rowContext('documents')}
             />
             <SourceGroup
                 titleIdentifier='selector_globaldocuments'
                 emptyIdentifier='selector_noglobaldocuments'
                 sources={globalDocuments}
+                filter={filter}
                 context={rowContext('global')}
             />
             <SourceGroup
                 titleIdentifier='selector_externalsources'
                 emptyIdentifier='selector_noexternalsources'
                 sources={externalSources}
+                filter={filter}
                 context={rowContext('external', handleRemoveExternalSource)}
-            />
-
-            {canSelect && (
-                <div className='mb-3'>
+                actions={canSelect && (
                     <StringButton
                         variant='outline-secondary'
                         identifier='selector_addsource'
@@ -988,18 +1055,18 @@ function SourceSelectorContent({contextId, defaultMode = 'search'}: Props) {
                         }}
                         disabled={saving || loadingImportView}
                     />
-                </div>
-            )}
+                )}
+            />
 
-            <div className='local_ai_content-source-selector__actions mt-2 d-flex align-items-center gap-3' aria-live='polite'>
+            <div className='mt-2 d-flex align-items-center gap-3 small' aria-live='polite'>
                 {saving && (
-                    <span className='text-muted small'><MoodleString identifier='selector_saving' component={COMPONENT} /></span>
+                    <span className='text-muted'><MoodleString identifier='selector_saving' component={COMPONENT} /></span>
                 )}
                 {!saving && saveSuccess && (
-                    <span className='text-success small'><MoodleString identifier='selector_saved' component={COMPONENT} /></span>
+                    <span className='text-success'><MoodleString identifier='selector_saved' component={COMPONENT} /></span>
                 )}
-                {renderError()}
             </div>
+            {renderError()}
         </div>
     );
 

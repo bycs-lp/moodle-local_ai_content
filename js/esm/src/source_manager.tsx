@@ -49,13 +49,22 @@ import {
     indexSources,
     setSharing,
     updateDocument,
+    type CourseSection,
     type DocumentFields,
     type DocumentSource,
     type IndexState,
     type ModuleSource,
     type SourceOverview,
 } from './source_manager/repository';
-import {SectionToggle, SelectedCount, SourceLabel} from './source_ui';
+import {
+    isFiltering,
+    matchesFilter,
+    NoFilterMatch,
+    SectionToggle,
+    SelectedCount,
+    SourceFilter,
+    SourceLabel,
+} from './source_ui';
 import {COMPONENT, pluginString, StringsProvider} from './strings';
 import {requireAsync} from '@moodle/lms/core/amd';
 import Log from '@moodle/lms/core/log';
@@ -132,6 +141,52 @@ type PreviewState = {
     /** The text of the page, null while it is loaded. */
     content: string | null;
     error: string | null;
+};
+
+/** The activities of a course section. */
+type SectionModules = {
+    section: CourseSection;
+    rows: ModuleSource[];
+};
+
+/**
+ * Return the sources matching the filter and which groups to show.
+ *
+ * Activities match by name, type and course section, documents by name and description. While filtering, groups
+ * without matching sources are hidden.
+ *
+ * @param query The filter as typed by the user.
+ * @param sectionsWithModules The course sections with their activities, empty in course formats without sections.
+ * @param items All listed sources.
+ * @returns The matching sources and the groups to show.
+ */
+const filterOverview = (
+    query: string,
+    sectionsWithModules: SectionModules[],
+    {modules, courseDocuments, globalDocuments}: SourceOverview['items'],
+) => {
+    const filtering = isFiltering(query);
+    const visibleSections = sectionsWithModules
+        .map(({section, rows}) => ({
+            section,
+            rows: rows.filter(row => matchesFilter(query, row.name, row.modDisplayName, section.name)),
+        }))
+        .filter(entry => entry.rows.length > 0);
+    const visibleModules = sectionsWithModules.length === 0
+        ? modules.filter(row => matchesFilter(query, row.name, row.modDisplayName))
+        : visibleSections.flatMap(entry => entry.rows);
+    const visibleCourseDocuments = courseDocuments.filter(row => matchesFilter(query, row.name, row.description));
+    const visibleGlobalDocuments = globalDocuments.filter(row => matchesFilter(query, row.name, row.description));
+    return {
+        visibleSections,
+        visibleModules,
+        visibleCourseDocuments,
+        visibleGlobalDocuments,
+        showModules: !filtering || visibleModules.length > 0,
+        showCourseDocuments: !filtering || visibleCourseDocuments.length > 0,
+        showGlobalDocuments: !filtering || visibleGlobalDocuments.length > 0,
+        noMatch: filtering && visibleModules.length + visibleCourseDocuments.length + visibleGlobalDocuments.length === 0,
+    };
 };
 
 /** Return a copy of the set with the ids added or removed. */
@@ -588,6 +643,10 @@ function SourceManagerContent({contextid}: Props) {
     const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<number>>(new Set());
     /** The expanded course sections, null until the user expands or collapses a section. */
     const [expandedSections, setExpandedSections] = useState<Set<number> | null>(null);
+    /** The filter of the listed sources, empty for all sources. */
+    const [filter, setFilter] = useState<string>('');
+    /** The expanded course sections before the filter was entered, restored when it is cleared. */
+    const expandedBeforeFilterReference = useRef<Set<number> | null>(null);
     const [draft, setDraft] = useState<DocumentDraft | null>(null);
     const [showValidation, setShowValidation] = useState<boolean>(false);
     const [modalBodyRoot, setModalBodyRoot] = useState<HTMLElement | null>(null);
@@ -860,7 +919,6 @@ function SourceManagerContent({contextid}: Props) {
     const indexableSourceIds = selectedRows
         .filter(row => isIndexable(row.enabled, row.indexState, payload.indexingAvailable))
         .map(row => row.sourceId);
-    const cmIds = modules.map(row => row.cmId);
 
     const sectionsWithModules = payload.courseSections
         .map(section => ({section, rows: modules.filter(row => row.sectionId === section.id)}))
@@ -869,6 +927,26 @@ function SourceManagerContent({contextid}: Props) {
     const expanded = expandedSections ?? new Set(sectionsWithModules
         .filter(entry => sectionsWithModules.length === 1 || entry.rows.some(row => row.enabled))
         .map(entry => entry.section.id));
+
+    // The filter matches activities by name, type and course section, documents by name and description.
+    const filtered = filterOverview(filter, sectionsWithModules, payload.items);
+    const {visibleSections, visibleModules, visibleCourseDocuments, visibleGlobalDocuments} = filtered;
+
+    const changeFilter = (query: string) => {
+        setFilter(query);
+        // Show the matching activities right away; the sections can still be collapsed while filtering. Clearing the
+        // filter restores the sections expanded before.
+        if (isFiltering(query)) {
+            if (!isFiltering(filter)) {
+                expandedBeforeFilterReference.current = expandedSections;
+            }
+
+            const matching = filterOverview(query, sectionsWithModules, payload.items).visibleSections;
+            setExpandedSections(new Set(matching.map(entry => entry.section.id)));
+        } else if (isFiltering(filter)) {
+            setExpandedSections(expandedBeforeFilterReference.current);
+        }
+    };
 
     const clearSelection = () => {
         setSelectedCmIds(new Set());
@@ -1079,86 +1157,91 @@ function SourceManagerContent({contextid}: Props) {
                 </div>
             )}
 
-            <section className='mb-4'>
-                <GroupHeader titleIdentifier='selector_courseactivities' />
-                <div className='small text-muted mb-2'>
-                    <MoodleString identifier='manager_activitieshint' component={COMPONENT} />
-                </div>
-                <table className={TABLE_CLASSES}>
-                    <TableHeader
-                        firstColumnIdentifier='manager_column_activity'
-                        withActions
-                        checkbox={(
-                            <SelectAllCheckbox
-                                id='module-select-all'
-                                ids={cmIds}
-                                selected={selectedCmIds}
-                                disabled={saving}
-                                onChange={(ids, select) => {
-                                    setSelectedCmIds(current => setIds(current, ids, select));
-                                }}
-                            />
-                        )}
-                    />
-                    <tbody>
-                        {sectionsWithModules.length === 0 && modules.map(row => renderModuleRow(row))}
-                        {sectionsWithModules.map(({section, rows}) => {
-                            const ids = rows.map(row => row.cmId);
-                            const isExpanded = expanded.has(section.id);
-                            return (
-                                <Fragment key={section.id}>
-                                    <tr className='border-top'>
-                                        <td>
-                                            <SelectAllCheckbox
-                                                id={`module-select-section-${section.id}`}
-                                                ids={ids}
-                                                selected={selectedCmIds}
-                                                disabled={saving}
-                                                label={section.name}
-                                                onChange={(changedIds, select) => {
-                                                    setSelectedCmIds(current => setIds(current, changedIds, select));
-                                                }}
-                                            />
-                                        </td>
-                                        <td colSpan={5}>
-                                            <SectionToggle
-                                                name={section.name}
-                                                expanded={isExpanded}
-                                                onToggle={() => {
-                                                    setExpandedSections(setIds(expanded, [section.id], !isExpanded));
-                                                }}
-                                            />
-                                        </td>
-                                    </tr>
-                                    {isExpanded && rows.map(row => renderModuleRow(row))}
-                                </Fragment>
-                            );
-                        })}
-                        {modules.length === 0 && (
-                            <tr>
-                                <td colSpan={6} className='text-muted'>
-                                    <MoodleString identifier='manager_noactivities' component={COMPONENT} />
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </section>
+            <SourceFilter id='local_ai_content-source-manager-filter' onChange={changeFilter} />
+            {filtered.noMatch && <NoFilterMatch />}
 
-            {renderDocumentGroup({
+            {filtered.showModules && (
+                <section className='mb-4'>
+                    <GroupHeader titleIdentifier='selector_courseactivities' />
+                    <div className='small text-muted mb-2'>
+                        <MoodleString identifier='manager_activitieshint' component={COMPONENT} />
+                    </div>
+                    <table className={TABLE_CLASSES}>
+                        <TableHeader
+                            firstColumnIdentifier='manager_column_activity'
+                            withActions
+                            checkbox={(
+                                <SelectAllCheckbox
+                                    id='module-select-all'
+                                    ids={visibleModules.map(row => row.cmId)}
+                                    selected={selectedCmIds}
+                                    disabled={saving}
+                                    onChange={(ids, select) => {
+                                        setSelectedCmIds(current => setIds(current, ids, select));
+                                    }}
+                                />
+                            )}
+                        />
+                        <tbody>
+                            {sectionsWithModules.length === 0 && visibleModules.map(row => renderModuleRow(row))}
+                            {visibleSections.map(({section, rows}) => {
+                                const ids = rows.map(row => row.cmId);
+                                const isExpanded = expanded.has(section.id);
+                                return (
+                                    <Fragment key={section.id}>
+                                        <tr className='border-top'>
+                                            <td>
+                                                <SelectAllCheckbox
+                                                    id={`module-select-section-${section.id}`}
+                                                    ids={ids}
+                                                    selected={selectedCmIds}
+                                                    disabled={saving}
+                                                    label={section.name}
+                                                    onChange={(changedIds, select) => {
+                                                        setSelectedCmIds(current => setIds(current, changedIds, select));
+                                                    }}
+                                                />
+                                            </td>
+                                            <td colSpan={5}>
+                                                <SectionToggle
+                                                    name={section.name}
+                                                    expanded={isExpanded}
+                                                    onToggle={() => {
+                                                        setExpandedSections(setIds(expanded, [section.id], !isExpanded));
+                                                    }}
+                                                />
+                                            </td>
+                                        </tr>
+                                        {isExpanded && rows.map(row => renderModuleRow(row))}
+                                    </Fragment>
+                                );
+                            })}
+                            {modules.length === 0 && (
+                                <tr>
+                                    <td colSpan={6} className='text-muted'>
+                                        <MoodleString identifier='manager_noactivities' component={COMPONENT} />
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </section>
+            )}
+
+            {filtered.showCourseDocuments && renderDocumentGroup({
                 scope: 'course',
                 titleIdentifier: 'selector_coursedocuments',
                 hintIdentifier: 'manager_coursedocumentshint',
                 emptyIdentifier: 'selector_nocoursedocuments',
-                rows: courseDocuments,
+                rows: visibleCourseDocuments,
                 canCreate: true,
             })}
-            {renderDocumentGroup({
+            {filtered.showGlobalDocuments && renderDocumentGroup({
                 scope: 'global',
                 titleIdentifier: 'selector_globaldocuments',
                 hintIdentifier: 'manager_globaldocumentshint',
                 emptyIdentifier: 'selector_noglobaldocuments',
-                rows: globalDocuments,
+                rows: visibleGlobalDocuments,
                 canCreate: payload.canManageGlobalSources,
             })}
 

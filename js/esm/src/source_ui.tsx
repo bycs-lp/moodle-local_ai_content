@@ -22,10 +22,98 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-import {type ReactNode, use} from 'react';
+import {
+    type ReactNode,
+    use,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from 'react';
 import {Button} from '@moodlehq/design-system';
 import {COMPONENT, pluginString} from './strings';
 import MoodleString from '@moodle/lms/core/String';
+import {debounce} from '@moodle/lms/core/utils';
+
+/** Milliseconds the filter waits after the last key stroke before it filters the list. */
+const FILTER_DELAY = 250;
+
+/**
+ * Return whether a source matches the filter: every word of the filter must occur in one of the texts.
+ *
+ * @param query The filter as typed by the user.
+ * @param texts The texts of the source, e.g. its name, type and course section.
+ * @returns Whether the source is shown.
+ */
+export const matchesFilter = (query: string, ...texts: string[]): boolean => {
+    const haystack = texts.join(' ').toLocaleLowerCase();
+    return query.toLocaleLowerCase().split(/\s+/u).filter(word => word !== '')
+        .every(word => haystack.includes(word));
+};
+
+/**
+ * Return whether a filter is entered.
+ *
+ * @param query The filter as typed by the user.
+ * @returns Whether the list is filtered.
+ */
+export const isFiltering = (query: string): boolean => query.trim() !== '';
+
+/**
+ * Render the text field filtering the listed sources, reporting its value shortly after the last key stroke.
+ *
+ * @param props The id of the field, the initial filter and the callback receiving the filter.
+ * @returns Filter UI.
+ */
+export function SourceFilter({id, initialQuery = '', onChange}: {
+    id: string;
+    initialQuery?: string;
+    onChange: (query: string) => void;
+}) {
+    const [value, setValue] = useState<string>(initialQuery);
+    const label = use(pluginString('filter_label'));
+    // The debounced function is created once, so it always calls the latest callback.
+    const onChangeReference = useRef(onChange);
+    onChangeReference.current = onChange;
+    const report = useMemo(() => debounce((query: string) => {
+        onChangeReference.current(query);
+    }, FILTER_DELAY, {pending: true, cancel: true}), []);
+
+    useEffect(() => () => {
+        report.cancel?.();
+    }, [report]);
+
+    return (
+        <div className='input-group mb-3'>
+            <span className='input-group-text'><i className='icon fa fa-filter fa-fw m-0' aria-hidden='true' /></span>
+            <input
+                id={id}
+                type='search'
+                className='form-control'
+                value={value}
+                placeholder={use(pluginString('filter_placeholder'))}
+                aria-label={label}
+                onChange={event => {
+                    setValue(event.target.value);
+                    report(event.target.value);
+                }}
+            />
+        </div>
+    );
+}
+
+/**
+ * Render the notice that no source matches the filter.
+ *
+ * @returns Notice UI.
+ */
+export function NoFilterMatch() {
+    return (
+        <div className='text-muted small mb-3' role='status'>
+            <MoodleString identifier='filter_nomatch' component={COMPONENT} />
+        </div>
+    );
+}
 
 /**
  * Render the number of selected sources of a group.
