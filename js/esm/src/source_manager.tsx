@@ -39,10 +39,12 @@ import {
     Switch,
 } from '@moodlehq/design-system';
 import {closeModal, openModal, type MoodleModal} from './modal';
+import ContentPreview from './content_preview';
 import {
     createDocument,
     deleteDocument,
     getIndexStates,
+    getIndexedChunks,
     getSources,
     indexSources,
     setSharing,
@@ -63,6 +65,9 @@ import {getString} from '@moodle/lms/core/stringUtils';
 type Props = {
     contextid: number;
 };
+
+/** The classes of all source tables; styles.css gives them the same column widths. */
+const TABLE_CLASSES = 'table table-sm table-hover table-borderless align-middle local_ai_content-source-table';
 
 /** Where a document belongs to. */
 type Scope = 'course' | 'global';
@@ -85,6 +90,16 @@ const errorMessage = (caught: unknown): string => caught instanceof Error ? caug
 
 const isActive = (state: IndexState): boolean => state.status === 'queued' || state.status === 'running';
 
+/** The badge colour of each indexing status; solid badges, the subtle ones are hardly visible on the white page. */
+const STATUS_BADGE_VARIANTS: Record<IndexState['status'], 'secondary' | 'success' | 'danger' | 'warning' | 'info'> = {
+    idle: 'secondary',
+    queued: 'info',
+    running: 'info',
+    indexed: 'success',
+    failed: 'danger',
+    outdated: 'warning',
+};
+
 /** Whether the action indexing a shared source with the embedding model of the current user is offered. */
 const canOfferIndexing = (state: IndexState, indexingAvailable: boolean): boolean =>
     indexingAvailable && (!state.hasIndex || (state.canIndexCurrentModel && state.currentModel !== null));
@@ -92,6 +107,32 @@ const canOfferIndexing = (state: IndexState, indexingAvailable: boolean): boolea
 /** Whether a source can be indexed right now with the embedding model of the current user. */
 const isIndexable = (enabled: boolean, state: IndexState, indexingAvailable: boolean): boolean =>
     enabled && !isActive(state) && canOfferIndexing(state, indexingAvailable);
+
+/** Whether a source is searchable with any embedding model, i.e. its content can be read from the vector store. */
+const isSearchable = (state: IndexState): boolean =>
+    state.models.some(model => model.status === 'indexed' || model.status === 'outdated');
+
+/**
+ * Whether the preview shows an outdated content: the preview reads the searchable index of the own embedding model,
+ * otherwise the first searchable one.
+ */
+const isPreviewOutdated = (state: IndexState): boolean => {
+    const searchable = state.models.filter(model => model.status === 'indexed' || model.status === 'outdated');
+    const shown = searchable.find(model => model.model === state.currentModel) ?? searchable[0];
+    return shown?.status === 'outdated';
+};
+
+/** The page shown in the preview modal. */
+type PreviewState = {
+    sourceId: number;
+    page: number;
+    /** The number of pages known so far, kept while another page is loaded. */
+    pageCount: number;
+    outdated: boolean;
+    /** The text of the page, null while it is loaded. */
+    content: string | null;
+    error: string | null;
+};
 
 /** Return a copy of the set with the ids added or removed. */
 const setIds = (current: Set<number>, ids: number[], select: boolean): Set<number> => {
@@ -173,16 +214,20 @@ function SharingStatus({state, indexingAvailable, disabled, onIndex}: {
     onIndex: () => void;
 }) {
     const active = isActive(state);
-    const badgeVariant = state.status === 'failed' ? 'danger' : (state.status === 'outdated' ? 'warning' : 'secondary');
     const indexLabel = use(state.hasIndex && state.currentModel !== null
         ? pluginString('indexwithmymodel', state.currentModel)
         : pluginString('makesearchable'));
+    // Teachers only need to know whether the content is searchable; the embedding models only matter if the content is
+    // not searchable with their own model yet.
+    const otherModels = state.canIndexCurrentModel
+        ? state.models.filter(model => model.status === 'indexed').map(model => model.model)
+        : [];
 
     return (
         <>
             {state.hasIndex && (
                 <>
-                    <Badge variant={badgeVariant} subtle={badgeVariant === 'secondary'} label={state.statusLabel} />
+                    <Badge variant={STATUS_BADGE_VARIANTS[state.status]} label={state.statusLabel} />
                     {active && (
                         <div className='mt-1'>
                             <ProgressBar
@@ -200,14 +245,20 @@ function SharingStatus({state, indexingAvailable, disabled, onIndex}: {
                     {state.status === 'failed' && state.message !== '' && (
                         <div className='small text-danger mt-1'>{state.message}</div>
                     )}
-                    <ul className='list-unstyled small text-muted mt-1 mb-0'>
-                        {state.models.map(model => <li key={model.model}>{model.model}: {model.statusLabel}</li>)}
-                    </ul>
+                    {otherModels.length > 0 && (
+                        <div className='small text-muted mt-1'>
+                            <MoodleString
+                                identifier='searchableforothermodels'
+                                component={COMPONENT}
+                                params={otherModels.join(', ')}
+                            />
+                        </div>
+                    )}
                 </>
             )}
             {!state.hasIndex && (
                 <>
-                    <Badge variant='secondary' subtle label={use(pluginString('sharednotsearchable'))} />
+                    <Badge variant='secondary' label={use(pluginString('sharednotsearchable'))} />
                     <div className='small text-muted mt-1'>
                         <MoodleString identifier='sharednotsearchable_desc' component={COMPONENT} />
                     </div>
@@ -278,42 +329,43 @@ function TableHeader({checkbox, firstColumnIdentifier, withActions}: {
                 <th><MoodleString identifier='manager_column_shared' component={COMPONENT} /></th>
                 <th><MoodleString identifier='status' /></th>
                 <th><MoodleString identifier='manager_column_lastindexed' component={COMPONENT} /></th>
-                {withActions && <th><MoodleString identifier='actions' /></th>}
+                {/* Without actions an empty column keeps the columns aligned with the other tables. */}
+                {withActions ? <th><MoodleString identifier='actions' /></th> : <td />}
             </tr>
         </thead>
     );
 }
 
 /**
- * Renders the heading of a group of sources with the number of selected sources, as in the source selector.
+ * Renders the heading of a group of sources with optional actions.
  */
-function GroupHeader({titleIdentifier, ids, selected, children}: {
+function GroupHeader({titleIdentifier, children}: {
     titleIdentifier: string;
-    ids: number[];
-    selected: Set<number>;
     children?: ReactNode;
 }) {
     return (
         <div className='d-flex align-items-center gap-2 pb-1 mb-2 border-bottom'>
             <h5 className='mb-0 flex-grow-1'><MoodleString identifier={titleIdentifier} component={COMPONENT} /></h5>
-            {ids.length > 0 && <SelectedCount selected={countSelected(ids, selected)} total={ids.length} />}
             {children}
         </div>
     );
 }
 
 /**
- * Renders the actions for the selected sources. Every action only changes the selected sources it applies to.
+ * Renders the actions for the selected sources with the number of selected sources. Every action only changes the
+ * selected sources it applies to.
  */
 function BulkActions({
-    count, shareCount, stopSharingCount, indexCount, indexingAvailable, disabled, onShare, onStopSharing,
+    count, total, shareCount, stopSharingCount, indexCount, showIndex, disabled, onShare, onStopSharing,
     onIndex,
 }: {
     count: number;
+    total: number;
     shareCount: number;
     stopSharingCount: number;
     indexCount: number;
-    indexingAvailable: boolean;
+    /** Whether the action indexing the selected sources is offered at all. */
+    showIndex: boolean;
     disabled: boolean;
     onShare: () => void;
     onStopSharing: () => void;
@@ -325,9 +377,6 @@ function BulkActions({
             role='region'
             aria-label={use(pluginString('bulk_selectedcount', count))}
         >
-            <span className='small text-muted'>
-                <MoodleString identifier='bulk_selectedcount' component={COMPONENT} params={count} />
-            </span>
             <Button
                 variant='outline-secondary'
                 label={use(pluginString('bulk_share'))}
@@ -340,7 +389,7 @@ function BulkActions({
                 disabled={disabled || stopSharingCount === 0}
                 onClick={onStopSharing}
             />
-            {indexingAvailable && (
+            {showIndex && (
                 <Button
                     variant='outline-secondary'
                     label={use(pluginString('bulk_index'))}
@@ -348,6 +397,9 @@ function BulkActions({
                     onClick={onIndex}
                 />
             )}
+            <span className='ms-auto'>
+                <SelectedCount selected={count} total={total} />
+            </span>
         </div>
     );
 }
@@ -451,6 +503,63 @@ function DocumentActionButton({labelIdentifier, icon, variant, name, disabled, o
 }
 
 /**
+ * Renders the button previewing the searchable text of a source, disabled while the source is not searchable.
+ */
+function PreviewButton({name, state, onClick}: {name: string; state: IndexState; onClick: () => void}) {
+    const label = use(pluginString('preview_show', name));
+    const notSearchableLabel = use(pluginString('preview_notsearchable'));
+    const searchable = isSearchable(state);
+    return (
+        <Button
+            variant='outline-secondary'
+            disabled={!searchable}
+            onClick={onClick}
+            aria-label={label}
+            title={searchable ? label : notSearchableLabel}
+            startIcon={<i className='icon fa fa-magnifying-glass m-0' aria-hidden='true' />}
+        />
+    );
+}
+
+/**
+ * Renders one page of the searchable text of a source with the buttons to page through it.
+ */
+function IndexedContentPreview({preview, onPage}: {preview: PreviewState; onPage: (page: number) => void}) {
+    const {page, pageCount, content, error} = preview;
+    return (
+        <>
+            {preview.outdated && (
+                <div className='alert alert-warning'><MoodleString identifier='preview_outdated' component={COMPONENT} /></div>
+            )}
+            <ContentPreview content={content} error={error} />
+            {pageCount > 1 && (
+                <div className='d-flex align-items-center justify-content-between mt-2'>
+                    <Button
+                        variant='outline-secondary'
+                        label={use(getString('previous', 'core'))}
+                        disabled={page <= 1 || content === null}
+                        onClick={() => {
+                            onPage(page - 1);
+                        }}
+                    />
+                    <span className='small text-muted'>
+                        <MoodleString identifier='preview_page' component={COMPONENT} params={{page, pages: pageCount}} />
+                    </span>
+                    <Button
+                        variant='outline-secondary'
+                        label={use(getString('next', 'core'))}
+                        disabled={page >= pageCount || content === null}
+                        onClick={() => {
+                            onPage(page + 1);
+                        }}
+                    />
+                </div>
+            )}
+        </>
+    );
+}
+
+/**
  * Source management of a course.
  *
  * @param props Component props.
@@ -486,6 +595,12 @@ function SourceManagerContent({contextid}: Props) {
     /** The save handler of the document modal; the modal is created once, but the handler needs the current draft. */
     const saveDocumentReference = useRef<() => void>(() => undefined);
     const loggedDebugInfoReference = useRef<Record<number, string>>({});
+    /** The page shown in the preview modal. */
+    const [preview, setPreview] = useState<PreviewState | null>(null);
+    const [previewBodyRoot, setPreviewBodyRoot] = useState<HTMLElement | null>(null);
+    const previewModalReference = useRef<MoodleModal | null>(null);
+    /** Counts the requested pages, so a page loaded too late does not replace a page requested later. */
+    const previewCounterReference = useRef<number>(0);
 
     const hasActiveTasks = payload !== null && [
         ...payload.items.modules,
@@ -631,6 +746,61 @@ function SourceManagerContent({contextid}: Props) {
         });
     };
 
+    /**
+     * Load a page of the searchable text of a source into the preview modal.
+     *
+     * @param sourceId The id of the module or document source.
+     * @param page The page, starting at 1.
+     */
+    const loadPreviewPage = async (sourceId: number, page: number) => {
+        previewCounterReference.current++;
+        const requestId = previewCounterReference.current;
+        setPreview(current => current && {
+            ...current, page, content: null, error: null,
+        });
+
+        let update: Partial<PreviewState>;
+        try {
+            const {items, pagination} = await getIndexedChunks(contextid, sourceId, page);
+            update = {
+                content: items.map(item => item.content).join(''),
+                pageCount: Math.max(1, Math.ceil(pagination.totalItems / pagination.pageSize)),
+            };
+        } catch (error_) {
+            update = {error: await pluginString('preview_loaderror', errorMessage(error_))};
+        }
+
+        if (requestId === previewCounterReference.current) {
+            // A closed modal resets the preview to null, then the result is dropped.
+            setPreview(current => current && {...current, ...update});
+        }
+    };
+
+    /**
+     * Open the modal previewing the searchable text of a source.
+     *
+     * @param name The name of the source.
+     * @param sourceId The id of the module or document source.
+     * @param state The indexing state of the source.
+     */
+    const openPreviewModal = async (name: string, sourceId: number, state: IndexState) => {
+        setPreview({
+            sourceId, page: 1, pageCount: 1, outdated: isPreviewOutdated(state), content: null, error: null,
+        });
+        void loadPreviewPage(sourceId, 1);
+        const {modal, bodyRoot} = await openModal({
+            title: await pluginString('preview_title', name),
+            onHidden() {
+                previewCounterReference.current++;
+                setPreview(null);
+                setPreviewBodyRoot(null);
+                previewModalReference.current = null;
+            },
+        });
+        previewModalReference.current = modal;
+        setPreviewBodyRoot(bodyRoot);
+    };
+
     useEffect(() => {
         saveDocumentReference.current = () => {
             void saveDocument();
@@ -668,6 +838,10 @@ function SourceManagerContent({contextid}: Props) {
     useEffect(() => () => {
         if (modalReference.current) {
             void closeModal(modalReference.current);
+        }
+
+        if (previewModalReference.current) {
+            void closeModal(previewModalReference.current);
         }
     }, []);
 
@@ -737,6 +911,7 @@ function SourceManagerContent({contextid}: Props) {
                     iconUrl={row.iconUrl}
                     name={row.name}
                     details={row.modDisplayName}
+                    url={row.url}
                 />
             </td>
             <SharingCells
@@ -753,6 +928,15 @@ function SourceManagerContent({contextid}: Props) {
                     void index([row.sourceId]);
                 }}
             />
+            <td>
+                <PreviewButton
+                    name={row.name}
+                    state={row.indexState}
+                    onClick={() => {
+                        void openPreviewModal(row.name, row.sourceId, row.indexState);
+                    }}
+                />
+            </td>
         </tr>
     );
 
@@ -789,33 +973,42 @@ function SourceManagerContent({contextid}: Props) {
                 }}
             />
             <td>
-                {row.canEdit && (
-                    <div className='d-flex gap-1'>
-                        <DocumentActionButton
-                            labelIdentifier='manager_editsource'
-                            icon='fa-pencil'
-                            variant='outline-secondary'
-                            name={row.name}
-                            disabled={saving}
-                            onClick={() => {
-                                const {id, name, description, content} = row;
-                                void openDocumentModal({
-                                    id, scope, name, description, content,
-                                });
-                            }}
-                        />
-                        <DocumentActionButton
-                            labelIdentifier='manager_deletesource'
-                            icon='fa-trash'
-                            variant='outline-danger'
-                            name={row.name}
-                            disabled={saving}
-                            onClick={() => {
-                                void confirmDeleteDocument(row);
-                            }}
-                        />
-                    </div>
-                )}
+                <div className='d-flex gap-1'>
+                    <PreviewButton
+                        name={row.name}
+                        state={row.indexState}
+                        onClick={() => {
+                            void openPreviewModal(row.name, row.id, row.indexState);
+                        }}
+                    />
+                    {row.canEdit && (
+                        <>
+                            <DocumentActionButton
+                                labelIdentifier='manager_editsource'
+                                icon='fa-pencil'
+                                variant='outline-secondary'
+                                name={row.name}
+                                disabled={saving}
+                                onClick={() => {
+                                    const {id, name, description, content} = row;
+                                    void openDocumentModal({
+                                        id, scope, name, description, content,
+                                    });
+                                }}
+                            />
+                            <DocumentActionButton
+                                labelIdentifier='manager_deletesource'
+                                icon='fa-trash'
+                                variant='outline-danger'
+                                name={row.name}
+                                disabled={saving}
+                                onClick={() => {
+                                    void confirmDeleteDocument(row);
+                                }}
+                            />
+                        </>
+                    )}
+                </div>
             </td>
         </tr>
     );
@@ -831,7 +1024,7 @@ function SourceManagerContent({contextid}: Props) {
         const editableIds = rows.filter(row => row.canEdit).map(row => row.id);
         return (
             <section className='mb-4'>
-                <GroupHeader titleIdentifier={titleIdentifier} ids={editableIds} selected={selectedDocumentIds}>
+                <GroupHeader titleIdentifier={titleIdentifier}>
                     {canCreate && (
                         <CreateDocumentButton
                             disabled={saving}
@@ -850,7 +1043,7 @@ function SourceManagerContent({contextid}: Props) {
                     <div className='text-muted small mb-2'><MoodleString identifier={emptyIdentifier} component={COMPONENT} /></div>
                 )}
                 {rows.length > 0 && (
-                    <table className='table table-sm table-hover table-borderless align-middle'>
+                    <table className={TABLE_CLASSES}>
                         <TableHeader
                             firstColumnIdentifier='manager_column_document'
                             withActions
@@ -887,14 +1080,14 @@ function SourceManagerContent({contextid}: Props) {
             )}
 
             <section className='mb-4'>
-                <GroupHeader titleIdentifier='selector_courseactivities' ids={cmIds} selected={selectedCmIds} />
+                <GroupHeader titleIdentifier='selector_courseactivities' />
                 <div className='small text-muted mb-2'>
                     <MoodleString identifier='manager_activitieshint' component={COMPONENT} />
                 </div>
-                <table className='table table-sm table-hover table-borderless align-middle'>
+                <table className={TABLE_CLASSES}>
                     <TableHeader
                         firstColumnIdentifier='manager_column_activity'
-                        withActions={false}
+                        withActions
                         checkbox={(
                             <SelectAllCheckbox
                                 id='module-select-all'
@@ -927,17 +1120,14 @@ function SourceManagerContent({contextid}: Props) {
                                                 }}
                                             />
                                         </td>
-                                        <td colSpan={4}>
-                                            <div className='d-flex align-items-center gap-2'>
-                                                <SectionToggle
-                                                    name={section.name}
-                                                    expanded={isExpanded}
-                                                    onToggle={() => {
-                                                        setExpandedSections(setIds(expanded, [section.id], !isExpanded));
-                                                    }}
-                                                />
-                                                <SelectedCount selected={countSelected(ids, selectedCmIds)} total={ids.length} />
-                                            </div>
+                                        <td colSpan={5}>
+                                            <SectionToggle
+                                                name={section.name}
+                                                expanded={isExpanded}
+                                                onToggle={() => {
+                                                    setExpandedSections(setIds(expanded, [section.id], !isExpanded));
+                                                }}
+                                            />
                                         </td>
                                     </tr>
                                     {isExpanded && rows.map(row => renderModuleRow(row))}
@@ -946,7 +1136,7 @@ function SourceManagerContent({contextid}: Props) {
                         })}
                         {modules.length === 0 && (
                             <tr>
-                                <td colSpan={5} className='text-muted'>
+                                <td colSpan={6} className='text-muted'>
                                     <MoodleString identifier='manager_noactivities' component={COMPONENT} />
                                 </td>
                             </tr>
@@ -977,10 +1167,15 @@ function SourceManagerContent({contextid}: Props) {
             {selectedRows.length > 0 && (
                 <BulkActions
                     count={selectedRows.length}
+                    total={modules.length + editableDocuments.length}
                     shareCount={selectedRows.filter(row => !row.enabled).length}
                     stopSharingCount={selectedRows.filter(row => row.enabled).length}
                     indexCount={indexableSourceIds.length}
-                    indexingAvailable={payload.indexingAvailable}
+                    // Sharing makes sources searchable on its own, so indexing manually is only a fallback, e.g. for
+                    // sources shared without vector store or indexed with another embedding model only. The action is
+                    // therefore only shown if at least one source on the page offers it, not just the selected ones.
+                    showIndex={[...modules, ...editableDocuments]
+                        .some(row => row.enabled && canOfferIndexing(row.indexState, payload.indexingAvailable))}
                     disabled={saving}
                     onShare={() => {
                         void bulkShare(true);
@@ -997,6 +1192,16 @@ function SourceManagerContent({contextid}: Props) {
             {draft !== null && modalBodyRoot !== null && createPortal(
                 <DocumentForm draft={draft} showValidation={showValidation} error={error} onChange={setDraft} />,
                 modalBodyRoot,
+            )}
+
+            {preview !== null && previewBodyRoot !== null && createPortal(
+                <IndexedContentPreview
+                    preview={preview}
+                    onPage={page => {
+                        void loadPreviewPage(preview.sourceId, page);
+                    }}
+                />,
+                previewBodyRoot,
             )}
         </div>
     );

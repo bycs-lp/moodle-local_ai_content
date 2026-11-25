@@ -360,6 +360,79 @@ class index_service {
     }
 
     /**
+     * Read one page of the chunks of a source as they are stored in the vector store.
+     *
+     * Reads the index of the embedding model of the current user if it is searchable, otherwise any searchable index, see
+     * {@see self::get_preview_index()}. The overlap of each chunk with its predecessor is removed, so the contents of
+     * consecutive chunks joined result in exactly the text that can be found.
+     *
+     * @param source $source The source.
+     * @param int $page The page, starting at 1.
+     * @param int $pagesize The number of chunks per page.
+     * @return array{items: array{chunk: int, content: string}[], pagination: array{page: int, pageSize: int, totalItems: int}}
+     *     The chunks of the page in content order, their number starting at 1, and the pagination of all chunks.
+     * @throws \moodle_exception If the source has no searchable index or the vector store reports an error.
+     */
+    public function get_indexed_chunks(source $source, int $page, int $pagesize): array {
+        $index = self::get_preview_index(
+            model_index::get_for_sources([$source->get_id()])[$source->get_id()] ?? [],
+            $this->modelresolver->get_current_model(),
+        );
+        if ($index === null || !$source->get_vecstoreid()) {
+            throw new \moodle_exception('preview_notsearchable', 'local_ai_content');
+        }
+
+        // The last chunk of the previous page is read as well, so the overlap of the first chunk of the page is removed.
+        $first = ($page - 1) * $pagesize + 1;
+        $response = $this->vecstorefactory->get_vecstore_by_id($source->get_vecstoreid())->get_document(
+            $index->get_embeddingmodel(),
+            $source->get_id(),
+            [rag_manager::PAYLOAD_CHUNK => range(max(1, $first - 1), $first + $pagesize - 1)],
+        );
+        if ($response->get_code() !== 200) {
+            throw new \moodle_exception('error_readembeddingsfailed', 'local_ai_content', '',
+                $response->get_errormessage(), $response->get_debuginfo());
+        }
+
+        $chunks = [];
+        $maxchunks = 0;
+        foreach ($response->get_queryresponse()->get_matches() as $record) {
+            $metadata = $record->get_metadata();
+            $chunks[(int) $metadata[rag_manager::PAYLOAD_CHUNK]] = $record->get_content();
+            $maxchunks = (int) $metadata[rag_manager::PAYLOAD_MAXCHUNKS];
+        }
+        ksort($chunks);
+
+        $items = [];
+        foreach ($chunks as $number => $content) {
+            if ($number >= $first) {
+                $items[] = [
+                    'chunk' => $number,
+                    'content' => $this->contentreader->remove_overlap($chunks[$number - 1] ?? null, $content),
+                ];
+            }
+        }
+
+        return [
+            'items' => $items,
+            'pagination' => ['page' => $page, 'pageSize' => $pagesize, 'totalItems' => $maxchunks],
+        ];
+    }
+
+    /**
+     * Choose the index the preview of a source reads its content from.
+     *
+     * @param model_index[] $indexes The indexes of the source, indexed by embedding model name.
+     * @param ?string $currentmodel The embedding model of the current user, null if the user has none.
+     * @return ?model_index The searchable index of the current model, otherwise the first searchable one, null if there
+     *     is none.
+     */
+    private static function get_preview_index(array $indexes, ?string $currentmodel): ?model_index {
+        $searchable = array_filter($indexes, static fn(model_index $index): bool => $index->is_searchable());
+        return $searchable[$currentmodel ?? ''] ?? (reset($searchable) ?: null);
+    }
+
+    /**
      * Count the sources depending on a vector store instance.
      *
      * @param int $vecstoreid The vector store instance id.

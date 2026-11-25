@@ -29,6 +29,8 @@ const CORE_STRINGS = [
   "description",
   "loading",
   "name",
+  "next",
+  "previous",
   "required",
   "savechanges",
   "status"
@@ -47,7 +49,7 @@ function Preloaded({ children }) {
   use(preloadStrings());
   return /* @__PURE__ */ jsxDEV(Fragment, { children }, void 0, false, {
     fileName: "public/local/ai_content/js/esm/src/strings.tsx",
-    lineNumber: 92,
+    lineNumber: 94,
     columnNumber: 12
   }, this);
 }
@@ -55,11 +57,11 @@ __name(Preloaded, "Preloaded");
 function StringsProvider({ children, fallback = null }) {
   return /* @__PURE__ */ jsxDEV(Suspense, { fallback, children: /* @__PURE__ */ jsxDEV(Preloaded, { children }, void 0, false, {
     fileName: "public/local/ai_content/js/esm/src/strings.tsx",
-    lineNumber: 104,
+    lineNumber: 106,
     columnNumber: 13
   }, this) }, void 0, false, {
     fileName: "public/local/ai_content/js/esm/src/strings.tsx",
-    lineNumber: 103,
+    lineNumber: 105,
     columnNumber: 9
   }, this);
 }

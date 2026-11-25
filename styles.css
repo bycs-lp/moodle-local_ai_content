@@ -11,3 +11,36 @@
     color: var(--bs-warning, #f0ad4e);
     -webkit-text-stroke: 0.5px #343a40;
 }
+
+/* Source tables of the source manager: same column widths in all tables, so their columns line up. */
+.local_ai_content-source-table {
+    table-layout: fixed;
+}
+
+.local_ai_content-source-table > thead > tr > :nth-child(1) {
+    width: 2.5rem;
+}
+
+.local_ai_content-source-table > thead > tr > :nth-child(3) {
+    width: 9rem;
+}
+
+.local_ai_content-source-table > thead > tr > :nth-child(4) {
+    width: 30%;
+}
+
+.local_ai_content-source-table > thead > tr > :nth-child(5) {
+    width: 12rem;
+}
+
+.local_ai_content-source-table > thead > tr > :nth-child(6) {
+    width: 9rem;
+}
+
+/* Text preview of a source: keep its line breaks and scroll long texts. */
+.local_ai_content-content-preview {
+    max-height: 60vh;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}

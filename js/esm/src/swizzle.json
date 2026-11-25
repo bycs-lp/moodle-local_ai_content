@@ -1,9 +1,13 @@
 {
-  "source_selector": {
+  "content_preview": {
     "eject": "risky",
     "wrap": "risky"
   },
   "source_manager": {
+    "eject": "risky",
+    "wrap": "risky"
+  },
+  "source_selector": {
     "eject": "risky",
     "wrap": "risky"
   }

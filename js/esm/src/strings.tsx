@@ -47,6 +47,8 @@ const CORE_STRINGS = [
     'description',
     'loading',
     'name',
+    'next',
+    'previous',
     'required',
     'savechanges',
     'status',

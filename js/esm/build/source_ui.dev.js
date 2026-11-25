@@ -53,36 +53,40 @@ function SectionToggle({ name, expanded, controls, onToggle }) {
   );
 }
 __name(SectionToggle, "SectionToggle");
-function SourceLabel({ htmlFor, iconUrl, name, details }) {
+function SourceLabel({ htmlFor, iconUrl, name, details, url }) {
   return /* @__PURE__ */ jsxDEV("label", { htmlFor, className: "flex-grow-1 mb-0 d-flex align-items-center gap-2", children: [
     iconUrl === "" ? /* @__PURE__ */ jsxDEV("i", { className: "icon fa fa-file-lines fa-fw m-0", "aria-hidden": "true" }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_ui.tsx",
-      lineNumber: 85,
+      lineNumber: 86,
       columnNumber: 19
     }, this) : /* @__PURE__ */ jsxDEV("img", { src: iconUrl, className: "icon activityicon m-0", alt: "" }, void 0, false, {
       fileName: "public/local/ai_content/js/esm/src/source_ui.tsx",
-      lineNumber: 86,
+      lineNumber: 87,
       columnNumber: 19
     }, this),
     /* @__PURE__ */ jsxDEV("span", { className: "d-flex flex-column", children: [
-      /* @__PURE__ */ jsxDEV("span", { children: name }, void 0, false, {
+      url === void 0 || url === null ? /* @__PURE__ */ jsxDEV("span", { children: name }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_ui.tsx",
-        lineNumber: 88,
-        columnNumber: 17
+        lineNumber: 89,
+        columnNumber: 54
+      }, this) : /* @__PURE__ */ jsxDEV("a", { href: url, children: name }, void 0, false, {
+        fileName: "public/local/ai_content/js/esm/src/source_ui.tsx",
+        lineNumber: 89,
+        columnNumber: 76
       }, this),
       /* @__PURE__ */ jsxDEV("span", { className: "small text-muted", children: details }, void 0, false, {
         fileName: "public/local/ai_content/js/esm/src/source_ui.tsx",
-        lineNumber: 89,
+        lineNumber: 90,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "public/local/ai_content/js/esm/src/source_ui.tsx",
-      lineNumber: 87,
+      lineNumber: 88,
       columnNumber: 13
     }, this)
   ] }, void 0, true, {
     fileName: "public/local/ai_content/js/esm/src/source_ui.tsx",
-    lineNumber: 83,
+    lineNumber: 84,
     columnNumber: 9
   }, this);
 }

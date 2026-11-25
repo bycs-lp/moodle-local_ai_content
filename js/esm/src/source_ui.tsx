@@ -70,14 +70,15 @@ export function SectionToggle({name, expanded, controls, onToggle}: {
 /**
  * Render the icon and the name of a source with its type (and further details) below.
  *
- * @param props The id of the checkbox of the source, its icon url (empty for none), name and details.
+ * @param props The id of the checkbox of the source, its icon url (empty for none), name, details and the url the name links to.
  * @returns Label UI.
  */
-export function SourceLabel({htmlFor, iconUrl, name, details}: {
+export function SourceLabel({htmlFor, iconUrl, name, details, url}: {
     htmlFor: string;
     iconUrl: string;
     name: string;
     details: ReactNode;
+    url?: string | null;
 }) {
     return (
         <label htmlFor={htmlFor} className='flex-grow-1 mb-0 d-flex align-items-center gap-2'>
@@ -85,7 +86,7 @@ export function SourceLabel({htmlFor, iconUrl, name, details}: {
                 ? <i className='icon fa fa-file-lines fa-fw m-0' aria-hidden='true' />
                 : <img src={iconUrl} className='icon activityicon m-0' alt='' />}
             <span className='d-flex flex-column'>
-                <span>{name}</span>
+                {url === undefined || url === null ? <span>{name}</span> : <a href={url}>{name}</a>}
                 <span className='small text-muted'>{details}</span>
             </span>
         </label>

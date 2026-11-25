@@ -54,6 +54,8 @@ export type ModuleSource = {
     modDisplayName: string;
     iconUrl: string;
     name: string;
+    /** The url of the view page of the activity, null if it has none. */
+    url: string | null;
     /** The course section of the activity in course formats with sections, null otherwise. */
     sectionId: number | null;
     /** The id of the source, 0 if the activity has never been shared. */
@@ -100,6 +102,13 @@ export type DocumentFields = {
     name: string;
     description: string;
     content: string;
+};
+
+/** One page of the chunks of a source as they are stored in the vector store. */
+export type IndexedChunks = {
+    /** The chunks in content order; their contents joined result in the searchable text. */
+    items: Array<{chunk: number; content: string}>;
+    pagination: {page: number; pageSize: number; totalItems: number};
 };
 
 const COMPONENT = 'local_ai_content';
@@ -161,6 +170,17 @@ export const indexSources = async (sourceIds: number[]): Promise<IndexState[]> =
  */
 export const getIndexStates = async (contextId: number): Promise<{items: IndexState[]; pollIntervalSeconds: number}> =>
     request('GET', `contexts/${contextId}/index-states`);
+
+/**
+ * Load one page of the chunks of a source as they are stored in the vector store.
+ *
+ * @param contextId The context of the course.
+ * @param sourceId The id of the module or document source.
+ * @param page The page, starting at 1.
+ * @returns The chunks of the page and the pagination of all chunks.
+ */
+export const getIndexedChunks = async (contextId: number, sourceId: number, page: number): Promise<IndexedChunks> =>
+    request('GET', `contexts/${contextId}/sources/${sourceId}/indexed-chunks?page=${page}`);
 
 /**
  * Create a document source.

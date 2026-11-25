@@ -194,6 +194,30 @@ class source_management_service {
     }
 
     /**
+     * Read one page of the chunks of a module or document source as they are stored in the vector store.
+     *
+     * Global documents are listed in the source management of every course, so their content can be read from there too.
+     *
+     * @param \context_course $coursecontext The context of the course whose sources are managed.
+     * @param int $sourceid The source id.
+     * @param int $page The page, starting at 1.
+     * @param int $pagesize The number of chunks per page.
+     * @return array The page, see {@see index_service::get_indexed_chunks()}.
+     * @throws \invalid_parameter_exception If there is no such source in the course or as global document.
+     */
+    public function get_indexed_chunks(\context_course $coursecontext, int $sourceid, int $page, int $pagesize): array {
+        $source = source::get_record(['id' => $sourceid]);
+        if (
+            $source === null
+            || !in_array($source->get_sourcetype(), [source::TYPE_MODULE, source::TYPE_DOCUMENT], true)
+            || !in_array($source->get_contextid(), [$coursecontext->id, SYSCONTEXTID], true)
+        ) {
+            throw new \invalid_parameter_exception('Source not found.');
+        }
+        return $this->indexservice->get_indexed_chunks($source, $page, $pagesize);
+    }
+
+    /**
      * Return the API representation of one document source.
      *
      * @param source $documentsource The document source.
@@ -253,6 +277,8 @@ class source_management_service {
                     'modDisplayName' => $this->get_module_display_name((string) $cm->modname),
                     'iconUrl' => $cm->get_icon_url()->out(false),
                     'name' => format_string($cm->name, true, ['context' => $cm->context]),
+                    // Modules without view page (e.g. text and media areas) have no url.
+                    'url' => $cm->url?->out(false),
                     'sectionId' => $usessections ? $section['id'] : null,
                     'sourceId' => $modulesource ? $modulesource->get_id() : 0,
                     'enabled' => $modulesource ? $modulesource->get_enabled() : false,

@@ -36,6 +36,11 @@ use Psr\Http\Message\ServerRequestInterface;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class source_management {
+    /** @var int Default number of chunks per page of the indexed chunks, about 45000 characters. */
+    private const DEFAULT_CHUNK_PAGESIZE = 50;
+
+    /** @var int Maximum number of chunks per page of the indexed chunks. */
+    private const MAX_CHUNK_PAGESIZE = 100;
     /**
      * Constructor.
      *
@@ -333,6 +338,92 @@ class source_management {
 
         return new payload_response(
             payload: $this->build_payload($coursecontext),
+            request: $request,
+            response: $response,
+        );
+    }
+
+    /**
+     * Return one page of the chunks of a source as they are stored in the vector store.
+     *
+     * @param ServerRequestInterface $request
+     * @param ResponseInterface $response
+     * @param int $contextId The active context id.
+     * @param int $sourceId The source id.
+     * @return payload_response
+     */
+    #[route(
+        path: '/contexts/{contextId}/sources/{sourceId}/indexed-chunks',
+        method: ['GET'],
+        title: 'Get indexed source chunks',
+        description: 'Returns the chunks of a source as they are stored in the vector store, in content order. The overlap '
+            . 'of each chunk with its predecessor is removed, so the joined contents result in the searchable text.',
+        pathtypes: [
+            new \core\router\schema\parameters\path_parameter(
+                name: 'contextId',
+                type: param::INT,
+                description: 'The Moodle context ID.',
+            ),
+            new \core\router\schema\parameters\path_parameter(
+                name: 'sourceId',
+                type: param::INT,
+                description: 'The source ID.',
+            ),
+        ],
+        queryparams: [
+            new \core\router\schema\parameters\query_parameter(
+                name: 'page',
+                type: param::INT,
+                description: 'The page, starting at 1.',
+                default: 1,
+            ),
+            new \core\router\schema\parameters\query_parameter(
+                name: 'pagesize',
+                type: param::INT,
+                description: 'The number of chunks per page, at most ' . self::MAX_CHUNK_PAGESIZE . '.',
+                default: self::DEFAULT_CHUNK_PAGESIZE,
+            ),
+        ],
+        responses: [
+            new \core\router\schema\response\response(
+                statuscode: 200,
+                description: 'OK',
+                content: [
+                    new \core\router\schema\response\content\json_media_type(
+                        schema: new schema_object([
+                            'items' => new array_of_things(
+                                thingtype: new schema_object([
+                                    'chunk' => new scalar_type(param::INT),
+                                    'content' => new scalar_type(param::RAW),
+                                ]),
+                            ),
+                            'pagination' => new schema_object([
+                                'page' => new scalar_type(param::INT),
+                                'pageSize' => new scalar_type(param::INT),
+                                'totalItems' => new scalar_type(param::INT),
+                            ]),
+                        ]),
+                    ),
+                ],
+            ),
+        ],
+    )]
+    public function get_indexed_chunks(
+        ServerRequestInterface $request,
+        ResponseInterface $response,
+        int $contextId,
+        int $sourceId,
+    ): payload_response {
+        $coursecontext = $this->accessguard->require_manage_access(\context_helper::instance_by_id($contextId, MUST_EXIST));
+        $params = $request->getQueryParams();
+
+        return new payload_response(
+            payload: $this->managementservice->get_indexed_chunks(
+                $coursecontext,
+                $sourceId,
+                max(1, (int) $params['page']),
+                min(max(1, (int) $params['pagesize']), self::MAX_CHUNK_PAGESIZE),
+            ),
             request: $request,
             response: $response,
         );

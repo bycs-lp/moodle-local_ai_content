@@ -103,6 +103,31 @@ class source_content_reader {
     }
 
     /**
+     * Remove the overlap of a chunk created by {@see self::get_chunks()} with its predecessor, so consecutive chunks can
+     * be joined to the original text again.
+     *
+     * The chunks are trimmed, so the overlap is found as the longest end of the predecessor (at most the overlap length)
+     * the chunk starts with. A chunk without such an overlap, e.g. because the chunk in between is missing, is prefixed
+     * with a line break instead.
+     *
+     * @param ?string $previous The predecessor, null for the first chunk.
+     * @param string $chunk The chunk.
+     * @return string The chunk without the overlap.
+     */
+    public function remove_overlap(?string $previous, string $chunk): string {
+        if ($previous === null) {
+            return $chunk;
+        }
+        $maxlength = min(self::CHUNK_OVERLAP, \core_text::strlen($previous), \core_text::strlen($chunk));
+        for ($length = $maxlength; $length > 0; $length--) {
+            if (\core_text::substr($previous, -$length) === \core_text::substr($chunk, 0, $length)) {
+                return \core_text::substr($chunk, $length);
+            }
+        }
+        return "\n" . $chunk;
+    }
+
+    /**
      * Split content into overlapping chunks for embedding.
      *
      * Splitting is done on characters, not on bytes. Byte-based splitting would cut multi-byte UTF-8

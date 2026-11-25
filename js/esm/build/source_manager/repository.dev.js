@@ -21,6 +21,7 @@ const indexSources = /* @__PURE__ */ __name(async (sourceIds) => {
   return response.items;
 }, "indexSources");
 const getIndexStates = /* @__PURE__ */ __name(async (contextId) => request("GET", `contexts/${contextId}/index-states`), "getIndexStates");
+const getIndexedChunks = /* @__PURE__ */ __name(async (contextId, sourceId, page) => request("GET", `contexts/${contextId}/sources/${sourceId}/indexed-chunks?page=${page}`), "getIndexedChunks");
 const createDocument = /* @__PURE__ */ __name(async (contextId, scope, fields) => {
   await request("POST", `contexts/${contextId}/document-sources`, { scope, ...fields });
 }, "createDocument");
@@ -30,6 +31,7 @@ export {
   createDocument,
   deleteDocument,
   getIndexStates,
+  getIndexedChunks,
   getSources,
   indexSources,
   setSharing,
