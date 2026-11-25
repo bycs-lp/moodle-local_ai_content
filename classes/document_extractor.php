@@ -58,7 +58,7 @@ class document_extractor {
 
     /** @var int Log output mode none. */
     const LOG_OUTPUT_NONE = -1;
-    /** @var int Log output mode auto (CLI or mtrace). */
+    /** @var int Log output mode auto (mtrace on CLI, no output in web requests). */
     const LOG_OUTPUT_AUTO = 0;
     /** @var int Log output mode echo. */
     const LOG_OUTPUT_ECHO = 1;
@@ -123,12 +123,11 @@ class document_extractor {
         // Store the message for later retrieval.
         $this->logmessages[] = $message;
 
-        // Default logging behavior: echo to CLI or mtrace.
+        // Default logging behavior: mtrace on CLI (e.g. tasks). Web requests get no output, because it would corrupt
+        // their response, e.g. the JSON of REST requests.
         if ($this->logoutputmode === self::LOG_OUTPUT_AUTO) {
             if (CLI_SCRIPT) {
                 mtrace($message);
-            } else {
-                echo $message . "\n";
             }
             return;
         }

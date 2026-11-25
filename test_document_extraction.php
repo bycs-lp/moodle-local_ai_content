@@ -55,6 +55,8 @@ if ($form->is_cancelled()) {
     } else {
         $file = reset($files);
         $extractor = \core\di::get(\local_ai_content\document_extractor::class);
+        // The log is captured below and shown on the page.
+        $extractor->set_log_outputmode(\local_ai_content\document_extractor::LOG_OUTPUT_ECHO);
 
         // Collect file metadata.
         $fileinfo = new stdClass();
